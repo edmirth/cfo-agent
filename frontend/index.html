@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CFO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <div class="mark">CFO</div>
+      <div>
+        <div class="brand-name" id="companyName">…</div>
+        <div class="brand-sub">Økonomisjef på egne tall</div>
+      </div>
+    </div>
+
+    <button class="new-chat" id="newChat">Ny samtale</button>
+
+    <div class="rail-label">Rutiner</div>
+    <nav class="presets" id="presets"></nav>
+
+    <div class="rail-foot">
+      <div class="status" id="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Kobler til…</span>
+      </div>
+      <div class="status-meta" id="statusMeta"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="thread" id="thread">
+      <div class="welcome" id="welcome">
+        <div class="eyebrow">Tilkoblet Tripletex</div>
+        <h1>Spør om hva som helst i regnskapet.</h1>
+        <p>Jeg leser hovedboken direkte — resultat, balanse, kundefordringer,
+        prosjekter, timer og lønn — og regner selv når svaret krever en modell.
+        Alle tall kommer fra live data, aldri fra hukommelsen.</p>
+        <div class="starters" id="starters"></div>
+      </div>
+    </div>
+
+    <div class="composer-wrap">
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="Spør CFO-en…" autocomplete="off"></textarea>
+        <button type="submit" id="send" aria-label="Send">
+          <svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true">
+            <path d="M3 10 17 3l-4 14-3.2-5.3z" fill="none" stroke="currentColor"
+                  stroke-width="1.6" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+      <div class="disclaimer">Leser og analyserer. Endrer ingenting i Tripletex.</div>
+    </div>
+  </main>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
