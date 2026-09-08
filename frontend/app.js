@@ -17,9 +17,16 @@ async function boot() {
     $("statusText").textContent = h.ok ? "Tilkoblet Tripletex" : "Mangler API-nøkkel";
     $("statusMeta").textContent =
       h.model + (h.mcp_authenticated ? " · autentisert" : " · uautentisert MCP");
+    const w = $("welcomeState");
+    if (w) {
+      w.textContent = h.ok ? "Tilkoblet Tripletex" : "Ikke tilkoblet — mangler API-nøkkel";
+      w.style.color = h.ok ? "" : "var(--crit)";
+    }
   } catch {
     $("statusDot").className = "dot bad";
     $("statusText").textContent = "Backend svarer ikke";
+    const w = $("welcomeState");
+    if (w) { w.textContent = "Backend svarer ikke"; w.style.color = "var(--crit)"; }
   }
 
   try {
