@@ -14,13 +14,18 @@ async function boot() {
     const h = await (await fetch("/api/health")).json();
     $("companyName").textContent = h.company;
     $("statusDot").className = "dot " + (h.ok ? "ok" : "bad");
-    $("statusText").textContent = h.ok ? "Tilkoblet Tripletex" : "Mangler API-nøkkel";
+    const ready = h.ok && h.tripletex_configured;
+    $("statusDot").className = "dot " + (ready ? "ok" : "bad");
+    $("statusText").textContent = ready ? "Klar" : "Ikke konfigurert";
     $("statusMeta").textContent =
-      h.model + (h.mcp_authenticated ? " · autentisert" : " · uautentisert MCP");
+      h.model + (h.tripletex_configured ? " · Tripletex tilkoblet" : " · Tripletex mangler token");
     const w = $("welcomeState");
     if (w) {
-      w.textContent = h.ok ? "Tilkoblet Tripletex" : "Ikke tilkoblet — mangler API-nøkkel";
-      w.style.color = h.ok ? "" : "var(--crit)";
+      const ready = h.ok && h.tripletex_configured;
+      w.textContent = ready ? "Tilkoblet Tripletex"
+        : !h.ok ? "Ikke klar — mangler ANTHROPIC_API_KEY"
+        : "Ikke klar — mangler Tripletex-token";
+      w.style.color = ready ? "" : "var(--crit)";
     }
   } catch {
     $("statusDot").className = "dot bad";

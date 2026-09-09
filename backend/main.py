@@ -73,8 +73,9 @@ async def health() -> dict:
         "ok": bool(config.ANTHROPIC_API_KEY),
         "company": config.COMPANY_NAME,
         "model": config.CFO_MODEL,
-        "mcp_url": config.TRIPLETEX_MCP_URL,
-        "mcp_authenticated": bool(config.TRIPLETEX_MCP_TOKEN),
+        "tripletex_configured": bool(
+            config.TRIPLETEX_CONSUMER_TOKEN and config.TRIPLETEX_EMPLOYEE_TOKEN
+        ),
     }
 
 
