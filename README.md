@@ -70,19 +70,67 @@ expands it to the full prompt server-side.
 
 ## Before this goes to a customer
 
-1. **Auth.** `TRIPLETEX_MCP_TOKEN` is currently one token for one company. A
-   multi-tenant product needs per-customer credentials from Tripletex, stored
-   per account and passed as `authorization_token` on the MCP server entry.
-   Confirm with Tripletex that service-account credentials exist for the MCP
-   beta — this is the gating question for the whole product.
-2. **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
-   Move to Redis or Postgres before running more than one worker.
-3. **No auth on the app itself.** Anyone who reaches the port gets the CFO. Put
-   a login in front of it.
-4. **Read-only is a promise the code should keep.** The prompt forbids writes,
-   but the MCP toolset still exposes them. Use the toolset allowlist
-   (`default_config: {enabled: false}` plus `configs` naming only read tools) to
-   enforce it at the API rather than in the prompt.
-5. **Daily brief runs on request, not on a schedule.** The `daily` preset is the
-   prompt; a cron or a Managed Agents scheduled deployment is what makes it
-   arrive without being asked for.
+**The hosted MCP is not the commercial path.** Researched 9 Sep 2026 against
+Tripletex's own developer docs:
+
+`mcp.tripletex.no` is an *end-user feature* of Tripletex, not a developer
+platform. An admin activates "Tripletex MCP Beta" on their own subscription and
+each user connects over OAuth to their own account. It is free during beta with
+a monthly fee announced for general release, and third-party multi-tenant use is
+not documented anywhere. Selling a product built on it is not a supported path.
+
+**The commercial path is the REST API**, which uses a two-token model:
+
+| Token | Who holds it | How it is obtained |
+|---|---|---|
+| Consumer | You, one for the whole product | Application form, 2–3 weeks, no expediting |
+| Employee | Each customer | They create it in their own Tripletex GUI and pick your app by name |
+| Session | Derived | Consumer + employee exchanged for a short-lived token, sent as HTTP Basic |
+
+Tripletex does not use OAuth 2.0 for this API.
+
+**For this company, no approval is needed at all.** A single-company internal
+integration generates a JWT token directly inside Tripletex and works
+immediately. Only serving *other* companies requires the consumer token.
+
+### The route
+
+1. **Now** — switch off the hosted MCP onto the REST API with an internal JWT
+   token for Ullensaker Renholdsteknikk. Zero approval, real data, today.
+2. **In parallel** — apply for a production consumer token. The 2–3 week clock
+   runs while you build.
+3. **Then** — customers connect by creating an employee token against your
+   application name.
+4. **Later** — apply for Integration Partner status and a marketplace listing.
+   This requires an integration already in production with satisfied Tripletex
+   customers, so it is a step three or four, not step one. Its payoff is the
+   activation flow: Tripletex POSTs `companyId`, `companyName`, `orgNumber` and
+   a fresh employee token to your redirect URL when a customer clicks activate.
+
+### What that means for this code
+
+`backend/agent.py` keeps its shape. What changes is what sits behind the MCP
+connector: instead of Anthropic connecting to `mcp.tripletex.no` with a personal
+OAuth token, point it at an MCP server you run that wraps the REST API and
+authenticates per customer with consumer + employee tokens. Prior art exists —
+e.g. `github.com/cwvedvik/tripletex-mcp` takes exactly
+`TRIPLETEX_CONSUMER_TOKEN` and `TRIPLETEX_EMPLOYEE_TOKEN`.
+
+Store tokens per customer, never in `.env`, once there is more than one.
+
+### Still outstanding
+
+- **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
+  Move to Redis or Postgres before running more than one worker.
+- **No auth on the app itself.** Anyone who reaches the port gets the CFO.
+- **Read-only is only a prompt rule.** Enforce it at the toolset with
+  `default_config: {enabled: false}` plus an allowlist of read tools.
+- **The daily brief runs on request.** A cron or a scheduled deployment is what
+  makes it arrive unasked.
+
+### Sources
+
+- https://developer.tripletex.no/tripletex-mcp-beta/
+- https://developer.tripletex.no/docs/documentation/authentication-and-tokens/
+- https://developer.tripletex.no/docs/documentation/faq/getting-started/
+- https://developer.tripletex.no/docs/documentation/integration-marketplace/
