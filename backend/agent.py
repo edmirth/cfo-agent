@@ -12,6 +12,7 @@ from anthropic import AsyncAnthropic, BadRequestError
 import config
 import tools as tooling
 from prompt import system_prompt
+from tlx_oauth import OAuthError, tokens
 from tripletex import TripletexClient, TripletexError
 
 log = logging.getLogger("cfo.agent")
@@ -27,7 +28,7 @@ _fallbacks_enabled = True
 CODE_TOOL = {"type": "code_execution_20260521", "name": "code_execution"}
 TOOL_NAMES = {t["name"] for t in tooling.TOOLS}
 TOOL_BLOCK_TYPES = {
-    "tool_use", "server_tool_use",
+    "tool_use", "server_tool_use", "mcp_tool_use",
     "code_execution_tool_use", "bash_code_execution_tool_use",
 }
 
@@ -39,14 +40,33 @@ def tripletex() -> TripletexClient:
     return _tlx
 
 
-def _request_kwargs(messages: list[dict]) -> dict:
+async def _request_kwargs(messages: list[dict]) -> dict:
+    """Prefer the Tripletex MCP when OAuth is set up — it carries the report
+    engine the REST API has no equivalent for. Fall back to the REST tools when
+    only consumer/employee tokens are available."""
     betas = ["code-execution-2025-08-25"]
+    tools: list[dict] = [CODE_TOOL]
+    extra: dict = {}
+
+    if tokens.configured:
+        betas.append("mcp-client-2025-11-20")
+        tools.insert(0, {"type": "mcp_toolset", "mcp_server_name": "tripletex"})
+        extra["mcp_servers"] = [{
+            "type": "url",
+            "url": config.TRIPLETEX_MCP_URL,
+            "name": "tripletex",
+            "authorization_token": await tokens.access_token(),
+        }]
+    else:
+        tools = [*tooling.TOOLS, CODE_TOOL]
+
     kwargs: dict = {
         "model": config.CFO_MODEL,
         "max_tokens": config.MAX_TOKENS,
         "system": system_prompt(),
         "messages": messages,
-        "tools": [*tooling.TOOLS, CODE_TOOL],
+        "tools": tools,
+        **extra,
         "thinking": {"type": "adaptive", "display": "summarized"},
         "output_config": {"effort": config.CFO_EFFORT},
     }
@@ -67,8 +87,14 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
 
     for _ in range(config.MAX_TOOL_ROUNDS):
         try:
+            kwargs = await _request_kwargs(messages)
+        except OAuthError as exc:
+            yield {"type": "error", "message": str(exc)}
+            return
+
+        try:
             final = None
-            async with client.beta.messages.stream(**_request_kwargs(messages)) as stream:
+            async with client.beta.messages.stream(**kwargs) as stream:
                 async for event in stream:
                     if event.type == "content_block_start":
                         block = event.content_block
