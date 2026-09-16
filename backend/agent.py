@@ -1,75 +1,51 @@
-"""The CFO agent: Claude, Tripletex, and a Python sandbox.
+"""The CFO agent: Claude, Tripletex over MCP, and a Python sandbox.
 
-Tripletex is reached through the MCP connector when OAuth is set up — that path
-carries the report engine the REST API has no equivalent for — and through the
-in-process REST tools otherwise. Code execution runs server-side at Anthropic so
-the agent can build forecasts on figures it just pulled.
+Tripletex tool calls are executed by Anthropic through the MCP connector, so
+there is no tool-execution loop here. Code execution runs server-side too, which
+is what lets the agent build a forecast on figures it just pulled.
 """
-import json
 import logging
 from typing import AsyncIterator
 
 from anthropic import AsyncAnthropic, BadRequestError
 
 import config
-import tools as tooling
+from labels import label
 from prompt import system_prompt
 from tlx_oauth import OAuthError, tokens
-from tripletex import TripletexClient, TripletexError
 
 log = logging.getLogger("cfo.agent")
 
 client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
-
-_tlx: TripletexClient | None = None
 
 # Turned off permanently if this account rejects the parameter, so a deployment
 # without the beta still runs instead of failing every request.
 _fallbacks_enabled = True
 
 CODE_TOOL = {"type": "code_execution_20260521", "name": "code_execution"}
-TOOL_NAMES = {t["name"] for t in tooling.TOOLS}
 TOOL_BLOCK_TYPES = {
     "tool_use", "server_tool_use", "mcp_tool_use",
     "code_execution_tool_use", "bash_code_execution_tool_use",
 }
 
 
-def tripletex() -> TripletexClient:
-    global _tlx
-    if _tlx is None:
-        _tlx = TripletexClient(config.TRIPLETEX_CONSUMER_TOKEN, config.TRIPLETEX_EMPLOYEE_TOKEN)
-    return _tlx
-
-
 async def _request_kwargs(messages: list[dict]) -> dict:
-    """Prefer the Tripletex MCP when OAuth is set up — it carries the report
-    engine the REST API has no equivalent for. Fall back to the REST tools when
-    only consumer/employee tokens are available."""
-    betas = ["code-execution-2025-08-25"]
-    tools: list[dict] = [CODE_TOOL]
-    extra: dict = {}
-
-    if tokens.configured:
-        betas.append("mcp-client-2025-11-20")
-        tools.insert(0, {"type": "mcp_toolset", "mcp_server_name": "tripletex"})
-        extra["mcp_servers"] = [{
+    betas = ["code-execution-2025-08-25", "mcp-client-2025-11-20"]
+    kwargs: dict = {
+        "model": config.CFO_MODEL,
+        "max_tokens": config.MAX_TOKENS,
+        # One cache breakpoint here covers the tool definitions and the system
+        # prompt — the part that repeats identically on every tool round.
+        "system": [{"type": "text", "text": system_prompt(),
+                    "cache_control": {"type": "ephemeral"}}],
+        "messages": messages,
+        "tools": [{"type": "mcp_toolset", "mcp_server_name": "tripletex"}, CODE_TOOL],
+        "mcp_servers": [{
             "type": "url",
             "url": config.TRIPLETEX_MCP_URL,
             "name": "tripletex",
             "authorization_token": await tokens.access_token(),
-        }]
-    else:
-        tools = [*tooling.TOOLS, CODE_TOOL]
-
-    kwargs: dict = {
-        "model": config.CFO_MODEL,
-        "max_tokens": config.MAX_TOKENS,
-        "system": [{"type": "text", "text": system_prompt(),
-                    "cache_control": {"type": "ephemeral"}}],
-        "messages": messages,
-        "tools": tools,
-        **extra,
+        }],
         "thinking": {"type": "adaptive", "display": "summarized"},
         "output_config": {"effort": config.CFO_EFFORT},
     }
@@ -83,8 +59,8 @@ async def _request_kwargs(messages: list[dict]) -> dict:
 async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
     """Stream one assistant turn, yielding UI events.
 
-    Mutates `messages` in place with the assistant and tool-result turns it
-    produces, so the caller's history is correct when this returns.
+    Mutates `messages` in place with the assistant turns it produces, so the
+    caller's history is correct when this returns.
     """
     global _fallbacks_enabled
 
@@ -103,7 +79,7 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
                         block = event.content_block
                         if block.type in TOOL_BLOCK_TYPES:
                             name = getattr(block, "name", "") or block.type
-                            yield {"type": "tool", "label": tooling.label(name), "name": name}
+                            yield {"type": "tool", "label": label(name), "name": name}
                     elif event.type == "content_block_delta":
                         delta = event.delta
                         if delta.type == "text_delta":
@@ -137,34 +113,14 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             continue  # a server tool paused the turn; resume it
 
         if final.stop_reason == "tool_use":
-            calls = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
-            if not calls:
-                # Server-side tools only (MCP, code execution) — already resolved.
-                continue
-
-            try:
-                tlx = tripletex() if any(c.name in TOOL_NAMES for c in calls) else None
-            except TripletexError as exc:
-                yield {"type": "error", "message": str(exc)}
-                return
-
-            results = []
-            for call in calls:
-                args = call.input if isinstance(call.input, dict) else {}
-                if call.name in TOOL_NAMES and tlx is not None:
-                    payload = await tooling.dispatch(tlx, call.name, args)
-                else:
-                    payload = json.dumps({"error": f"Ukjent verktøy: {call.name}"},
-                                         ensure_ascii=False)
-                results.append({
-                    "type": "tool_result",
-                    "tool_use_id": call.id,
-                    "content": payload,
-                    "is_error": payload.startswith('{"error"'),
-                })
-            # All results for one assistant turn go back in a single user message.
-            messages.append({"role": "user", "content": results})
-            continue
+            # Every tool here is server-side, so this should not happen. Stop
+            # rather than loop: replaying an unanswered tool_use is rejected.
+            names = [getattr(b, "name", "?") for b in final.content
+                     if getattr(b, "type", None) == "tool_use"]
+            log.error("Unexpected client-side tool_use: %s", names)
+            yield {"type": "error",
+                   "message": "Modellen ba om et verktøy som ikke finnes her. Prøv igjen."}
+            return
 
         u = final.usage
         yield {"type": "done", "usage": {

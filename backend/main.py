@@ -96,12 +96,7 @@ async def health() -> dict:
         "company": config.COMPANY_NAME,
         "model": config.CFO_MODEL,
         "tripletex_configured": bool(
-            (config.TRIPLETEX_CLIENT_ID and config.TRIPLETEX_REFRESH_TOKEN)
-            or (config.TRIPLETEX_CONSUMER_TOKEN and config.TRIPLETEX_EMPLOYEE_TOKEN)
-        ),
-        "tripletex_mode": (
-            "mcp" if config.TRIPLETEX_REFRESH_TOKEN else
-            "rest" if config.TRIPLETEX_EMPLOYEE_TOKEN else "none"
+            config.TRIPLETEX_CLIENT_ID and config.TRIPLETEX_REFRESH_TOKEN
         ),
     }
 

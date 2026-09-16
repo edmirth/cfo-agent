@@ -26,23 +26,33 @@ does not support). `run.sh` builds the venv on first run.
 ## How it works
 
 **The agent definition is one file.** `.claude/agents/cfo.md` holds the CFO
-persona, the standing analysis framework, Tripletex report routing, Norwegian
-accounting context, and a list of known data traps in the Tripletex reports.
-Claude Code loads it as a subagent; the web backend loads the same file as its
-system prompt (`backend/prompt.py`). Edit it once and both change — no restart
-needed, it is re-read per request.
+persona, the standing analysis framework, report routing, Norwegian accounting
+context, and the data traps found the hard way. Claude Code loads it as a
+subagent; the web backend loads the same file as its system prompt
+(`backend/prompt.py`). Edit it once and both change — it is re-read per request,
+so no restart.
 
-**Tool calls run server-side.** The Tripletex MCP server is attached through the
-Claude API's MCP connector, so Anthropic executes the tool loop. There is no
-tool-execution code in this repo to maintain, and no Tripletex API client.
+**Two paths to Tripletex, on purpose.**
 
-**Python for modelling.** The `code_execution` tool lets the agent build
-forecasts, scenarios and sensitivities on figures it pulled from the ledger
-rather than describing them in prose.
+- *Figures* (`backend/mcp_client.py` → `backend/overview.py`) are fetched by
+  calling the MCP server directly over JSON-RPC. No model in the loop, so a page
+  load is free, fast and exact.
+- *Answers* (`backend/agent.py`) go through Claude with the MCP connector, so
+  Anthropic runs the tool loop. There is no tool-execution code here to maintain.
 
-**The tool feed is the trust feature.** Every Tripletex call is streamed to the
-UI as it happens ("Henter rapport fra Tripletex"), so the CEO sees which reports
-the answer was built from instead of a spinner.
+**Auth is a self-registered OAuth client.** Tripletex's own company API key is a
+refresh token bound to a client we cannot identify, so `scripts/oauth_login.py`
+registers our own client and runs the authorization-code flow once. Refresh
+tokens do not expire, so it stays headless afterwards.
+`backend/tlx_oauth.py` swaps the refresh token for access tokens and persists a
+rotated refresh token back to `.env`.
+
+**Read-only.** Every tool the agent can reach is a read.
+
+**Cost.** The system prompt and tool definitions carry a cache breakpoint. A
+follow-up turn reads several hundred thousand tokens from cache rather than
+paying full input rate, which is the difference between a few cents and a few
+dollars per question.
 
 ## Layout
 
@@ -50,100 +60,29 @@ the answer was built from instead of a spinner.
 |---|---|
 | `.claude/agents/cfo.md` | The agent. Behaviour, framework, data traps. Start here. |
 | `backend/agent.py` | Claude call, MCP wiring, stream → UI events |
+| `backend/mcp_client.py` | Direct JSON-RPC to Tripletex, one reused session |
+| `backend/overview.py` | Dashboard figures, computed from reports |
+| `backend/tlx_oauth.py` | Access-token refresh |
 | `backend/prompt.py` | Builds the system prompt from the agent definition |
-| `backend/main.py` | FastAPI: `/api/chat` (SSE), `/api/health`, `/api/presets` |
-| `backend/config.py` | Environment settings |
-| `frontend/` | Chat SPA — no build step, plain HTML/CSS/JS |
-| `reports/` | Generated briefs |
+| `backend/main.py` | FastAPI: `/api/chat` (SSE), `/api/overview`, `/api/health`, `/api/presets` |
+| `frontend/` | Dashboard + chat. No build step. |
+| `scripts/oauth_login.py` | One-time browser login |
+| `scripts/check_tokens.py` | Verifies the connection on its own |
 
 ## Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/chat` | Chat turn, streamed as SSE. Body: `{message, session_id?}` |
+| `GET` | `/api/overview` | Dashboard figures, cached 10 min |
+| `POST` | `/api/chat` | Chat turn, streamed as SSE |
 | `POST` | `/api/session/reset?session_id=…` | Clear a conversation |
-| `GET` | `/api/health` | Key present, model, MCP auth status |
-| `GET` | `/api/presets` | Quick actions for the sidebar |
+| `GET` | `/api/health` | Key present, model, Tripletex connected |
+| `GET` | `/api/presets` | The suggested questions |
 
-Sending a preset id (`daily`, `cash`, `ar`, `margin`, `forecast`) as the message
-expands it to the full prompt server-side.
+Sending a preset id (`daily`, `cash`, `ar`, `margin`, `forecast`) as the chat
+message expands it to the full prompt server-side.
 
 ## Before this goes to a customer
-
-**The hosted MCP is not the commercial path.** Researched 9 Sep 2026 against
-Tripletex's own developer docs:
-
-`mcp.tripletex.no` is an *end-user feature* of Tripletex, not a developer
-platform. An admin activates "Tripletex MCP Beta" on their own subscription and
-each user connects over OAuth to their own account. It is free during beta with
-a monthly fee announced for general release, and third-party multi-tenant use is
-not documented anywhere. Selling a product built on it is not a supported path.
-
-**The commercial path is the REST API**, which uses a two-token model:
-
-| Token | Who holds it | How it is obtained |
-|---|---|---|
-| Consumer | You, one for the whole product | Application form, 2–3 weeks, no expediting |
-| Employee | Each customer | They create it in their own Tripletex GUI and pick your app by name |
-| Session | Derived | Consumer + employee exchanged for a short-lived token, sent as HTTP Basic |
-
-Tripletex does not use OAuth 2.0 for this API.
-
-**For this company, no approval is needed at all.** A single-company internal
-integration generates a JWT token directly inside Tripletex and works
-immediately. Only serving *other* companies requires the consumer token.
-
-### The route
-
-1. **Now** — switch off the hosted MCP onto the REST API with an internal JWT
-   token for Ullensaker Renholdsteknikk. Zero approval, real data, today.
-2. **In parallel** — apply for a production consumer token. The 2–3 week clock
-   runs while you build.
-3. **Then** — customers connect by creating an employee token against your
-   application name.
-4. **Later** — apply for Integration Partner status and a marketplace listing.
-   This requires an integration already in production with satisfied Tripletex
-   customers, so it is a step three or four, not step one. Its payoff is the
-   activation flow: Tripletex POSTs `companyId`, `companyName`, `orgNumber` and
-   a fresh employee token to your redirect URL when a customer clicks activate.
-
-### What that means for this code
-
-`backend/agent.py` keeps its shape. What changes is what sits behind the MCP
-connector: instead of Anthropic connecting to `mcp.tripletex.no` with a personal
-OAuth token, point it at an MCP server you run that wraps the REST API and
-authenticates per customer with consumer + employee tokens. Prior art exists —
-e.g. `github.com/cwvedvik/tripletex-mcp` takes exactly
-`TRIPLETEX_CONSUMER_TOKEN` and `TRIPLETEX_EMPLOYEE_TOKEN`.
-
-Store tokens per customer, never in `.env`, once there is more than one.
-
-### Blocked: the `tlxr_` key is not a v2 credential
-
-Tested against the live API on 16 Sep 2026, with a key created under
-**Selskap → API-nøkler**:
-
-- The key is `tlxr_` + a signed JWT. Its payload carries
-  `{"ctid":"8357","etid":"2690602","iss":"https://tripletex.no"}` — the consumer
-  and employee token ids are embedded, which is why it comes as a single value.
-- `PUT /token/session/:create` rejects it as `employeeToken` with
-  *"Nøkkelen er ugyldig"*, under every parameter name tried
-  (`token`, `jwt`, `apiKey`, `apiToken`, `employeeToken`).
-- It fails as `Bearer`, as `X-Api-Key`, and as Basic with username `0`, the
-  company id, and itself.
-- The v2 OpenAPI spec (re-fetched same day) contains zero occurrences of `jwt`,
-  `Bearer` or `tlxr`, and declares exactly one scheme: Basic with username `0`
-  and the session token as password.
-
-So the v2 REST API this client targets does not accept this credential. The old
-route is also closed: creating a classic employee token under *Min profil →
-API-tilgang* requires an application name already registered with Tripletex, and
-a custom name is rejected with *"Applikasjonen finnes ikke"*.
-
-Tripletex support has to resolve one of: how the `tlxr_` key authenticates, or
-which consumer token an internal integration should pair an employee token with.
-
-### Still outstanding
 
 - **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
   Move to Redis or Postgres before running more than one worker.

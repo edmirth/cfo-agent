@@ -8,12 +8,10 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-TRIPLETEX_CONSUMER_TOKEN = os.getenv("TRIPLETEX_CONSUMER_TOKEN") or ""
-# MCP OAuth (foretrukket): satt av scripts/oauth_login.py
+# Satt av scripts/oauth_login.py — en engangsinnlogging i nettleseren.
 TRIPLETEX_CLIENT_ID = os.getenv("TRIPLETEX_CLIENT_ID") or ""
 TRIPLETEX_REFRESH_TOKEN = os.getenv("TRIPLETEX_REFRESH_TOKEN") or ""
 TRIPLETEX_MCP_URL = os.getenv("TRIPLETEX_MCP_URL", "https://mcp.tripletex.no")
-TRIPLETEX_EMPLOYEE_TOKEN = os.getenv("TRIPLETEX_EMPLOYEE_TOKEN") or ""
 COMPANY_NAME = os.getenv("COMPANY_NAME", "Selskapet")
 
 CFO_MODEL = os.getenv("CFO_MODEL", "claude-opus-5")
