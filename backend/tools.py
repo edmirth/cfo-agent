@@ -126,6 +126,27 @@ LABELS = {
     "tripletex_get": "Spør Tripletex",
     "code_execution": "Regner i Python",
     "bash_code_execution": "Regner i Python",
+    # Verktøynavnene MCP-serveren bruker. Uten disse viste grensesnittet
+    # "fetch report" og "tripletex run script" på engelsk.
+    "fetch_report": "Henter rapport",
+    "get_report_details": "Slår opp rapportdefinisjon",
+    "get_balance_sheet": "Henter saldobalanse",
+    "search_ledger_postings": "Søker i hovedboken",
+    "search_invoices": "Henter fakturaer",
+    "search_supplier_invoices": "Henter leverandørfakturaer",
+    "search_customers": "Slår opp kunder",
+    "search_employees": "Slår opp ansatte",
+    "search_projects": "Slår opp prosjekter",
+    "search_hour_entries": "Henter timeføringer",
+    "search_result_budgets": "Henter budsjett",
+    "search_orders": "Henter ordrer",
+    "search_reminders": "Henter purringer",
+    "get_voucher_inbox_count": "Sjekker bilagsinnboks",
+    "get_supplier_invoices_for_approval": "Sjekker fakturaer til godkjenning",
+    "logged_in_user_info": "Bekrefter selskap",
+    "list_active_companies": "Slår opp selskap",
+    "get_current_datetime": "Sjekker dato",
+    "tripletex_run_script": "Kjører spørring mot Tripletex",
 }
 
 

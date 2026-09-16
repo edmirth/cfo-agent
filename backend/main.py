@@ -21,8 +21,28 @@ FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 app = FastAPI(title="CFO Agent", version="0.1.0")
 
 # In-memory conversation store. One process only — move to Redis or Postgres
-# before running more than one worker.
+# before running more than one worker. Oldest sessions are evicted so a
+# long-running server cannot grow without bound.
 SESSIONS: dict[str, list[dict]] = {}
+MAX_SESSIONS = 200
+
+
+def _touch(session_id: str) -> list[dict]:
+    """Fetch a session and mark it most recently used."""
+    history = SESSIONS.pop(session_id, [])
+    SESSIONS[session_id] = history
+    while len(SESSIONS) > MAX_SESSIONS:
+        SESSIONS.pop(next(iter(SESSIONS)))
+    return history
+
+
+def _answers_a_tool(msg: dict) -> bool:
+    """True when this user message only carries tool results."""
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return False
+    return any((b.get("type") if isinstance(b, dict) else getattr(b, "type", None))
+               == "tool_result" for b in content)
 
 DAILY_BRIEF = (
     "Kjør den daglige gjennomgangen. Hent ferske tall fra Tripletex og gå "
@@ -34,28 +54,29 @@ DAILY_BRIEF = (
 )
 
 PRESETS = [
-    {"id": "daily", "label": "Daglig brief", "prompt": DAILY_BRIEF},
+    {"id": "daily", "label": "Hvordan går det akkurat nå?", "prompt": DAILY_BRIEF},
     {
         "id": "cash",
-        "label": "Likviditet",
+        "label": "Hvordan ligger vi an på likviditet?",
         "prompt": "Hvordan ligger vi an på likviditet? Bygg broen fra inngående "
                   "til dagens saldo og vis hva som binder kapital.",
     },
     {
         "id": "ar",
-        "label": "Kundefordringer",
+        "label": "Hvem skylder oss penger nå?",
         "prompt": "Gå gjennom kundefordringene. Total, kredittid, aldersfordeling "
                   "og de største eksponeringene. Hvem må purres nå?",
     },
     {
         "id": "margin",
-        "label": "Marginer",
+        "label": "Hvorfor er lønnen høyere enn budsjett?",
         "prompt": "Hvordan utvikler marginene seg? Vis kostnadsstrukturen som "
-                  "andel av omsetning og sammenlign mot budsjett og mot i fjor.",
+                  "andel av omsetning, forklar lønnsavviket mot budsjett, og si "
+                  "om det er et nivåskifte eller en engangseffekt.",
     },
     {
         "id": "forecast",
-        "label": "Prognosemodell",
+        "label": "Lag en prognose ut året",
         "prompt": "Bygg en resultatprognose ut året basert på faktiske tall "
                   "hittil. Vis forutsetningene, og lag et lavt, et forventet og "
                   "et høyt scenario.",
@@ -115,17 +136,18 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         raise HTTPException(500, "ANTHROPIC_API_KEY er ikke satt.")
 
     session_id = req.session_id or uuid.uuid4().hex
-    history = SESSIONS.setdefault(session_id, [])
+    history = _touch(session_id)
 
     # A preset id sent as the message body expands to its full prompt.
     text = next((p["prompt"] for p in PRESETS if p["id"] == req.message), req.message)
     history.append({"role": "user", "content": text})
 
-    # Trim oldest turns, keeping the list starting on a user message so the
-    # API never sees a history that opens with an assistant turn.
+    # Trim oldest turns. The history must open on a real user message: an
+    # assistant turn, or a user turn carrying tool results whose tool_use has
+    # just been trimmed away, is rejected by the API.
     if len(history) > config.MAX_HISTORY_MESSAGES:
         del history[: len(history) - config.MAX_HISTORY_MESSAGES]
-        while history and history[0]["role"] != "user":
+        while history and (history[0]["role"] != "user" or _answers_a_tool(history[0])):
             history.pop(0)
 
     async def stream():

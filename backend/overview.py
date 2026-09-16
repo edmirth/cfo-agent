@@ -87,16 +87,22 @@ async def build(today: date | None = None) -> dict:
     m = _rows(monthly)
     cols = [c.get("name") for c in monthly.get("table", {}).get("columns", [])]
     series, cash, receivables = [], None, None
-    rev_row = next((r for r in m if (r.get("path") or "").startswith("3000")), None)
-    if rev_row and cols:
+    def _account_no(row: dict) -> int | None:
+        head = (row.get("path") or "").split(" ", 1)[0]
+        return int(head) if head.isdigit() else None
+
+    rev_rows = [r for r in m
+                if (n := _account_no(r)) is not None and 3000 <= n <= 3999]
+    if rev_rows and cols:
         prev = 0.0
         for i, col in enumerate(cols):
             if col not in MONTHS:
                 continue
-            cell = rev_row["cells"][i] if i < len(rev_row["cells"]) else None
-            if not isinstance(cell, (int, float)):
-                continue
-            cum = -float(cell)          # inntekter ligger i kredit
+            cum = 0.0
+            for r in rev_rows:                    # summer alle inntektskontoer
+                cell = r["cells"][i] if i < len(r.get("cells") or []) else None
+                if isinstance(cell, (int, float)):
+                    cum += -float(cell)           # inntekter ligger i kredit
             series.append({"month": SHORT[MONTHS.index(col)],
                            "value": round(cum - prev, 2)})
             prev = cum
@@ -116,7 +122,7 @@ async def build(today: date | None = None) -> dict:
          for r in _rows(ar)
          if len(r.get("cells") or []) > 1 and isinstance(r["cells"][1], (int, float))),
         key=lambda kv: -kv[1])
-    ar_total = sum(v for _, v in ar_rows if v > 0) or None
+    ar_ledger_total = sum(v for _, v in ar_rows if v > 0) or None
     top_customer = ar_rows[0] if ar_rows else None
 
     rr = _rows(ratios)
@@ -140,14 +146,16 @@ async def build(today: date | None = None) -> dict:
             "lonnsandel_pct": _pct(wages, revenue),
             "lonnsandel_budsjett_pct": _pct(wages_budget, revenue_budget),
             "bank": cash,
-            "kundefordringer": receivables or ar_total,
+            "kundefordringer": receivables or ar_ledger_total,
             "likviditetsgrad": liquidity,
             "egenkapitalandel_pct": round(equity_ratio * 100, 1) if equity_ratio is not None else None,
         },
         "revenue_by_month": series,
         "top_debtor": ({"name": top_customer[0], "amount": top_customer[1],
-                        "share_pct": _pct(top_customer[1], ar_total)}
-                       if top_customer and ar_total else None),
+                        # samme nevner som tallet vi viser, ellers spriker de
+                        "share_pct": _pct(top_customer[1],
+                                          receivables or ar_ledger_total)}
+                       if top_customer and (receivables or ar_ledger_total) else None),
         "flags": {"ubokfort_skatt": unbooked_tax},
     }
 

@@ -149,22 +149,20 @@ function renderOverview(d) {
   }
 }
 
-const CHIPS = [
-  "Hvorfor er lønnen høyere enn budsjett?",
-  "Hvem skylder oss penger nå?",
-  "Hvordan ligger vi an på likviditet?",
-  "Lag en prognose ut året",
-];
-
 async function boot() {
   try {
     const h = await (await fetch("/api/health")).json();
     $("company").textContent = h.company;
   } catch { $("company").textContent = "CFO"; }
 
-  $("chips").innerHTML = CHIPS.map((c) => `<button class="chip">${c}</button>`).join("");
-  $("chips").querySelectorAll(".chip").forEach((b) =>
-    b.addEventListener("click", () => ask(b.textContent)));
+  try {
+    const { presets } = await (await fetch("/api/presets")).json();
+    $("chips").innerHTML = presets.map((p) => '<button class="chip"></button>').join("");
+    $("chips").querySelectorAll(".chip").forEach((b, i) => {
+      b.textContent = presets[i].label;
+      b.addEventListener("click", () => ask(presets[i].id, presets[i].label));
+    });
+  } catch { $("chips").hidden = true; }
 
   try {
     const d = await (await fetch("/api/overview")).json();
@@ -202,7 +200,7 @@ $("backHome").addEventListener("click", () => {
   window.scrollTo(0, 0);
 });
 
-async function ask(message) {
+async function ask(message, shownAs) {
   if (busy || !message.trim()) return;
   busy = true;
   showChat();
@@ -212,7 +210,7 @@ async function ask(message) {
   const u = document.createElement("div");
   u.className = "msg user";
   u.innerHTML = `<div class="bubble"></div>`;
-  u.querySelector(".bubble").textContent = message;
+  u.querySelector(".bubble").textContent = shownAs || message;
   thread.append(u);
 
   const a = document.createElement("div");

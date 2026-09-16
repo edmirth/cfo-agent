@@ -1,9 +1,11 @@
-"""The CFO agent: Claude, the Tripletex tools, and a Python sandbox.
+"""The CFO agent: Claude, Tripletex, and a Python sandbox.
 
-Tripletex tools run here in-process, authenticated per customer with the
-consumer + employee token pair. Code execution runs server-side at Anthropic so
-the agent can build forecasts and scenarios on figures it just pulled.
+Tripletex is reached through the MCP connector when OAuth is set up — that path
+carries the report engine the REST API has no equivalent for — and through the
+in-process REST tools otherwise. Code execution runs server-side at Anthropic so
+the agent can build forecasts on figures it just pulled.
 """
+import json
 import logging
 from typing import AsyncIterator
 
@@ -63,7 +65,8 @@ async def _request_kwargs(messages: list[dict]) -> dict:
     kwargs: dict = {
         "model": config.CFO_MODEL,
         "max_tokens": config.MAX_TOKENS,
-        "system": system_prompt(),
+        "system": [{"type": "text", "text": system_prompt(),
+                    "cache_control": {"type": "ephemeral"}}],
         "messages": messages,
         "tools": tools,
         **extra,
@@ -134,14 +137,13 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             continue  # a server tool paused the turn; resume it
 
         if final.stop_reason == "tool_use":
-            calls = [b for b in final.content
-                     if getattr(b, "type", None) == "tool_use" and b.name in TOOL_NAMES]
+            calls = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
             if not calls:
-                # Only server-side tools were used; nothing for us to execute.
+                # Server-side tools only (MCP, code execution) — already resolved.
                 continue
 
             try:
-                tlx = tripletex()
+                tlx = tripletex() if any(c.name in TOOL_NAMES for c in calls) else None
             except TripletexError as exc:
                 yield {"type": "error", "message": str(exc)}
                 return
@@ -149,8 +151,11 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             results = []
             for call in calls:
                 args = call.input if isinstance(call.input, dict) else {}
-                yield {"type": "tool", "label": tooling.label(call.name, args), "name": call.name}
-                payload = await tooling.dispatch(tlx, call.name, args)
+                if call.name in TOOL_NAMES and tlx is not None:
+                    payload = await tooling.dispatch(tlx, call.name, args)
+                else:
+                    payload = json.dumps({"error": f"Ukjent verktøy: {call.name}"},
+                                         ensure_ascii=False)
                 results.append({
                     "type": "tool_result",
                     "tool_use_id": call.id,
@@ -161,8 +166,12 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             messages.append({"role": "user", "content": results})
             continue
 
-        yield {"type": "done",
-               "usage": {"input": final.usage.input_tokens, "output": final.usage.output_tokens}}
+        u = final.usage
+        yield {"type": "done", "usage": {
+            "input": u.input_tokens, "output": u.output_tokens,
+            "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+            "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
+        }}
         return
 
     yield {"type": "error", "message": "Turen ble avbrutt etter for mange verktøyrunder."}
