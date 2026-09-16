@@ -6,6 +6,7 @@
 Trykk Enter for å beholde det som allerede står der.
 """
 import re
+import sys
 from getpass import getpass
 from pathlib import Path
 
@@ -34,6 +35,16 @@ def set_key(text: str, key: str, value: str) -> str:
 
 
 def main() -> int:
+    if not sys.stdin.isatty():
+        print("Dette skriptet må kjøres i en ekte terminal — det skjuler det du taster,")
+        print("og trenger derfor en TTY. Åpne Terminal og kjør:\n")
+        print("    cd ~/cfo-agent && ./.venv/bin/python scripts/set_tokens.py\n")
+        print("Alternativt kan du redigere .env direkte:\n")
+        print(f"    nano {ENV}\n")
+        print("og fylle inn ANTHROPIC_API_KEY, TRIPLETEX_CONSUMER_TOKEN og")
+        print("TRIPLETEX_EMPLOYEE_TOKEN. Husk: chmod 600 .env etterpå.")
+        return 1
+
     text = read_env()
     print(f"Skriver til {ENV}")
     print("Verdiene vises ikke mens du skriver. Enter = behold nåværende.\n")
