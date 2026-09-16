@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 import config
 from agent import run_turn
+from overview import cached as overview_cached
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("cfo.api")
@@ -82,6 +83,19 @@ async def health() -> dict:
             "rest" if config.TRIPLETEX_EMPLOYEE_TOKEN else "none"
         ),
     }
+
+
+@app.get("/api/overview")
+async def overview() -> dict:
+    """Nøkkeltall til forsiden. Hentes direkte fra Tripletex, ikke via modellen,
+    så en sidelast koster ingenting og tallene er eksakte."""
+    try:
+        data = await overview_cached()
+    except Exception as exc:  # noqa: BLE001 — forsiden skal vise en feil, ikke 500
+        log.exception("Overview failed")
+        return {"error": str(exc)}
+    data["company"] = config.COMPANY_NAME
+    return data
 
 
 @app.get("/api/presets")
