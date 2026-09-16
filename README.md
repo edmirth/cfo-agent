@@ -118,6 +118,31 @@ e.g. `github.com/cwvedvik/tripletex-mcp` takes exactly
 
 Store tokens per customer, never in `.env`, once there is more than one.
 
+### Blocked: the `tlxr_` key is not a v2 credential
+
+Tested against the live API on 16 Sep 2026, with a key created under
+**Selskap → API-nøkler**:
+
+- The key is `tlxr_` + a signed JWT. Its payload carries
+  `{"ctid":"8357","etid":"2690602","iss":"https://tripletex.no"}` — the consumer
+  and employee token ids are embedded, which is why it comes as a single value.
+- `PUT /token/session/:create` rejects it as `employeeToken` with
+  *"Nøkkelen er ugyldig"*, under every parameter name tried
+  (`token`, `jwt`, `apiKey`, `apiToken`, `employeeToken`).
+- It fails as `Bearer`, as `X-Api-Key`, and as Basic with username `0`, the
+  company id, and itself.
+- The v2 OpenAPI spec (re-fetched same day) contains zero occurrences of `jwt`,
+  `Bearer` or `tlxr`, and declares exactly one scheme: Basic with username `0`
+  and the session token as password.
+
+So the v2 REST API this client targets does not accept this credential. The old
+route is also closed: creating a classic employee token under *Min profil →
+API-tilgang* requires an application name already registered with Tripletex, and
+a custom name is rejected with *"Applikasjonen finnes ikke"*.
+
+Tripletex support has to resolve one of: how the `tlxr_` key authenticates, or
+which consumer token an internal integration should pair an employee token with.
+
 ### Still outstanding
 
 - **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
