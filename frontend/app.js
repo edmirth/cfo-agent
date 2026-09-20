@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let sessionId = null, busy = false;
+let presets = [];
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -156,12 +156,8 @@ async function boot() {
   } catch { $("company").textContent = "CFO"; }
 
   try {
-    const { presets } = await (await fetch("/api/presets")).json();
-    $("chips").innerHTML = presets.map((p) => '<button class="chip"></button>').join("");
-    $("chips").querySelectorAll(".chip").forEach((b, i) => {
-      b.textContent = presets[i].label;
-      b.addEventListener("click", () => ask(presets[i].id, presets[i].label));
-    });
+    ({ presets } = await (await fetch("/api/presets")).json());
+    fillChips($("chips"));
   } catch { $("chips").hidden = true; }
 
   try {
@@ -177,7 +173,147 @@ async function boot() {
   }
 }
 
-/* ── samtale ─────────────────────────────────────────────────── */
+/* ── samtaler: lagres i nettleseren ──────────────────────────── */
+// Backend holder historikken i minnet, per session_id. Her ligger listen og
+// det som ble sagt, slik at en samtale kan åpnes igjen og spørres videre i.
+const STORE = "cfo.conversations.v1";
+const MAX_CONVS = 60;
+let convs = load();
+let activeId = null;
+
+function load() {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORE) || "[]");
+    if (!Array.isArray(v)) return [];
+    // Et svar som var underveis da siden ble lukket, blir aldri ferdig.
+    for (const c of v) for (const m of c.messages || []) {
+      if (m.role === "assistant" && !m.done) {
+        m.done = true;
+        m.error = m.error || "Svaret ble avbrutt før det var ferdig.";
+      }
+    }
+    return v;
+  } catch { return []; }
+}
+function save() {
+  try {
+    localStorage.setItem(STORE, JSON.stringify(convs.slice(0, MAX_CONVS),
+      (k, v) => (k.startsWith("_") ? undefined : v)));
+  } catch { /* privat modus eller full lagring: samtalen virker likevel */ }
+}
+const find = (id) => convs.find((c) => c.id === id);
+const newId = () => (crypto.randomUUID?.() ||
+  Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "");
+const clip = (t, n = 64) => (t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t);
+
+/* ── sidefeltet ──────────────────────────────────────────────── */
+function bucket(ts) {
+  const d = new Date(ts), now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 864e5);
+  if (diff <= 0) return "I dag";
+  if (diff === 1) return "I går";
+  if (diff < 7) return "Siste 7 dager";
+  if (diff < 30) return "Siste 30 dager";
+  return "Eldre";
+}
+
+function renderList() {
+  const list = $("convList");
+  list.innerHTML = "";
+  $("convEmpty").hidden = convs.length > 0;
+  $("navHome").classList.toggle("active", activeId === null && !$("home").hidden);
+  $("newChat").classList.toggle("active", activeId === null && $("home").hidden);
+
+  let group = null, ul = null;
+  for (const c of convs) {
+    const g = bucket(c.updated);
+    if (g !== group) {
+      group = g;
+      const h = document.createElement("p");
+      h.className = "side-label"; h.textContent = g;
+      ul = document.createElement("ul"); ul.className = "conv-list";
+      list.append(h, ul);
+    }
+    const li = document.createElement("li");
+    li.className = "conv" + (c.id === activeId ? " active" : "") + (c._busy ? " busy" : "");
+    const a = document.createElement("a");
+    a.href = "#c/" + c.id; a.className = "conv-link"; a.title = c.title;
+    a.textContent = c.title;
+    if (c.id === activeId) a.setAttribute("aria-current", "page");
+    const del = document.createElement("button");
+    del.className = "conv-del"; del.setAttribute("aria-label", "Slett samtalen");
+    del.innerHTML = '<svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">' +
+      '<path d="M5 5l10 10M15 5 5 15" stroke="currentColor" stroke-width="1.7" ' +
+      'stroke-linecap="round"/></svg>';
+    del.addEventListener("click", (e) => { e.preventDefault(); removeConv(c.id); });
+    li.append(a, del);
+    ul.append(li);
+  }
+}
+
+function removeConv(id) {
+  const c = find(id);
+  if (!c || !confirm(`Slette «${c.title}»?`)) return;
+  c._ctrl?.abort();
+  convs = convs.filter((x) => x.id !== id);
+  save();
+  if (c.sessionId) {
+    fetch("/api/session/reset?session_id=" + encodeURIComponent(c.sessionId),
+      { method: "POST" }).catch(() => {});
+  }
+  if (activeId === id) location.hash = "";
+  else renderList();
+}
+
+const openSidebar = () => {
+  document.body.classList.add("side-open"); $("scrim").hidden = false;
+};
+const closeSidebar = () => {
+  document.body.classList.remove("side-open"); $("scrim").hidden = true;
+};
+$("menuBtn").addEventListener("click", openSidebar);
+$("sideClose").addEventListener("click", closeSidebar);
+$("scrim").addEventListener("click", closeSidebar);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSidebar(); });
+
+/* ── visninger ───────────────────────────────────────────────── */
+function route() {
+  const m = location.hash.match(/^#c\/([\w-]+)$/);
+  if (m && find(m[1])) openConv(m[1]);
+  else if (location.hash === "#ny") openConv(null);
+  else showHome();
+  closeSidebar();
+}
+window.addEventListener("hashchange", route);
+
+function showHome() {
+  activeId = null;
+  $("chat").hidden = true; $("home").hidden = false;
+  document.title = "CFO";
+  renderList();
+  window.scrollTo(0, 0);
+}
+
+function openConv(id) {
+  activeId = id;
+  $("home").hidden = true; $("chat").hidden = false;
+  const c = id && find(id);
+  document.title = c ? c.title + " · CFO" : "Ny samtale · CFO";
+  renderThread(c);
+  $("inputChat").placeholder = c ? "Spør videre …" : "Spør om hva som helst …";
+  renderList();
+  setComposer();
+  window.scrollTo(0, c ? document.body.scrollHeight : 0);
+  if (matchMedia("(pointer:fine)").matches) $("inputChat").focus();
+}
+
+function setComposer() {
+  const c = activeId && find(activeId);
+  $("composerChat").querySelector("button").disabled = !!c?._busy;
+}
+
+/* ── tråden ──────────────────────────────────────────────────── */
 const TICK = '<svg class="tick" viewBox="0 0 16 16" aria-hidden="true">' +
   '<path d="M3.5 8.4l3 3 6-6.8" fill="none" stroke="currentColor" stroke-width="2" ' +
   'stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -192,49 +328,116 @@ function renderMarkdown(el, raw) {
   el.querySelectorAll("a").forEach((a) => { a.target = "_blank"; a.rel = "noopener noreferrer"; });
 }
 
-function showChat() {
-  $("home").hidden = true; $("chat").hidden = false; $("backHome").hidden = false;
+function fillChips(box) {
+  box.innerHTML = "";
+  for (const p of presets) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = p.label;
+    b.addEventListener("click", () => ask(p.id, p.label, box === $("chips")));
+    box.append(b);
+  }
 }
-$("backHome").addEventListener("click", () => {
-  $("chat").hidden = true; $("home").hidden = false; $("backHome").hidden = true;
-  window.scrollTo(0, 0);
-});
 
-async function ask(message, shownAs) {
-  if (busy || !message.trim()) return;
-  busy = true;
-  showChat();
-  document.querySelectorAll(".composer button").forEach((b) => (b.disabled = true));
-
+function renderThread(c) {
   const thread = $("thread");
-  const u = document.createElement("div");
-  u.className = "msg user";
-  u.innerHTML = `<div class="bubble"></div>`;
-  u.querySelector(".bubble").textContent = shownAs || message;
-  thread.append(u);
+  thread.innerHTML = "";
+  if (!c || !c.messages.length) {
+    thread.innerHTML = `<div class="empty"><h2>Hva lurer du på?</h2>
+      <p>Spør om tallene, en kunde, en kostnad eller en plan. Svaret bygger på
+         regnskapet deres slik det står i Tripletex nå.</p><div class="chips"></div></div>`;
+    fillChips(thread.querySelector(".chips"));
+    return;
+  }
+  for (const m of c.messages) thread.append(msgEl(m));
+}
 
-  const a = document.createElement("div");
-  a.className = "msg assistant";
-  a.innerHTML = `<div class="who">CFO</div><div class="activity"></div><div class="body-md"></div>`;
-  thread.append(a);
-  const activity = a.querySelector(".activity"), body = a.querySelector(".body-md");
-  window.scrollTo(0, document.body.scrollHeight);
+function msgEl(m) {
+  const el = document.createElement("div");
+  el.className = "msg " + m.role;
+  if (m.role === "user") {
+    el.innerHTML = '<div class="bubble"></div>';
+    el.querySelector(".bubble").textContent = m.text;
+  } else {
+    el.innerHTML = '<div class="who">CFO</div><div class="activity"></div><div class="body-md"></div>';
+    m._el = el;
+    draw(el, m);
+  }
+  return el;
+}
 
-  let text = "", pending = false;
-  const stick = () =>
-    window.innerHeight + window.scrollY > document.body.scrollHeight - 160;
+// Et svar som strømmer inn mens en annen samtale er åpen, oppdateres bare i
+// dataene; elementet tegnes på nytt når samtalen åpnes igjen.
+function paintMsg(m) {
+  if (m._el?.isConnected) draw(m._el, m);
+}
+
+function draw(el, m) {
+  const activity = el.querySelector(".activity");
+  activity.innerHTML = "";
+  for (const a of m.acts || []) {
+    const row = document.createElement("div");
+    row.className = "act";
+    row.innerHTML = a.done ? TICK : '<span class="spin"></span>';
+    row.append(document.createTextNode(a.label));
+    activity.append(row);
+  }
+  const body = el.querySelector(".body-md");
+  renderMarkdown(body, m.text || "");
+  if (!m.done) body.insertAdjacentHTML("beforeend", '<span class="caret"></span>');
+  el.querySelector(".err")?.remove();
+  if (m.error) {
+    const e = document.createElement("div");
+    e.className = "err"; e.textContent = m.error; el.append(e);
+  }
+}
+
+const nearBottom = () =>
+  window.innerHeight + window.scrollY > document.body.scrollHeight - 160;
+
+/* ── spørsmål og svar ────────────────────────────────────────── */
+async function ask(message, shownAs, fresh = false) {
+  if (!message.trim()) return;
+  let c = !fresh && activeId ? find(activeId) : null;
+  if (c?._busy) return;
+
+  const now = Date.now();
+  if (!c) {
+    c = { id: newId(), title: clip((shownAs || message).trim()), sessionId: null,
+          created: now, updated: now, messages: [] };
+    convs.unshift(c);
+    if (convs.length > MAX_CONVS) convs.length = MAX_CONVS;
+    history.pushState(null, "", "#c/" + c.id);
+    openConv(c.id);
+  }
+  const q = { role: "user", text: shownAs || message };
+  const m = { role: "assistant", text: "", acts: [], done: false };
+  c.messages.push(q, m);
+  c.updated = now;
+  convs = [c, ...convs.filter((x) => x !== c)];
+  c._busy = true;
+  c._ctrl = new AbortController();
+  save(); renderList(); setComposer();
+
+  if (activeId === c.id) {
+    $("thread").querySelector(".empty")?.remove();
+    $("thread").append(msgEl(q), msgEl(m));
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  let pending = false;
   const paint = () => {
     pending = false;
-    const keep = stick();
-    renderMarkdown(body, text);
-    if (busy) body.insertAdjacentHTML("beforeend", '<span class="caret"></span>');
+    const keep = activeId === c.id && nearBottom();
+    paintMsg(m);
     if (keep) window.scrollTo(0, document.body.scrollHeight);
   };
+  const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(paint); } };
 
   try {
     const res = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify({ message, session_id: c.sessionId }),
+      signal: c._ctrl.signal,
     });
     if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
     const reader = res.body.getReader(), dec = new TextDecoder();
@@ -248,43 +451,41 @@ async function ask(message, shownAs) {
         const line = f.split("\n").find((l) => l.startsWith("data: "));
         if (!line) continue;
         let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
-        if (ev.type === "session") sessionId = ev.session_id;
+        if (ev.type === "session") { c.sessionId = ev.session_id; save(); }
         else if (ev.type === "tool") {
-          activity.querySelectorAll(".spin").forEach((s) => (s.outerHTML = TICK));
-          const row = document.createElement("div");
-          row.className = "act";
-          row.innerHTML = '<span class="spin"></span>';
-          row.append(document.createTextNode(ev.label));
-          activity.append(row);
-          if (stick()) window.scrollTo(0, document.body.scrollHeight);
+          m.acts.forEach((a) => (a.done = true));
+          m.acts.push({ label: ev.label, done: false });
+          schedule();
         } else if (ev.type === "text") {
-          text += ev.text;
-          if (!pending) { pending = true; requestAnimationFrame(paint); }
+          m.text += ev.text;
+          schedule();
         } else if (ev.type === "error") {
-          const e = document.createElement("div");
-          e.className = "err"; e.textContent = ev.message; a.append(e);
+          m.error = ev.message;
+          schedule();
         }
       }
     }
   } catch (err) {
-    const e = document.createElement("div");
-    e.className = "err";
-    e.textContent = "Mistet forbindelsen. Prøv igjen.";
-    a.append(e);
+    if (err.name !== "AbortError") m.error = "Mistet forbindelsen. Prøv igjen.";
   } finally {
-    busy = false;
-    activity.querySelectorAll(".spin").forEach((s) => (s.outerHTML = TICK));
-    paint();
-    document.querySelectorAll(".composer button").forEach((b) => (b.disabled = false));
-    $("inputChat").focus();
+    m.done = true;
+    m.acts.forEach((a) => (a.done = true));
+    c._busy = false; c._ctrl = null;
+    c.updated = Date.now();
+    paint(); save(); renderList(); setComposer();
+    if (activeId === c.id && matchMedia("(pointer:fine)").matches) $("inputChat").focus();
   }
 }
 
-for (const [form, input] of [["composerHome", "inputHome"], ["composerChat", "inputChat"]]) {
-  $(form).addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = $(input).value; $(input).value = ""; ask(v);
-  });
-}
-
+$("composerHome").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("inputHome").value; $("inputHome").value = ""; ask(v, null, true);
+});
+$("composerChat").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const c = activeId && find(activeId);
+  if (c?._busy) return;
+  const v = $("inputChat").value; $("inputChat").value = ""; ask(v);
+});
+route();
 boot();
