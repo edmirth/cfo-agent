@@ -3,151 +3,67 @@ let presets = [];
 
 marked.setOptions({ gfm: true, breaks: false });
 
-/* ── tall på norsk ───────────────────────────────────────────── */
-const kr = (n) =>
-  n == null ? "–" : Math.round(n).toLocaleString("nb-NO").replace(/ /g, " ");
-const mill = (n) => {
-  if (n == null) return "–";
-  const a = Math.abs(n);
-  if (a >= 1e6) return (n / 1e6).toFixed(1).replace(".", ",") + " mill.";
-  if (a >= 1e4) return Math.round(n / 1e3) + " 000";
-  return kr(n);
-};
-const pct = (n) => (n == null ? "–" : n.toFixed(1).replace(".", ",") + " %");
-const dot = (s) => (String(s).trim().endsWith(".") ? "" : ".");
-const N = (text, tone) => `<span class="n${tone ? " " + tone : ""}">${text}</span>`;
+/* ── Selskapet: klientens egen beskrivelse ───────────────────── */
+// Lagres på serveren, ikke i nettleseren: det er CFO-en som skal lese den, og
+// den gjelder selskapet — ikke maskinen noen tilfeldigvis satt ved.
+let coLoaded = false;
 
-/* ── dommen: signaturen på forsiden ──────────────────────────── */
-function buildVerdict(k) {
-  const rev = k.omsetning, revB = k.omsetning_budsjett;
-  const res = k.driftsresultat, resB = k.driftsresultat_budsjett;
-  const parts = [];
-
-  if (rev != null && revB) {
-    const gap = rev - revB, off = Math.abs(gap / revB);
-    const how = off < 0.015
-      ? N("på budsjett", "flat")
-      : `${N(mill(Math.abs(gap)), gap > 0 ? "up" : "down")} ${gap > 0 ? "over" : "under"} budsjett`;
-    parts.push(`Dere har omsatt for ${N(mill(rev))} hittil i år — ${how}.`);
-  } else if (rev != null) {
-    parts.push(`Dere har omsatt for ${N(mill(rev))} hittil i år.`);
-  }
-
-  if (res != null && resB) {
-    const gap = res - resB;
-    const wageGap = k.lonnsandel_pct != null && k.lonnsandel_budsjett_pct != null
-      ? k.lonnsandel_pct - k.lonnsandel_budsjett_pct : null;
-    if (gap < 0 && wageGap != null && wageGap > 1) {
-      parts.push(
-        `Men lønnsandelen er ${N(pct(k.lonnsandel_pct), "down")} mot ` +
-        `${N(pct(k.lonnsandel_budsjett_pct))} budsjettert, og det er hele grunnen til at ` +
-        `driftsresultatet er ${N(mill(res), "down")} og ikke ${N(mill(resB))}${dot(mill(resB))}`);
-    } else if (gap < 0) {
-      parts.push(`Driftsresultatet er ${N(mill(res), "down")} mot ${N(mill(resB))} budsjettert.`);
-    } else {
-      parts.push(`Driftsresultatet er ${N(mill(res), "up")}, ` +
-                 `${N(mill(Math.abs(gap)), "up")} bedre enn budsjett.`);
-    }
-  } else if (res != null) {
-    parts.push(`Driftsresultatet er ${N(mill(res))}${dot(mill(res))}`);
-  }
-  return parts.join(" ") || "Fant ingen tall for perioden.";
+function renderKnown(d) {
+  const used = new Set(d.used_in_calculations || []);
+  $("coKnown").innerHTML = Object.entries(d.known_settings || {}).map(
+    ([k, what]) => `<li class="${used.has(k) ? "on" : ""}">
+      <code>${k}</code><span>${what}</span>
+      <b>${used.has(k) ? "i bruk: " + d.settings[k] : "ikke satt"}</b></li>`).join("");
+  const notes = d.notes || [];
+  $("coNotes").innerHTML = notes.map((n) => `<p>${n}</p>`).join("");
+  $("coNotes").hidden = !notes.length;
 }
 
-/* ── forsiden ────────────────────────────────────────────────── */
-function renderOverview(d) {
-  const k = d.kpis || {};
-  $("verdictBlock").classList.remove("loading");
-  $("verdict").innerHTML = buildVerdict(k);
-
-  const setFig = (id, val, note) => {
-    $(id).textContent = val;
-    if (note != null) $(id + "Note").innerHTML = note;
-  };
-  const gap = (a, b) => {
-    if (a == null || !b) return "";
-    const g = a - b;
-    if (Math.abs(g / b) < 0.015) return "på budsjett";
-    return `<span class="${g > 0 ? "up" : "down"}">${g > 0 ? "+" : "−"}${kr(Math.abs(g))}</span> mot budsjett`;
-  };
-  setFig("fRevenue", kr(k.omsetning), gap(k.omsetning, k.omsetning_budsjett));
-  setFig("fResult", kr(k.driftsresultat), gap(k.driftsresultat, k.driftsresultat_budsjett));
-  setFig("fCash", kr(k.bank), k.likviditetsgrad != null
-    ? `likviditetsgrad ${String(k.likviditetsgrad).replace(".", ",")}` : "");
-  setFig("fAr", kr(k.kundefordringer), d.top_debtor
-    ? `${d.top_debtor.name} står for ${pct(d.top_debtor.share_pct)}` : "");
-  $("figures").hidden = false;
-
-  // lønnsandel
-  if (k.lonnsandel_pct != null) {
-    const now = k.lonnsandel_pct, target = k.lonnsandel_budsjett_pct;
-    const scale = Math.max(100, now + 8);
-    const fill = $("gaugeFill");
-    fill.style.width = (now / scale * 100) + "%";
-    if (target != null && now > target) fill.classList.add("over");
-    $("gaugeNow").textContent = pct(now);
-    if (now > (target ?? Infinity)) $("gaugeNow").classList.add("over");
-    if (target != null) {
-      $("gaugeTarget").style.left = (target / scale * 100) + "%";
-      $("gaugeTarget").querySelector("span").textContent = "budsjett";
-      $("gaugeBudget").textContent = pct(target);
-    } else {
-      $("gaugeTarget").hidden = true;
-    }
-    $("gaugeWrap").hidden = false;
-  }
-
-  // månedsgraf
-  const months = d.revenue_by_month || [];
-  if (months.length) {
-    const vals = months.map((m) => m.value);
-    const peak = Math.max(...vals);
-    const last = months.length - 1;
-    $("bars").innerHTML = months.map((m, i) => {
-      const partial = i === last && m.value < peak * 0.4;
-      const h = Math.max((m.value / peak) * 100, 1.5);
-      return `<div class="bar ${m.value === peak ? "peak" : ""} ${partial ? "partial" : ""}">
-        <span class="bar-val">${mill(m.value)}</span>
-        <span class="bar-fill" style="height:${h}%"></span>
-        <span class="bar-lab">${m.month}</span></div>`;
-    }).join("");
-    const lastM = months[last];
-    $("chartNote").textContent = lastM && lastM.value < peak * 0.4
-      ? `${lastM.month} er ikke ferdig` : "";
-    $("chartWrap").hidden = false;
-  }
-
-  // det som krever handling
-  const alerts = [];
-  if (d.flags?.ubokfort_skatt) {
-    alerts.push({ tone: "", title: "Skatten er ikke satt av ennå",
-      body: `Regnskapet viser 0 i skattekostnad. Med 22 % selskapsskatt bygger det seg opp
-             rundt ${kr(d.flags.ubokfort_skatt)} som ikke er synlig i resultatet.` });
-  }
-  if (k.lonnsandel_pct != null && k.lonnsandel_budsjett_pct != null
-      && k.lonnsandel_pct - k.lonnsandel_budsjett_pct > 3) {
-    alerts.push({ tone: "crit", title: "Lønnsandelen ligger over budsjett",
-      body: `${pct(k.lonnsandel_pct)} mot ${pct(k.lonnsandel_budsjett_pct)} budsjettert.
-             Ett prosentpoeng er rundt ${kr((k.omsetning || 0) / 100)} på bunnlinjen.` });
-  }
-  if (d.top_debtor && d.top_debtor.share_pct > 30) {
-    alerts.push({ tone: "crit", title: `${d.top_debtor.name} er en stor eksponering`,
-      body: `De skylder ${kr(d.top_debtor.amount)}, altså ${pct(d.top_debtor.share_pct)}
-             av alt kundene deres skylder.` });
-  }
-  if (alerts.length) {
-    $("alerts").innerHTML = alerts.map((a) =>
-      `<div class="alert ${a.tone}"><div class="alert-body">
-        <h3>${a.title}</h3><p>${a.body}</p></div></div>`).join("");
-    $("alerts").hidden = false;
-  }
-
-  if (d.period) {
-    const to = new Date(d.period.to);
-    $("period").textContent = "1. jan – " + to.toLocaleDateString("nb-NO",
-      { day: "numeric", month: "short" });
+async function showCompany() {
+  activeId = null;
+  show("selskapet");
+  document.title = "Selskapet · CFO";
+  renderList();
+  window.scrollTo(0, 0);
+  if (coLoaded) return;
+  try {
+    const d = await (await fetch("/api/company")).json();
+    $("coText").value = d.text || "";
+    renderKnown(d);
+    coLoaded = true;
+  } catch (e) {
+    $("coStatus").textContent = "Fikk ikke hentet teksten.";
+    console.error("company", e);
   }
 }
+
+async function saveCompany() {
+  const btn = $("coSave"), status = $("coStatus");
+  btn.disabled = true;
+  status.textContent = "Lagrer …";
+  status.className = "co-status";
+  try {
+    const r = await fetch("/api/company", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: $("coText").value }),
+    });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200));
+    const d = await r.json();
+    renderKnown(d);
+    status.textContent = "Lagret. CFO-en bruker den fra neste spørsmål.";
+    status.className = "co-status ok";
+  } catch (e) {
+    status.textContent = "Kunne ikke lagre: " + e.message;
+    status.className = "co-status bad";
+    console.error("company save", e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#coSave")) saveCompany();
+});
 
 async function boot() {
   try {
@@ -160,17 +76,12 @@ async function boot() {
     fillChips($("chips"));
   } catch { $("chips").hidden = true; }
 
-  try {
-    const d = await (await fetch("/api/overview")).json();
-    if (d.error) throw new Error(d.error);
-    renderOverview(d);
-  } catch (e) {
-    $("verdictBlock").classList.remove("loading");
-    $("verdict").innerHTML =
-      `Får ikke tak i regnskapet akkurat nå. Spørsmålsfeltet under virker fortsatt.`;
-    $("verdict").style.fontSize = "20px";
-    console.error(e);
-  }
+  Brief.load();
+  if (location.hash !== "#saker") Brief.loadDeck();   // bare for tellingen
+  $("briefRefresh").addEventListener("click", () => {
+    $("briefRefresh").disabled = true;
+    Brief.load();
+  });
 }
 
 /* ── samtaler: lagres i nettleseren ──────────────────────────── */
@@ -185,9 +96,13 @@ function load() {
   try {
     const v = JSON.parse(localStorage.getItem(STORE) || "[]");
     if (!Array.isArray(v)) return [];
-    // Et svar som var underveis da siden ble lukket, blir aldri ferdig.
     for (const c of v) for (const m of c.messages || []) {
-      if (m.role === "assistant" && !m.done) {
+      if (m.role !== "assistant") continue;
+      // Samtaler lagret før arbeidssporet fantes, hadde bare en liste verktøy.
+      if (!m.steps) m.steps = (m.acts || []).map((a) => ({ kind: "tool", label: a.label, n: 1, done: true }));
+      delete m.acts;
+      // Et svar som var underveis da siden ble lukket, blir aldri ferdig.
+      if (!m.done) {
         m.done = true;
         m.error = m.error || "Svaret ble avbrutt før det var ferdig.";
       }
@@ -222,8 +137,6 @@ function renderList() {
   const list = $("convList");
   list.innerHTML = "";
   $("convEmpty").hidden = convs.length > 0;
-  $("navHome").classList.toggle("active", activeId === null && !$("home").hidden);
-  $("newChat").classList.toggle("active", activeId === null && $("home").hidden);
 
   let group = null, ul = null;
   for (const c of convs) {
@@ -272,6 +185,26 @@ const openSidebar = () => {
 const closeSidebar = () => {
   document.body.classList.remove("side-open"); $("scrim").hidden = true;
 };
+/* ── sammenslått sidefelt: bare ikoner ───────────────────────── */
+// Tilstanden settes på <html> av et lite skript i <head>, slik at et
+// sammenslått sidefelt ikke rekker å blinke i full bredde ved lasting.
+const RAIL = "cfo.rail.v1";
+const railed = () => document.documentElement.classList.contains("rail-collapsed");
+function setRail(collapsed) {
+  document.documentElement.classList.toggle("rail-collapsed", collapsed);
+  const b = $("railToggle");
+  b.setAttribute("aria-expanded", String(!collapsed));
+  b.title = collapsed ? "Fold ut menyen" : "Slå sammen menyen";
+  try { localStorage.setItem(RAIL, collapsed ? "collapsed" : "open"); } catch { /* ignorér */ }
+}
+setRail(railed());
+$("railToggle").addEventListener("click", () => setRail(!railed()));
+// Samtalelista er skjult i ikonmodus, så ikonet folder ut og viser den.
+$("railConvs").addEventListener("click", () => {
+  setRail(false);
+  $("convScroll").scrollTop = 0;
+});
+
 $("menuBtn").addEventListener("click", openSidebar);
 $("sideClose").addEventListener("click", closeSidebar);
 $("scrim").addEventListener("click", closeSidebar);
@@ -282,22 +215,44 @@ function route() {
   const m = location.hash.match(/^#c\/([\w-]+)$/);
   if (m && find(m[1])) openConv(m[1]);
   else if (location.hash === "#ny") openConv(null);
+  else if (location.hash === "#saker") showSaker();
+  else if (location.hash === "#selskapet") showCompany();
   else showHome();
   closeSidebar();
 }
 window.addEventListener("hashchange", route);
 
+const pages = ["home", "saker", "selskapet", "chat"];
+function show(page) {
+  pages.forEach((id) => { $(id).hidden = id !== page; });
+  $("navHome").classList.toggle("active", page === "home");
+  $("navSaker").classList.toggle("active", page === "saker");
+  $("navCompany").classList.toggle("active", page === "selskapet");
+  // "Ny samtale" lyser bare på en samtale som ennå ikke er lagret.
+  $("newChat").classList.toggle("active", page === "chat" && activeId === null);
+}
+
 function showHome() {
   activeId = null;
-  $("chat").hidden = true; $("home").hidden = false;
+  show("home");
   document.title = "CFO";
+  renderList();
+  window.scrollTo(0, 0);
+}
+
+function showSaker() {
+  activeId = null;
+  show("saker");
+  document.title = "Saker · CFO";
+  // Hentes hver gang: en sak kan ha løst seg siden sist man så på den.
+  Brief.loadDeck(true);
   renderList();
   window.scrollTo(0, 0);
 }
 
 function openConv(id) {
   activeId = id;
-  $("home").hidden = true; $("chat").hidden = false;
+  show("chat");
   const c = id && find(id);
   document.title = c ? c.title + " · CFO" : "Ny samtale · CFO";
   renderThread(c);
@@ -317,6 +272,7 @@ function setComposer() {
 const TICK = '<svg class="tick" viewBox="0 0 16 16" aria-hidden="true">' +
   '<path d="M3.5 8.4l3 3 6-6.8" fill="none" stroke="currentColor" stroke-width="2" ' +
   'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SPIN = '<span class="spin"></span>';
 
 function renderMarkdown(el, raw) {
   el.innerHTML = marked.parse(raw);
@@ -358,11 +314,74 @@ function msgEl(m) {
     el.innerHTML = '<div class="bubble"></div>';
     el.querySelector(".bubble").textContent = m.text;
   } else {
-    el.innerHTML = '<div class="who">CFO</div><div class="activity"></div><div class="body-md"></div>';
+    el.innerHTML = '<div class="who">CFO</div><div class="work"></div><div class="body-md"></div>';
     m._el = el;
     draw(el, m);
   }
   return el;
+}
+
+/* Arbeidssporet: hva den gjorde før den svarte. Åpent mens det står på,
+   slått sammen til én linje når svaret er ferdig. */
+function summary(m) {
+  const looks = m.steps.reduce((n, s) => n + (s.kind === "tool" ? s.n : 0), 0);
+  const secs = m.elapsed ? Math.round(m.elapsed / 1000) : null;
+  const time = secs == null ? "" : secs >= 60
+    ? ` · ${Math.floor(secs / 60)} min ${secs % 60} s` : ` · ${secs} s`;
+  if (!looks) return "Tenkte gjennom svaret" + time;
+  return `${looks} oppslag i regnskapet${time}`;
+}
+
+function status(m) {
+  const last = m.steps[m.steps.length - 1];
+  if (!last) return "Tenker …";
+  if (last.kind === "tool") return last.label + (last.n > 1 ? ` ×${last.n}` : "");
+  return "Tenker …";
+}
+
+function drawWork(work, m) {
+  if (!m.steps.length && m.done) { work.hidden = true; return; }
+  work.hidden = false;
+  work.classList.toggle("running", !m.done);
+  work.classList.toggle("open", !m.done || !!m.open);
+
+  work.innerHTML = `<button class="work-head" type="button">
+      <span class="work-icon">${m.done ? TICK : SPIN}</span>
+      <span class="work-status"></span>
+      <svg class="chev" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+        <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button><div class="work-body"></div>`;
+
+  const head = work.querySelector(".work-head");
+  head.querySelector(".work-status").textContent = m.done ? summary(m) : status(m);
+  head.setAttribute("aria-expanded", String(!m.done || !!m.open));
+  head.disabled = !m.done;
+  head.addEventListener("click", () => {
+    m.open = !m.open;
+    drawWork(work, m);
+    save();
+  });
+
+  const body = work.querySelector(".work-body");
+  const live = !m.done && m.steps.length;
+  m.steps.forEach((st, i) => {
+    const row = document.createElement("div");
+    const last = i === m.steps.length - 1;
+    row.className = "step " + st.kind + (live && last ? " live" : "");
+    if (st.kind === "tool") {
+      row.innerHTML = (last && !m.done ? SPIN : TICK);
+      row.append(document.createTextNode(st.label));
+      if (st.n > 1) {
+        const c = document.createElement("span");
+        c.className = "count"; c.textContent = "×" + st.n;
+        row.append(c);
+      }
+    } else {
+      row.textContent = st.text;
+    }
+    body.append(row);
+  });
 }
 
 // Et svar som strømmer inn mens en annen samtale er åpen, oppdateres bare i
@@ -372,18 +391,11 @@ function paintMsg(m) {
 }
 
 function draw(el, m) {
-  const activity = el.querySelector(".activity");
-  activity.innerHTML = "";
-  for (const a of m.acts || []) {
-    const row = document.createElement("div");
-    row.className = "act";
-    row.innerHTML = a.done ? TICK : '<span class="spin"></span>';
-    row.append(document.createTextNode(a.label));
-    activity.append(row);
-  }
+  drawWork(el.querySelector(".work"), m);
   const body = el.querySelector(".body-md");
   renderMarkdown(body, m.text || "");
-  if (!m.done) body.insertAdjacentHTML("beforeend", '<span class="caret"></span>');
+  body.hidden = !m.text;
+  if (!m.done && m.text) body.insertAdjacentHTML("beforeend", '<span class="caret"></span>');
   el.querySelector(".err")?.remove();
   if (m.error) {
     const e = document.createElement("div");
@@ -410,7 +422,8 @@ async function ask(message, shownAs, fresh = false) {
     openConv(c.id);
   }
   const q = { role: "user", text: shownAs || message };
-  const m = { role: "assistant", text: "", acts: [], done: false };
+  const m = { role: "assistant", text: "", steps: [], done: false,
+              started: now, open: false };
   c.messages.push(q, m);
   c.updated = now;
   convs = [c, ...convs.filter((x) => x !== c)];
@@ -423,6 +436,13 @@ async function ask(message, shownAs, fresh = false) {
     $("thread").append(msgEl(q), msgEl(m));
     window.scrollTo(0, document.body.scrollHeight);
   }
+
+  // Underveis-prat hører hjemme i sporet, ikke i svaret.
+  const stash = (msg) => {
+    const t = msg.text.trim();
+    if (t) msg.steps.push({ kind: "note", text: t });
+    msg.text = "";
+  };
 
   let pending = false;
   const paint = () => {
@@ -453,8 +473,16 @@ async function ask(message, shownAs, fresh = false) {
         let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
         if (ev.type === "session") { c.sessionId = ev.session_id; save(); }
         else if (ev.type === "tool") {
-          m.acts.forEach((a) => (a.done = true));
-          m.acts.push({ label: ev.label, done: false });
+          // Tekst som kom før et verktøykall var underveis-prat, ikke svaret.
+          stash(m);
+          const last = m.steps[m.steps.length - 1];
+          if (last?.kind === "tool" && last.label === ev.label) last.n += 1;
+          else m.steps.push({ kind: "tool", label: ev.label, n: 1 });
+          schedule();
+        } else if (ev.type === "reasoning") {
+          const last = m.steps[m.steps.length - 1];
+          if (last?.kind === "think") last.text += ev.text;
+          else m.steps.push({ kind: "think", text: ev.text });
           schedule();
         } else if (ev.type === "text") {
           m.text += ev.text;
@@ -469,13 +497,20 @@ async function ask(message, shownAs, fresh = false) {
     if (err.name !== "AbortError") m.error = "Mistet forbindelsen. Prøv igjen.";
   } finally {
     m.done = true;
-    m.acts.forEach((a) => (a.done = true));
+    m.elapsed = Date.now() - m.started;
+    // Endte turen på et verktøykall, er siste mellomtekst likevel svaret.
+    if (!m.text.trim() && m.steps[m.steps.length - 1]?.kind === "note") {
+      m.text = m.steps.pop().text;
+    }
     c._busy = false; c._ctrl = null;
     c.updated = Date.now();
     paint(); save(); renderList(); setComposer();
     if (activeId === c.id && matchMedia("(pointer:fine)").matches) $("inputChat").focus();
   }
 }
+
+// Brief-en åpner chatten med et ferdig spørsmål om ett av punktene sine.
+window.askCFO = (message, shownAs) => ask(message, shownAs, true);
 
 $("composerHome").addEventListener("submit", (e) => {
   e.preventDefault();

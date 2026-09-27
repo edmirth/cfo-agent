@@ -65,7 +65,8 @@ dollars per question.
 | `backend/tlx_oauth.py` | Access-token refresh |
 | `backend/prompt.py` | Builds the system prompt from the agent definition |
 | `backend/main.py` | FastAPI: `/api/chat` (SSE), `/api/overview`, `/api/health`, `/api/presets` |
-| `frontend/` | Dashboard + chat. No build step. |
+| `frontend/brief.js` | Forsiden: brief-en, kontantgrafen, signalene |
+| `frontend/app.js` | Skall, samtaleliste og chat |
 | `scripts/oauth_login.py` | One-time browser login |
 | `scripts/check_tokens.py` | Verifies the connection on its own |
 

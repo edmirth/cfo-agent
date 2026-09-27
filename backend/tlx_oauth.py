@@ -6,6 +6,7 @@ de går ut. Roterer serveren refresh-tokenet, skrives det nye tilbake til .env.
 """
 import asyncio
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -38,15 +39,32 @@ class TokenManager:
         return bool(self._refresh and self._client_id)
 
     def _persist_refresh(self, value: str) -> None:
-        """The server may rotate the refresh token; keep .env in step."""
+        """The server may rotate the refresh token; keep .env in step.
+
+        Written through a temporary file and renamed into place. A half-written
+        .env loses the only credential that cannot be regenerated without a
+        human at a browser, and rewriting it in place risks exactly that if the
+        process dies mid-write.
+        """
         env = Path(config.ROOT) / ".env"
         if not env.exists():
             return
         text = env.read_text()
-        text = re.sub(r"^TRIPLETEX_REFRESH_TOKEN=.*$",
-                      f"TRIPLETEX_REFRESH_TOKEN={value}", text, flags=re.MULTILINE)
-        env.write_text(text)
-        env.chmod(0o600)
+        updated, count = re.subn(r"^TRIPLETEX_REFRESH_TOKEN=.*$",
+                                 f"TRIPLETEX_REFRESH_TOKEN={value}", text,
+                                 flags=re.MULTILINE)
+        if not count:
+            log.error("Fant ingen TRIPLETEX_REFRESH_TOKEN-linje i .env; det "
+                      "roterte tokenet ble ikke lagret og går tapt ved omstart")
+            return
+        tmp = env.with_suffix(".env.tmp")
+        try:
+            tmp.write_text(updated)
+            tmp.chmod(0o600)
+            os.replace(tmp, env)
+        except OSError as exc:
+            tmp.unlink(missing_ok=True)
+            log.error("Kunne ikke lagre det roterte refresh-tokenet: %s", exc)
 
     async def access_token(self) -> str:
         if not self.configured:
@@ -66,9 +84,27 @@ class TokenManager:
                 }, headers={"Content-Type": "application/x-www-form-urlencoded"})
 
             if r.status_code != 200:
+                # Tripletex says why in the body, and the reasons need
+                # different fixes: "invalid_grant" means the session is gone
+                # and only a new browser login helps, while "invalid_client"
+                # means the registration is wrong and logging in again will
+                # not touch it. Throwing the body away turned a five-second
+                # diagnosis into guesswork.
+                detail, hint = "", "Kjør scripts/oauth_login.py på nytt."
+                try:
+                    body = r.json()
+                    detail = (f"{body.get('error', '')}: "
+                              f"{body.get('error_description', '')}").strip(": ")
+                    if body.get("error") == "invalid_client":
+                        hint = ("Klienten er ikke gyldig lenger — registrer "
+                                "den på nytt med scripts/oauth_login.py.")
+                except Exception:  # noqa: BLE001
+                    detail = r.text[:200]
+                log.error("Tripletex avviste fornyelsen (%s): %s",
+                          r.status_code, detail)
                 raise OAuthError(
-                    f"Kunne ikke fornye Tripletex-tilgangen ({r.status_code}). "
-                    "Kjør scripts/oauth_login.py på nytt."
+                    f"Kunne ikke fornye Tripletex-tilgangen ({r.status_code})"
+                    + (f" — {detail}. " if detail else ". ") + hint
                 )
 
             d = r.json()

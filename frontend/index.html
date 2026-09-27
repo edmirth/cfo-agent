@@ -4,10 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CFO</title>
+<script>
+  try {
+    if (localStorage.getItem("cfo.rail.v1") === "collapsed")
+      document.documentElement.classList.add("rail-collapsed");
+  } catch (e) { /* privat modus */ }
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/styles.css?v=202609192343">
+<link rel="stylesheet" href="/styles.css?v=202609270132">
 </head>
 <body>
 
@@ -17,112 +23,123 @@
 <aside class="sidebar" id="sidebar" aria-label="Samtaler">
   <div class="side-head">
     <span class="mark">CFO</span>
+    <span class="co" id="company">…</span>
+    <button class="icon-btn rail-btn" id="railToggle" aria-expanded="true"
+            aria-controls="sidebar" title="Slå sammen menyen">
+      <svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true">
+        <rect x="2.6" y="3.6" width="14.8" height="12.8" rx="2.4" fill="none"
+              stroke="currentColor" stroke-width="1.5"/>
+        <path d="M7.9 3.6v12.8" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+    </button>
     <button class="icon-btn side-close" id="sideClose" aria-label="Lukk menyen">
       <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
         <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" stroke-width="1.7"
               stroke-linecap="round"/></svg>
     </button>
   </div>
-  <a class="new-chat" href="#ny" id="newChat">
+  <a class="new-chat" href="#ny" id="newChat" title="Ny samtale">
     <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
       <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8"
             stroke-linecap="round"/></svg>
     Ny samtale
   </a>
   <nav class="side-nav">
-    <a class="nav-item" href="#" id="navHome">
+    <a class="nav-item" href="#" id="navHome" title="Brief">
       <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
         <path d="M4 16V9m4 7V5m4 11v-5m4 5V7" stroke="currentColor" stroke-width="1.7"
               stroke-linecap="round"/></svg>
-      Oversikt
+      Brief
     </a>
+    <a class="nav-item" href="#saker" id="navSaker" title="Saker">
+      <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
+        <path d="M4 5.5h12M4 10h12M4 14.5h7" stroke="currentColor" stroke-width="1.7"
+              stroke-linecap="round"/></svg>
+      Saker
+      <span class="nav-count" id="navSakerCount" hidden></span>
+    </a>
+    <a class="nav-item" href="#selskapet" id="navCompany" title="Selskapet">
+      <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
+        <path d="M4 16V6l6-2 6 2v10M8 16v-4h4v4" stroke="currentColor"
+              stroke-width="1.7" stroke-linejoin="round" fill="none"/></svg>
+      Selskapet
+    </a>
+    <button class="nav-item rail-only" id="railConvs" title="Samtaler" type="button">
+      <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
+        <path d="M4 5.5h12v8H8.6L5.2 16.4V13.5H4z" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span class="rail-label">Samtaler</span>
+    </button>
   </nav>
-  <div class="conv-scroll">
+  <div class="conv-scroll" id="convScroll">
     <div id="convList"></div>
     <p class="side-empty" id="convEmpty">Ingen samtaler ennå. Det du spør om,
        blir liggende her.</p>
   </div>
 </aside>
 <div class="scrim" id="scrim" hidden></div>
+<button class="menu-fab" id="menuBtn" aria-label="Vis menyen">
+  <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+    <path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round"/></svg>
+</button>
 
 <div class="main-col">
-<header class="topbar">
-  <div class="brand">
-    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Vis samtaler">
-      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-        <path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7"
-              stroke-linecap="round"/></svg>
-    </button>
-    <span class="co" id="company">…</span>
-  </div>
-  <div class="topbar-right">
-    <span class="period" id="period"></span>
-  </div>
-</header>
 
-<!-- ───────────── Oversikt ───────────── -->
+<!-- ───────────── Brief ───────────── -->
 <main id="home">
 
-  <section class="verdict loading" id="verdictBlock">
-    <p class="eyebrow">Slik ligger dere an</p>
-    <p class="verdict-text" id="verdict">Henter tallene …</p>
+  <section class="brief-head">
+    <div class="brief-meta">
+      <p class="eyebrow" id="briefDate">Brief</p>
+      <button class="linkbtn" id="briefRefresh" disabled>Oppdater</button>
+    </div>
+    <h1 class="lead loading" id="briefLead">Leser regnskapet …</h1>
   </section>
 
-  <section class="figures" id="figures" hidden>
-    <div class="fig">
-      <span class="fig-label">Omsetning</span>
-      <span class="fig-value" id="fRevenue">–</span>
-      <span class="fig-note" id="fRevenueNote"></span>
+  <section class="cash" id="cash" hidden>
+    <div class="sec-head">
+      <h2 id="cashTitle">Kontanter, 13 uker</h2>
+      <span class="sec-note" id="cashNote"></span>
     </div>
-    <div class="fig">
-      <span class="fig-label">Driftsresultat</span>
-      <span class="fig-value" id="fResult">–</span>
-      <span class="fig-note" id="fResultNote"></span>
+    <div class="legend">
+      <span><i class="sw committed"></i>bundet — allerede fakturert inn og ut, lønn og skatt</span>
+      <span><i class="sw expected"></i>anslag — med fortsatt drift som nå</span>
     </div>
-    <div class="fig">
-      <span class="fig-label">På konto</span>
-      <span class="fig-value" id="fCash">–</span>
-      <span class="fig-note" id="fCashNote"></span>
-    </div>
-    <div class="fig">
-      <span class="fig-label">Kundene skylder</span>
-      <span class="fig-value" id="fAr">–</span>
-      <span class="fig-note" id="fArNote"></span>
-    </div>
+    <div class="chart" id="cashSvg"></div>
+    <p class="cash-low" id="cashLow"></p>
+    <details class="numbers"><summary>Vis tallene</summary>
+      <div class="table-scroll" id="cashTable"></div>
+    </details>
   </section>
 
-  <section class="gauge-wrap" id="gaugeWrap" hidden>
-    <div class="gauge-head">
-      <h2>Lønnsandel</h2>
-      <p>Av hver hundrelapp dere fakturerer, går dette til lønn. I renhold er
-         det denne ene linja som avgjør om året går i pluss.</p>
+  <section class="kpipack" id="kpis" hidden>
+    <div class="sec-head">
+      <h2>Nøkkeltall</h2>
+      <span class="sec-note" id="kpiNote"></span>
     </div>
-    <div class="gauge" id="gauge">
-      <div class="gauge-track">
-        <div class="gauge-fill" id="gaugeFill"></div>
-        <div class="gauge-target" id="gaugeTarget"><span></span></div>
-      </div>
-      <div class="gauge-legend">
-        <span class="g-actual"><b id="gaugeNow">–</b> faktisk</span>
-        <span class="g-target">budsjett <b id="gaugeBudget">–</b></span>
-      </div>
-    </div>
+    <div class="pack-list" id="kpiList"></div>
   </section>
 
-  <section class="chart-wrap" id="chartWrap" hidden>
-    <div class="chart-head">
-      <h2>Omsetning per måned</h2>
-      <span class="chart-note" id="chartNote"></span>
+  <section class="signals" id="signals" hidden>
+    <div class="sec-head">
+      <h2>Krever handling</h2>
+      <span class="sec-note" id="signalCount"></span>
     </div>
-    <div class="bars" id="bars"></div>
+    <div class="sig-list" id="signalList"></div>
   </section>
 
-  <section class="alerts" id="alerts" hidden></section>
+  <section class="books" id="books" hidden>
+    <details>
+      <summary><span class="books-sum" id="booksSum"></span></summary>
+      <ul class="books-list" id="booksList"></ul>
+    </details>
+  </section>
 
   <section class="ask">
-    <h2>Spør CFO-en</h2>
-    <p class="ask-sub">Skriv som du ville spurt en kollega. Den leser regnskapet
-       og svarer på tallene deres.</p>
+    <h2>Spør om noe annet</h2>
+    <p class="ask-sub">Alt over er regnet ut av regnskapet deres. Vil du grave i
+       noe som ikke står her, spør under.</p>
     <div class="chips" id="chips"></div>
     <form class="composer" id="composerHome">
       <input id="inputHome" type="text" autocomplete="off"
@@ -138,6 +155,58 @@
 </main>
 
 <!-- ───────────── Samtale ───────────── -->
+<!-- ───────────── Saker ───────────── -->
+<main id="saker" hidden>
+  <section class="saker-head">
+    <p class="eyebrow">Klart til deg</p>
+    <h1 class="lead" id="deckTitle">…</h1>
+    <p class="saker-sub">Sakene er forberedt og tallene er hentet. Du trenger
+       bare å bestemme.</p>
+  </section>
+
+  <section class="deck" id="deckWrap" hidden>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section class="deck-later" id="deckLaterWrap" hidden>
+    <div class="sec-head"><h2>Utsatt</h2>
+      <span class="sec-note" id="deckLater"></span></div>
+    <ul class="later-list" id="laterList"></ul>
+  </section>
+
+  <p class="saker-empty" id="deckEmpty" hidden>Ingenting venter på deg nå.
+     Dukker det opp noe, havner det her.</p>
+</main>
+
+<!-- ───────────── Selskapet ───────────── -->
+<main id="selskapet" hidden>
+  <section class="co-head">
+    <p class="eyebrow">Om selskapet</p>
+    <h1 class="lead">Det regnskapet ikke kan fortelle</h1>
+    <p class="co-sub">CFO-en leser dette hver gang den svarer. Skriv hvordan
+       dere faktisk jobber — når lønnen utbetales, hvem kundene er, hvilke
+       måneder som alltid er tunge. Det avgjør om et tall leses som et problem
+       eller som en helt vanlig måned.</p>
+  </section>
+
+  <section class="co-edit">
+    <textarea id="coText" spellcheck="false" rows="24"
+              aria-label="Om selskapet"></textarea>
+    <div class="co-bar">
+      <button id="coSave" class="btn primary" type="button">Lagre</button>
+      <span class="co-status" id="coStatus"></span>
+    </div>
+  </section>
+
+  <section class="co-side">
+    <div class="sec-head"><h2>Innstillinger som flytter tall</h2></div>
+    <p class="co-note">Linjene mellom <code>---</code> øverst i teksten. Alt
+       annet leses av CFO-en, men endrer ingen regnestykker.</p>
+    <ul class="co-known" id="coKnown"></ul>
+    <div class="co-warn" id="coNotes" hidden></div>
+  </section>
+</main>
+
 <main id="chat" hidden>
   <div class="thread" id="thread"></div>
   <div class="composer-dock">
@@ -158,6 +227,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="/app.js?v=202609192343"></script>
+<script src="/brief.js?v=202609270132"></script>
+<script src="/app.js?v=202609270132"></script>
 </body>
 </html>

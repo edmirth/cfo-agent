@@ -1,0 +1,326 @@
+"""Does the ledger tie out — and is this month even posted yet?
+
+A controller does not analyse figures they have not tied out. The agent could
+not tell the difference: it would compute a wage ratio on a month where payroll
+was booked and revenue was not, and present it with a straight face. This runs
+before it answers, without a model, and tells it what condition the books are
+actually in.
+
+Three kinds of check:
+
+- **Posting stalls** — vouchers in the inbox, supplier invoices awaiting
+  approval, a payables account that has not moved in months. Cost that exists
+  but is not in the P&L yet.
+- **Tie-outs** — the customer and supplier subledgers against their general
+  ledger accounts. A break means one of the two is wrong and neither can be
+  quoted.
+- **Period completeness** — this month's revenue and payroll against the
+  trailing average. A month with payroll in and invoicing not yet run makes
+  every ratio built on it meaningless, which is the single easiest way for an
+  AI CFO to say something confidently false.
+
+Everything here is computed from three report calls. No model, so it is cheap
+enough to run before every conversation.
+"""
+import asyncio
+import logging
+import time
+from datetime import date
+
+from mcp_client import mcp
+
+log = logging.getLogger("cfo.preflight")
+
+CACHE_SECONDS = 600
+_cache: dict = {}
+
+# Thresholds. These are the pre-flight's own; the materiality layer will take
+# them over when it lands.
+INBOX_NOTE = 1            # any unbooked voucher is worth a word
+INBOX_WARN = 15           # this many is a posting backlog, not a queue
+TIE_TOLERANCE = 100.0     # kroner; below this a subledger gap is rounding
+STALL_MONTHS = 2          # an AP account frozen this long has stopped posting
+COMPLETE_WARN = 0.50      # month below half the trailing average: not posted
+COMPLETE_NOTE = 0.80
+
+MONTHS = ["Jan", "Feb", "Mars", "April", "Mai", "Juni",
+          "Juli", "Aug", "Sept", "Okt", "Nov", "Des"]
+
+# Worst status wins; this is the order.
+RANK = {"ok": 0, "unavailable": 1, "note": 2, "warn": 3}
+
+
+def _rows(report: dict) -> list[dict]:
+    return report.get("table", {}).get("rows", []) or []
+
+
+def _account(row: dict) -> int | None:
+    head = (row.get("path") or "").split(" ", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
+def _numbers(row: dict) -> list[float]:
+    return [float(c) for c in (row.get("cells") or []) if isinstance(c, (int, float))]
+
+
+def _balance(rows: list[dict], account: int) -> float | None:
+    """Closing balance of one account — the last column of Saldobalanse."""
+    for r in rows:
+        if _account(r) == account:
+            cells = _numbers(r)
+            return cells[-1] if cells else None
+    return None
+
+
+def _monthly(rows: list[dict], columns: list[str], low: int, high: int) -> list[tuple[str, float]]:
+    """Per-month movement for an account range. The report is cumulative, so a
+    month is the difference from the one before it."""
+    band = [r for r in rows if (n := _account(r)) is not None and low <= n <= high]
+    if not band:
+        return []
+    out, prev = [], 0.0
+    for i, col in enumerate(columns):
+        if col not in MONTHS:
+            continue
+        cum = 0.0
+        for r in band:
+            cells = r.get("cells") or []
+            if i < len(cells) and isinstance(cells[i], (int, float)):
+                cum += float(cells[i])
+        out.append((col, cum - prev))
+        prev = cum
+    return out
+
+
+def _kr(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{round(value):,}".replace(",", " ")
+
+
+def _answered(payload, key: str) -> bool:
+    """True when the call actually returned this field.
+
+    An empty payload and a genuine zero look identical once you call .get() on
+    them, and reporting a failed call as "nothing to see here" is the one
+    result a pre-flight must never produce. Absent means unavailable, not zero.
+    """
+    return isinstance(payload, dict) and key in payload
+
+
+def _check(cid, label, status, headline, detail="") -> dict:
+    return {"id": cid, "label": label, "status": status,
+            "headline": headline, "detail": detail}
+
+
+async def build(today: date | None = None) -> dict:
+    today = today or date.today()
+    start = f"{today.year}-01-01"
+    end = today.isoformat()
+
+    inbox, approvals, balance, ar, ap = await asyncio.gather(
+        mcp.call("get_voucher_inbox_count"),
+        mcp.call("get_supplier_invoices_for_approval"),
+        mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
+                                  "period_start": start, "period_end": end, "limit": 0}),
+        mcp.call("fetch_report", {"report_name": "Kundereskontro",
+                                  "period_start": start, "period_end": end, "limit": 0}),
+        mcp.call("fetch_report", {"report_name": "Leverandørreskontro",
+                                  "period_start": start, "period_end": end, "limit": 0}),
+        return_exceptions=True,
+    )
+    for name, r in (("bilagsinnboks", inbox), ("godkjenning", approvals),
+                    ("saldobalanse", balance), ("kundereskontro", ar),
+                    ("leverandørreskontro", ap)):
+        if isinstance(r, Exception):
+            log.warning("Preflight: %s feilet: %s", name, r)
+    inbox, approvals, balance, ar, ap = [
+        (None if isinstance(x, Exception) else x)
+        for x in (inbox, approvals, balance, ar, ap)]
+
+    rows = _rows(balance or {})
+    columns = [c.get("name") for c in (balance or {}).get("table", {}).get("columns", [])]
+    checks: list[dict] = []
+
+    # 1. Vouchers received but not booked: cost that exists and is not in the P&L.
+    if not _answered(inbox, "count"):
+        checks.append(_check("inbox", "Bilagsinnboks", "unavailable",
+                             "Kunne ikke lese bilagsinnboksen."))
+    else:
+        n = inbox.get("count") or 0
+        status = "warn" if n >= INBOX_WARN else "note" if n >= INBOX_NOTE else "ok"
+        checks.append(_check(
+            "inbox", "Bilagsinnboks", status,
+            f"{n} bilag ligger ubokført." if n else "Innboksen er tom.",
+            "Kostnad som finnes, men ennå ikke er i regnskapet. Resultatet er "
+            "tilsvarende for godt." if n else ""))
+
+    # 2. Supplier invoices held at approval — same money, one step further on.
+    if not _answered(approvals, "invoices"):
+        checks.append(_check("approval", "Til godkjenning", "unavailable",
+                             "Kunne ikke lese fakturaer til godkjenning."))
+    else:
+        pending = approvals.get("invoices") or []
+        total = sum(float(i.get("amount") or 0) for i in pending)
+        checks.append(_check(
+            "approval", "Til godkjenning",
+            "note" if pending else "ok",
+            f"{len(pending)} leverandørfaktura(er) venter på godkjenning"
+            + (f", {_kr(total)} kr." if total else ".") if pending
+            else "Ingen fakturaer venter på godkjenning."))
+
+    # 3. A payables account that has stopped moving, or sits on the wrong side.
+    ap_row = next((r for r in rows if _account(r) == 2400), None)
+    if ap_row is None:
+        checks.append(_check("ap_posting", "Leverandørgjeld 2400", "unavailable",
+                             "Fant ikke konto 2400 i saldobalansen."))
+    else:
+        cells = _numbers(ap_row)
+        gl_ap = cells[-1] if cells else 0.0
+        month_cells = [c for c, col in zip(cells[1:], columns[1:]) if col in MONTHS]
+        frozen = 0
+        for value in reversed(month_cells[:-1] or []):
+            if month_cells and abs(value - month_cells[-1]) < 0.01:
+                frozen += 1
+            else:
+                break
+        problems = []
+        if gl_ap > 0:
+            problems.append(f"saldoen er {_kr(gl_ap)} kr i debet, der gjeld skal stå i kredit")
+        if frozen >= STALL_MONTHS:
+            problems.append(f"den har ikke beveget seg på {frozen} måneder")
+        checks.append(_check(
+            "ap_posting", "Leverandørgjeld 2400",
+            "warn" if problems else "ok",
+            ("Konto 2400: " + ", og ".join(problems) + ".") if problems
+            else f"Konto 2400 står på {_kr(gl_ap)} kr, normal side og i bevegelse.",
+            "Enten er leverandørfakturaer sluttet å bli bokført, eller så er det "
+            "en forskuddsbetaling eller en posteringsfeil. Kostnadsbildet kan "
+            "ikke leses før dette er avklart." if problems else ""))
+
+    # 4 & 5. Subledgers against their general ledger accounts. A break means one
+    # of the two is wrong, and neither figure can be quoted until it is found.
+    for cid, label_, account, report, sign in (
+            ("ar_tie", "Avstemming kundefordringer", 1500, ar, 1),
+            ("ap_tie", "Avstemming leverandørgjeld", 2400, ap, -1)):
+        gl = _balance(rows, account)
+        if not _answered(report, "table") or gl is None:
+            checks.append(_check(cid, label_, "unavailable",
+                                 f"Kunne ikke avstemme konto {account}."))
+            continue
+        sub = sum(float(r["cells"][1]) for r in _rows(report)
+                  if len(r.get("cells") or []) > 1
+                  and isinstance(r["cells"][1], (int, float)))
+        # Compare on the side the account belongs on. Receivables are a debit
+        # balance and the subledger is positive, so they match directly;
+        # payables are a credit balance against the same positive subledger,
+        # so they must sum to nothing. Comparing magnitudes instead would call
+        # a payables account sitting on the wrong side a clean match.
+        gap = gl - sign * sub
+        ok = abs(gap) < TIE_TOLERANCE
+        checks.append(_check(
+            cid, label_, "ok" if ok else "warn",
+            f"Konto {account} og reskontroen stemmer ({_kr(abs(gl))} kr)." if ok
+            else (f"Konto {account} viser {_kr(gl)} kr, mens reskontroen tilsier "
+                  f"{_kr(sign * sub)} kr — {_kr(abs(gap))} kr i differanse."),
+            "" if ok else "Én av de to er feil. Ingen av tallene kan siteres "
+                          "før differansen er funnet."))
+
+    # 6 & 7. Is this month actually posted? Payroll in and invoicing not run is
+    # the trap that makes every ratio built on the month meaningless.
+    for cid, label_, low, high, flip in (
+            ("revenue_month", "Omsetning inneværende måned", 3000, 3999, -1),
+            ("payroll_month", "Lønn inneværende måned", 5000, 5999, 1)):
+        series = _monthly(rows, columns, low, high)
+        if len(series) < 2:
+            checks.append(_check(cid, label_, "unavailable",
+                                 "Ikke nok måneder til å vurdere fullstendighet."))
+            continue
+        name, current = series[-1][0], series[-1][1] * flip
+        prior = [v * flip for _, v in series[-4:-1]]
+        average = sum(prior) / len(prior) if prior else 0.0
+        if average <= 0:
+            checks.append(_check(cid, label_, "unavailable",
+                                 "Ingen sammenlignbare måneder."))
+            continue
+        share = current / average
+        status = ("warn" if share < COMPLETE_WARN
+                  else "note" if share < COMPLETE_NOTE else "ok")
+        checks.append(_check(
+            cid, label_, status,
+            f"{name}: {_kr(current)} kr bokført mot {_kr(average)} kr i snitt "
+            f"for de tre foregående månedene ({share * 100:.0f} %).",
+            f"Dag {today.day} i måneden." + (
+                " Måneden er ikke ferdig bokført; forholdstall som blander den "
+                "med en fullt bokført kostnadsside blir feil." if status == "warn"
+                else "")))
+
+    worst = max((RANK.get(c["status"], 0) for c in checks), default=0)
+    ties_broken = any(c["status"] == "warn" and c["id"].endswith("_tie") for c in checks)
+    condition = ("broken" if ties_broken
+                 else "provisional" if worst >= RANK["note"] else "clean")
+
+    return {"as_of": end, "condition": condition, "checks": checks}
+
+
+async def cached() -> dict:
+    now = time.time()
+    if _cache.get("data") and now - _cache.get("at", 0) < CACHE_SECONDS:
+        return _cache["data"]
+    data = await build()
+    _cache.update({"data": data, "at": now})
+    return data
+
+
+CONDITION_TEXT = {
+    "clean": ("Bøkene er ajour. Ingenting hindrer en vanlig analyse.",
+              "Nothing is blocking analysis. Do not pad answers with "
+              "reassurance about it — say nothing unless asked."),
+    "provisional": ("Tallene er foreløpige.",
+                    "Say so before any ratio that depends on an affected "
+                    "figure, in one clause, not a paragraph."),
+    "broken": ("En avstemming stemmer ikke.",
+               "Lead with it when the question touches an affected figure. A "
+               "subledger that disagrees with its general ledger account means "
+               "one of the two is wrong, and neither can be quoted as fact "
+               "until someone finds out which."),
+}
+
+
+def briefing(data: dict | None) -> str:
+    """The condition block injected into the system prompt.
+
+    Deliberately not a summary: the agent gets the individual findings, in the
+    words it can quote straight back to the CEO in Norwegian.
+    """
+    if not data or not data.get("checks"):
+        return ""
+    flagged = [c for c in data["checks"] if c["status"] in ("warn", "note")]
+    unknown = [c for c in data["checks"] if c["status"] == "unavailable"]
+    condition = data.get("condition", "clean")
+    headline, instruction = CONDITION_TEXT.get(condition, CONDITION_TEXT["clean"])
+
+    out = [f"## The ledger's condition today\n",
+           f"Checked {data.get('as_of')} straight from Tripletex, with no model "
+           f"involved. **{headline}** {instruction}\n",
+           "You did not work this out and must not re-derive it; it is given. "
+           "What you do with it is judgement: a figure the checks below do not "
+           "touch is as good as ever, and a clean check is not worth a "
+           "sentence.\n"]
+
+    if flagged:
+        out.append("**What is wrong right now**\n")
+        for c in flagged:
+            out.append(f"- *{c['label']}* — {c['headline']}"
+                       + (f" {c['detail']}" if c["detail"] else ""))
+        out.append("")
+    if unknown:
+        out.append("**Could not be checked** — treat as unknown, never as "
+                   "clean: " + ", ".join(c["label"] for c in unknown) + ".\n")
+    if not flagged and not unknown:
+        out.append("Every check passed.\n")
+
+    out.append("If the CEO asks about something these findings bear on, the "
+               "finding comes first and the figure second. Quote the kroner "
+               "amounts above as they stand — they are exact.")
+    return "\n".join(out)

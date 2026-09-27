@@ -75,6 +75,25 @@ class McpClient:
             self._ready = True
             log.info("MCP-sesjon etablert")
 
+    async def list_tools(self) -> list[dict]:
+        """Alle verktøy serveren tilbyr.
+
+        Brukes til å holde lesetilgangslista ærlig: dukker det opp et nytt
+        skriveverktøy hos Tripletex, skal vi oppdage det, ikke la det gli inn.
+        """
+        await self._connect()
+        at = await tokens.access_token()
+        assert self._http is not None
+        r = await self._http.post(
+            config.TRIPLETEX_MCP_URL + "/", headers=self._headers(at),
+            json={"jsonrpc": "2.0", "id": next(self._ids), "method": "tools/list"})
+        if r.status_code != 200:
+            raise McpError(f"tools/list svarte {r.status_code}: {r.text[:200]}")
+        payload = _parse(r.text)
+        if "error" in payload:
+            raise McpError(f"tools/list: {payload['error'].get('message')}")
+        return payload.get("result", {}).get("tools", []) or []
+
     async def call(self, tool: str, arguments: dict | None = None) -> dict:
         """Kall ett MCP-verktøy og returner det strukturerte innholdet."""
         for attempt in (1, 2):
@@ -97,6 +116,14 @@ class McpClient:
             if "error" in payload:
                 raise McpError(f"{tool}: {payload['error'].get('message')}")
             result = payload.get("result", {})
+
+            # Et avvist kall kommer tilbake som HTTP 200 med isError satt, ikke
+            # som en JSON-RPC-feil. Uten dette ser en avvist forespørsel ut som
+            # tomt resultat hos den som spør — og tomt leses som «ingenting å
+            # melde», som er den ene tolkningen som aldri er trygg.
+            if result.get("isError"):
+                text = " ".join(b.get("text", "") for b in result.get("content", []))
+                raise McpError(f"{tool}: {text[:300] or 'avvist uten begrunnelse'}")
 
             # Tripletex returnerer JSON i en tekstblokk; plukk ut den største.
             best: dict = {}

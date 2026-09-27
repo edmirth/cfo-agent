@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import date
 
+import memory
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.overview")
@@ -166,4 +167,10 @@ async def cached() -> dict:
         return _cache["data"]
     data = await build()
     _cache.update({"data": data, "at": now})
+    # Trend memory, written without a model in the loop. Same-day calls
+    # overwrite, so the ten-minute refresh leaves one row per day.
+    try:
+        memory.snapshot(data["kpis"], on=data["generated_at"])
+    except Exception:  # noqa: BLE001 — the dashboard must render regardless
+        log.exception("Kunne ikke lagre dagens nøkkeltall")
     return data
