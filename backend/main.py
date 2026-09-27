@@ -29,7 +29,11 @@ from preflight import cached as preflight_cached
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("cfo.api")
 
-FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
+# Frontenden er React + shadcn, bygget med Vite. Er det ikke bygget ennå,
+# serves den gamle vanilla-frontenden, så serveren alltid har noe å vise.
+_ROOT = Path(__file__).resolve().parent.parent
+_BUILT = _ROOT / "frontend-react" / "dist"
+FRONTEND = _BUILT if (_BUILT / "index.html").exists() else _ROOT / "frontend"
 
 # Taken at import, before uvicorn binds anything: a second server must fail
 # here rather than reach the point where it renews the Tripletex token and

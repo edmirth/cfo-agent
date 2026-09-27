@@ -26,4 +26,14 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Bygg frontenden hvis den mangler eller kilden er nyere enn bygget.
+if command -v npm >/dev/null 2>&1 && [ -d frontend-react ]; then
+  if [ ! -f frontend-react/dist/index.html ] || \
+     [ -n "$(find frontend-react/src frontend-react/index.html -newer frontend-react/dist/index.html 2>/dev/null | head -1)" ]; then
+    echo "→ Bygger frontenden …"
+    [ -d frontend-react/node_modules ] || (cd frontend-react && npm install --silent)
+    (cd frontend-react && npm run build --silent) || echo "! Bygget feilet — serverer forrige versjon."
+  fi
+fi
+
 exec ./.venv/bin/uvicorn main:app --app-dir backend --reload --port "${PORT:-8000}"
