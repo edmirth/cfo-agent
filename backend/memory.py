@@ -24,7 +24,7 @@ import logging
 import os
 import tempfile
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import definitions
@@ -282,9 +282,9 @@ def briefing(today: date | None = None) -> str:
 
     openf = [f for f in data["findings"] if f.get("status") == "open"]
     if openf:
-        rows = [f"**Open findings** — raised by you, not yet closed. "
-                f"Check each one against today's figures: if it has resolved "
-                f"itself, close it; if it has worsened, lead with that.", ""]
+        rows = ["**Open findings** — raised by you, not yet closed. "
+                "Check each one against today's figures: if it has resolved "
+                "itself, close it; if it has worsened, lead with that.", ""]
         for f in openf[-SHOW_FINDINGS:]:
             days = _age(f.get("opened", ""), today)
             # Format the number alone: the metric name may itself hold a comma.

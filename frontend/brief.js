@@ -450,7 +450,7 @@ document.addEventListener("click", (e) => {
   }).catch(() => { copy.textContent = "Kunne ikke kopiere"; });
 });
 
-async function load() {
+async function loadBrief() {
   const say = (t) => { B("briefLead").textContent = t; };
   say("Leser regnskapet …");
 
@@ -487,4 +487,4 @@ window.addEventListener("resize", () => {
   }, 200);
 });
 
-window.Brief = { load, loadDeck };
+window.Brief = { load: loadBrief, loadDeck };

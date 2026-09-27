@@ -21,7 +21,6 @@ import logging
 import os
 import socket
 from datetime import datetime
-from pathlib import Path
 
 import config
 

@@ -152,10 +152,17 @@ GROUPS = [
 # Deliberately excluded: 2120 utsatt skatt is an accounting figure, not money
 # anyone will ask for. Instalment debt is reported apart, because the whole
 # balance is not due at once and folding it in implies that it is.
-# Statute fixes the tax dates. These are inferred, and are shown as inferred.
+# Statute fixes the tax dates. These are inferred, and are shown as inferred —
+# except the pay day, which stops being an inference the moment the company
+# writes it in. Decided per build, not at import: the CEO edits company.md in
+# the app, and the label has to follow without a restart.
 ASSUMED_DUE = {"leverandorgjeld", "ansatte_eiere", "annen_gjeld"}
-if not company.setting("lonn_utbetalingsdag"):
-    ASSUMED_DUE = ASSUMED_DUE | {"skyldig_lonn"}
+
+
+def _assumed_due() -> set[str]:
+    if company.setting("lonn_utbetalingsdag"):
+        return ASSUMED_DUE
+    return ASSUMED_DUE | {"skyldig_lonn"}
 
 LOANS = (2200, 2249)
 BANK = (1900, 1949)
@@ -229,6 +236,7 @@ async def build(today: date | None = None) -> dict:
     loans_balance, loan_accounts = _sum_range(rows, (LOANS,))
 
     items, anomalies = [], []
+    assumed = _assumed_due()
     for g in GROUPS:
         raw, accounts = _sum_range(rows, g.ranges)
         owed = -raw
@@ -247,7 +255,7 @@ async def build(today: date | None = None) -> dict:
                       "amount": round(owed, 2), "kind": g.kind,
                       "due": due.isoformat(), "days": (due - today).days,
                       "accounts": accounts, "estimated": False,
-                      "assumed_due": g.id in ASSUMED_DUE})
+                      "assumed_due": g.id in assumed})
 
     # Withheld employee tax is meant to sit on a restricted account. Where it
     # does, that money is not in the operating account and subtracting it from

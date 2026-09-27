@@ -26,7 +26,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import date
-from typing import Callable
+from collections.abc import Callable
 
 from anthropic import AsyncAnthropic
 
@@ -382,7 +382,8 @@ def _save_profile(data: dict) -> None:
                              encoding="utf-8")
 
 
-async def profile(refresh: bool = False, today: date | None = None) -> dict:
+async def profile(refresh: bool = False, today: date | None = None,
+                  gathered: tuple[dict, dict] | None = None) -> dict:
     """The industry and its KPIs. Decided once, then read from disk.
 
     It costs a model call and it is a judgement, so it is not re-decided on
@@ -394,7 +395,9 @@ async def profile(refresh: bool = False, today: date | None = None) -> dict:
         cached = _load_profile()
         if cached:
             return cached
-    ctx, evidence = await _gather(today)
+    # The dashboard has usually just gathered the same evidence; a second
+    # round of six Tripletex calls to classify on identical inputs is waste.
+    ctx, evidence = gathered if gathered is not None else await _gather(today)
     data = await classify(ctx, evidence)
     data["bevis"] = evidence
     _save_profile(data)
@@ -424,8 +427,9 @@ async def dashboard(today: date | None = None) -> dict:
     if _values_cache.get("data") and now - _values_cache.get("at", 0) < VALUES_CACHE_SECONDS:
         return _values_cache["data"]
 
-    prof = await profile(today=today)
-    ctx, _ = await _gather(today)
+    gathered = await _gather(today)
+    prof = await profile(today=today, gathered=gathered)
+    ctx = gathered[0]
 
     tiles = []
     for item in prof["nokkeltall"]:

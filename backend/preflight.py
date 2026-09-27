@@ -177,7 +177,13 @@ async def build(today: date | None = None) -> dict:
     else:
         cells = _numbers(ap_row)
         gl_ap = cells[-1] if cells else 0.0
-        month_cells = [c for c, col in zip(cells[1:], columns[1:]) if col in MONTHS]
+        # Pair each cell with its column *before* dropping non-numeric ones:
+        # filtering first and zipping after would shift every month by one
+        # the moment a single cell reads #AUTH!, and the stall check would
+        # then compare the wrong months and call a moving account frozen.
+        raw = ap_row.get("cells") or []
+        month_cells = [float(c) for c, col in zip(raw, columns)
+                       if col in MONTHS and isinstance(c, (int, float))]
         frozen = 0
         for value in reversed(month_cells[:-1] or []):
             if month_cells and abs(value - month_cells[-1]) < 0.01:
@@ -300,7 +306,7 @@ def briefing(data: dict | None) -> str:
     condition = data.get("condition", "clean")
     headline, instruction = CONDITION_TEXT.get(condition, CONDITION_TEXT["clean"])
 
-    out = [f"## The ledger's condition today\n",
+    out = ["## The ledger's condition today\n",
            f"Checked {data.get('as_of')} straight from Tripletex, with no model "
            f"involved. **{headline}** {instruction}\n",
            "You did not work this out and must not re-derive it; it is given. "

@@ -37,6 +37,12 @@ _URL = re.compile(r"https?://\S+")
 _MD_LINK = re.compile(r"\]\([^)]*\)")
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _NO_DATE = re.compile(r"\b\d{1,2}\.\s?\d{1,2}\.(\d{2,4})?\b")
+# "den 16. juli", "16.–24. juli", "1. oktober": a day before a month name is a
+# date, and a day-range is two of them.
+_DAY_MONTH = re.compile(
+    r"\b\d{1,2}\.(?:\s?[–-]\s?\d{1,2}\.)?\s*"
+    r"(?:jan|feb|mar|apr|mai|jun|jul|aug|sep|okt|nov|des)[a-zæøå]*\b",
+    re.IGNORECASE)
 # Identifiers, not quantities. "konto 1500" and "faktura 6689" name things;
 # demanding a source for them flags the label rather than the figure.
 _IDENTIFIER = re.compile(
@@ -77,6 +83,7 @@ def _clean(text: str) -> str:
     text = _MD_LINK.sub("] ", text)
     text = _ISO_DATE.sub(" ", text)
     text = _NO_DATE.sub(" ", text)
+    text = _DAY_MONTH.sub(" ", text)
     return _IDENTIFIER.sub(" ", text)
 
 
@@ -180,7 +187,7 @@ YEAR_RANGE = (1990, 2100)
 MATERIAL = 100
 
 
-def _fmt(value: float) -> str:
+def fmt(value: float) -> str:
     whole = abs(value - round(value)) < 1e-9
     text = f"{round(value):,}" if whole else f"{value:,.2f}"
     return text.replace(",", " ")

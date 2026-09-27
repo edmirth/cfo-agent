@@ -191,6 +191,11 @@ def sync(note: str = "") -> dict:
             "total": len(current)}
 
 
+def registry() -> dict:
+    """Every definition's history, keyed by id."""
+    return _load()["definitions"]
+
+
 def versions() -> dict[str, int]:
     """Current version of every definition, for stamping onto figures."""
     try:

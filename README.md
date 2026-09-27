@@ -56,32 +56,64 @@ dollars per question.
 
 ## Layout
 
+Everything under `backend/` that computes a figure does so without a model in
+the loop. The model decides what to compute and what it means; the arithmetic
+is code, and every figure it states is traced back to a source afterwards.
+
 | Path | What it is |
 |---|---|
-| `.claude/agents/cfo.md` | The agent. Behaviour, framework, data traps. Start here. |
-| `backend/agent.py` | Claude call, MCP wiring, stream → UI events |
-| `backend/mcp_client.py` | Direct JSON-RPC to Tripletex, one reused session |
-| `backend/overview.py` | Dashboard figures, computed from reports |
-| `backend/tlx_oauth.py` | Access-token refresh |
-| `backend/prompt.py` | Builds the system prompt from the agent definition |
-| `backend/main.py` | FastAPI: `/api/chat` (SSE), `/api/overview`, `/api/health`, `/api/presets` |
-| `frontend/brief.js` | Forsiden: brief-en, kontantgrafen, signalene |
-| `frontend/app.js` | Skall, samtaleliste og chat |
+| `.claude/agents/cfo.md` | The agent: scope, voice, standing analysis, data traps. Start here. |
+| `company.md` | Starter for what the company says about itself. Copied to `state/` on first run; edited in the app after that. |
+| `backend/agent.py` | The turn: Claude call, MCP wiring, local tools, stream → UI events, rollback on interruption |
+| `backend/prompt.py` | Assembles the system prompt: persona + company (cached), then the computed blocks |
+| `backend/toolset.py` | Read-only, enforced: the 62 Tripletex tools the model may see, and an audit against the server |
+| `backend/calc.py` | Arithmetic the model must not do in its head; named metrics carry the finance rules |
+| `backend/verify.py` | Traces every figure in an answer to a tool result, a computed block, or the user |
+| `backend/trace.py` | A balance opened into its ledger postings |
+| `backend/definitions.py` | What each KPI means, fingerprinted over wording *and* code, versioned append-only |
+| `backend/preflight.py` | Do the books tie out — unbooked vouchers, subledgers vs accounts, is this month posted |
+| `backend/commitments.py` | How much of the bank is actually the company's, dated by when each obligation falls due |
+| `backend/cashflow.py` | Thirteen weeks on two lines: committed and expected |
+| `backend/industry.py` | Works out the trade from the ledger; the model picks KPIs from a computable catalogue |
+| `backend/cards.py` | Work prepared for one-tap approval; derived cards refresh and close with the facts |
+| `backend/memory.py` | Snapshots, findings, forecasts, decisions — carried between conversations |
+| `backend/company.py` | The company's own account of how it works, and the few settings that move numbers |
+| `backend/overview.py` | Headline figures for the front page |
+| `backend/mcp_client.py` | Direct JSON-RPC to Tripletex for the computed blocks; raises on rejected calls |
+| `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token written back to `.env` atomically |
+| `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
+| `backend/main.py` | FastAPI routes and the in-memory session store |
+| `frontend/brief.js` | The front page: brief, cash chart, signals, KPIs, and the Saker deck |
+| `frontend/app.js` | Shell, routing, conversations, chat, the Selskapet editor |
 | `scripts/oauth_login.py` | One-time browser login |
-| `scripts/check_tokens.py` | Verifies the connection on its own |
+| `scripts/check_tokens.py` | Verifies the Tripletex connection on its own |
+| `tests/` | `./.venv/bin/python -m tests.run` — plain asserts, no framework, temporary state |
 
 ## Endpoints
 
+Everything except `/api/chat` is computed without a model and works with no
+Anthropic credits.
+
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/overview` | Dashboard figures, cached 10 min |
-| `POST` | `/api/chat` | Chat turn, streamed as SSE |
-| `POST` | `/api/session/reset?session_id=…` | Clear a conversation |
-| `GET` | `/api/health` | Key present, model, Tripletex connected |
+| `GET` | `/api/health` | Key present, PID, read-only, tools allowed |
+| `GET` | `/api/overview` | Headline figures, cached 10 min |
+| `GET` | `/api/preflight` | Condition of the books |
+| `GET` | `/api/commitments` | Free cash and dated obligations |
+| `GET` | `/api/cashflow` | 13-week forecast |
+| `GET` | `/api/dashboard` | Industry and its KPIs; `?refresh=true` re-decides the industry |
+| `GET` | `/api/cards` | The approval deck, rebuilt from the checks |
+| `POST` | `/api/cards/{id}/decide` | `{option, note}` — records the choice and does what it means |
+| `GET` | `/api/definitions` | Every KPI's definition and version; `?id=dso` for one history |
+| `GET` | `/api/trace` | `?account=1920&date_from=&date_to=` — the postings behind a balance |
+| `GET` `PUT` | `/api/company` | What the company says about itself; `PUT {text}` saves it |
+| `GET` | `/api/toolset` | Allowed tools audited against the server |
 | `GET` | `/api/presets` | The suggested questions |
+| `POST` | `/api/chat` | Chat turn, streamed as SSE; emits a `check` event tracing the figures |
+| `POST` | `/api/session/reset?session_id=…` | Clear a conversation |
 
-Sending a preset id (`daily`, `cash`, `ar`, `margin`, `forecast`) as the chat
-message expands it to the full prompt server-side.
+Sending a preset id (`daily`, `money`, `ar`, `margin`, `forecast`, `weeks`,
+`afford`) as the chat message expands it to the full prompt server-side.
 
 ## Before this goes to a customer
 

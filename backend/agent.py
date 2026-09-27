@@ -9,7 +9,7 @@ controller's own notebook — `memory.py` and the approval deck in `cards.py`.
 They write to this machine's disk, which nothing on Anthropic's side can reach.
 """
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from anthropic import AsyncAnthropic, BadRequestError
 
@@ -329,7 +329,7 @@ async def _run_local_tool(name: str, args: dict) -> str:
     except KeyError as exc:
         return f"Missing required field {exc}. Call it again with that field set."
     except Exception as exc:  # noqa: BLE001 — never end a turn on a note-taking failure
-        log.exception("Memory tool %s failed", name)
+        log.exception("Local tool %s failed", name)
         return f"Could not record that: {exc}"
     return f"Unknown tool {name}."
 
@@ -368,10 +368,9 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
     """Stream one assistant turn, yielding UI events.
 
     Mutates `messages` in place with the assistant turns it produces, so the
-    caller's history is correct when this returns.
+    caller's history is correct when this returns — and only then: an
+    interrupted turn is rolled back entirely.
     """
-    global _fallbacks_enabled
-
     # Everything the agent is given this turn, so the figures in its answer can
     # be traced back to a source afterwards.
     corpus = verify.Corpus()
@@ -379,8 +378,27 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
         if m.get("role") == "user" and isinstance(m.get("content"), str):
             corpus.add(m["content"], "det du skrev")
     said: list[str] = []
-    system_seen = False
     tool_names: dict[str, str] = {}   # id -> name, kept across rounds
+
+    # A turn that does not finish must not leave half of itself in the
+    # history. An assistant message ending in a tool call with no result, or
+    # a paused server turn, makes every later request on the session fail —
+    # and a client closing the tab mid-answer is the ordinary way to get one.
+    start = len(messages)
+    completed = False
+    try:
+        async for event in _turn(messages, corpus, said, tool_names, start):
+            if event.get("type") == "done":
+                completed = True
+            yield event
+    finally:
+        if not completed:
+            del messages[start:]
+
+
+async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict]:
+    global _fallbacks_enabled
+    system_seen = False
 
     for _ in range(config.MAX_TOOL_ROUNDS):
         try:
@@ -466,7 +484,7 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             log.warning("Svaret inneholder %d tall uten kilde",
                         len(check["unverified"]))
         for t in check["traced"][:6]:
-            log.info("spor: %s ← %s", verify._fmt(t["value"]),
+            log.info("spor: %s ← %s", verify.fmt(t["value"]),
                      ", ".join(t["from"]))
         yield {"type": "check", **check}
 

@@ -2,7 +2,10 @@
 import json
 import logging
 import uuid
+from datetime import date
 from pathlib import Path
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -134,11 +137,6 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
-@app.on_event("shutdown")
-async def _release_lock() -> None:
-    lock.release()
-
-
 @app.get("/api/health")
 async def health() -> dict:
     return {
@@ -169,7 +167,6 @@ async def toolset_audit() -> dict:
         return {"error": str(exc)}
 
 
-@app.on_event("startup")
 async def _check_definitions() -> None:
     """Record any definition that changed since the last run, before serving."""
     try:
@@ -183,7 +180,6 @@ async def _check_definitions() -> None:
         log.error("Kunne ikke versjonere definisjonene: %s", exc)
 
 
-@app.on_event("startup")
 async def _check_toolset() -> None:
     """Say out loud, once, what the agent can reach."""
     try:
@@ -196,6 +192,18 @@ async def _check_toolset() -> None:
                         ", ".join(a["missing"]))
     except Exception as exc:  # noqa: BLE001 — never block startup on this
         log.warning("Kunne ikke kontrollere verktøylista ved oppstart: %s", exc)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """What runs once at start and once at stop."""
+    await _check_definitions()
+    await _check_toolset()
+    yield
+    lock.release()
+
+
+app.router.lifespan_context = _lifespan
 
 
 @app.get("/api/overview")
@@ -287,7 +295,7 @@ async def definitions_registry(id: str | None = None) -> dict:
     if id:
         return {"id": id, "history": definitions.history(id)}
     try:
-        ledger = definitions._load()["definitions"]
+        ledger = definitions.registry()
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
     return {**definitions.stamp(),
@@ -302,6 +310,11 @@ async def definitions_registry(id: str | None = None) -> dict:
 @app.get("/api/trace")
 async def trace_account(account: int, date_from: str, date_to: str) -> dict:
     """Posteringene bak en saldo. Sluttdato er inklusiv, slik folk mener den."""
+    for label, value in (("date_from", date_from), ("date_to", date_to)):
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(400, f"{label} må være YYYY-MM-DD, fikk «{value}»") from None
     try:
         return await trace.account(account, date_from, date_to)
     except Exception as exc:  # noqa: BLE001
@@ -361,6 +374,11 @@ async def chat(req: ChatRequest) -> StreamingResponse:
 
     session_id = req.session_id or uuid.uuid4().hex
     history = _touch(session_id)
+
+    # A question the assistant never answered — the previous turn failed or
+    # was interrupted — is dropped rather than stacked under the new one.
+    while history and history[-1]["role"] == "user":
+        history.pop()
 
     # A preset id sent as the message body expands to its full prompt.
     text = next((p["prompt"] for p in PRESETS if p["id"] == req.message), req.message)

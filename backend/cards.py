@@ -24,6 +24,7 @@ Cards come from two places:
 Deduplicated on `key`, so the same overdue customer does not stack up a new
 card every time the deck is rebuilt.
 """
+import asyncio
 import json
 import logging
 import os
@@ -32,7 +33,10 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import cashflow
 import config
+import memory
+import preflight
 
 log = logging.getLogger("cfo.cards")
 
@@ -158,7 +162,7 @@ def decide(card_id: str, option_id: str, note: str = "") -> dict:
             card["status"] = "done"
             card["closed"] = _now()
 
-        closed = [c for c in data["cards"] if c["status"] in ("done", "dismissed")]
+        closed = [c for c in data["cards"] if c["status"] in ("done", "dismissed", "resolved")]
         if len(closed) > MAX_CLOSED:
             drop = {id(c) for c in closed[: len(closed) - MAX_CLOSED]}
             data["cards"] = [c for c in data["cards"] if id(c) not in drop]
@@ -167,7 +171,6 @@ def decide(card_id: str, option_id: str, note: str = "") -> dict:
     # The CFO should not re-argue something already settled, so the choice goes
     # into its memory as well as into the deck.
     try:
-        import memory
         memory.add_decision(
             f"{option.get('label')} — {card.get('title')}",
             context=f"Kort {card['id']}" + (f": {note}" if note else ""))
@@ -201,7 +204,7 @@ def deck(today: date | None = None) -> dict:
         "as_of": today.isoformat(),
         "open": open_cards,
         "snoozed": [c for c in cards if c.get("status") == "snoozed"],
-        "recent": [c for c in cards if c.get("status") in ("done", "dismissed")][-8:],
+        "recent": [c for c in cards if c.get("status") in ("done", "dismissed", "resolved")][-8:],
     }
 
 
@@ -215,7 +218,7 @@ LATE_AMOUNT = 10_000
 CASH_FLOOR = 500_000
 
 
-def _reminder_draft(customer: str, invoices: list[dict], total: float) -> dict:
+def _reminder_draft(invoices: list[dict], total: float) -> dict:
     lines = "\n".join(
         f"- Faktura {i.get('number') or '—'}, forfalt {i['due']}, "
         f"{_kr(i['amount'])} kr" for i in invoices)
@@ -265,7 +268,7 @@ def _collections(invoices: list[dict], today: date) -> list[dict]:
             "evidence": [{"label": f"Faktura {i.get('number') or '—'}",
                           "value": f"{_kr(i['amount'])} kr, forfalt {i['due']} "
                                    f"({i['late']} d siden)"} for i in items[:6]],
-            "draft": _reminder_draft(customer, items, total),
+            "draft": _reminder_draft(items, total),
             "options": [
                 {"id": "send", "label": "Send påminnelsen", "effect": "approve"},
                 {"id": "wait", "label": "Vent en uke", "effect": "snooze", "days": 7},
@@ -368,10 +371,6 @@ async def refresh(today: date | None = None) -> dict:
     not the whole deck.
     """
     today = today or date.today()
-    import asyncio
-
-    import cashflow
-    import preflight
 
     async def _try(coro, what):
         try:
@@ -389,15 +388,56 @@ async def refresh(today: date | None = None) -> dict:
         candidates += _from_preflight(pf)
     if cf:
         candidates += _from_cashflow(cf)
-        invoices, _ = await _try(
-            cashflow._open_invoices(today, "search_invoices", "rows",
-                                    "amountOutstanding", "customerName"),
-            "fakturaer") or ([], [])
-        candidates += _collections(invoices, today)
+        # The forecast already fetched the open invoices; reusing them keeps
+        # the deck and the forecast on the same figures.
+        candidates += _collections(cf.get("ar_open") or [], today)
 
-    for card in candidates:
-        add({**card, "source": "auto"})
+    reconcile(candidates, sources_ok=bool(pf and cf))
     return deck(today)
+
+
+def reconcile(candidates: list[dict], sources_ok: bool) -> None:
+    """Make the derived cards match what the checks say *now*.
+
+    A card raised by a check is a claim about the present — "Skanska is 70
+    days late on 99 449 kr". Left alone it goes stale two ways: the figures
+    freeze at the moment it was written, and it stays open after the customer
+    has paid. So a regenerated card refreshes the one already on the deck, and
+    a card whose condition no longer produces a candidate is closed as
+    resolved — distinct from anything the CEO decided. Agent-proposed cards
+    are not touched; only the agent knows whether those still hold.
+
+    When a source could not be read at all, nothing is closed: the absence of
+    a candidate then means "unknown", not "fixed".
+    """
+    by_key = {c["key"]: c for c in candidates if c.get("key")}
+    with _lock:
+        data = _load()
+        changed = False
+        for card in data["cards"]:
+            if card.get("source") != "auto" or card.get("status") not in ("open", "snoozed"):
+                continue
+            fresh = by_key.pop(card.get("key"), None)
+            if fresh is not None:
+                for field in ("title", "body", "amount", "urgency", "evidence",
+                              "draft", "options"):
+                    if field in fresh and fresh[field] != card.get(field):
+                        card[field] = fresh[field]
+                        changed = True
+                card["refreshed"] = _now()
+            elif sources_ok:
+                card["status"] = "resolved"
+                card["closed"] = _now()
+                card["decided"] = {"at": datetime.now().isoformat(timespec="seconds"),
+                                   "effect": "resolved", "label": "Løste seg selv",
+                                   "note": "Kontrollen som laget kortet finner ikke "
+                                           "lenger noe å melde."}
+                changed = True
+                log.info("Kort %s lukket: forholdet er borte", card["id"])
+        if changed:
+            _save(data)
+    for card in by_key.values():
+        add({**card, "source": "auto"})
 
 
 # ------------------------------------------------- cards the agent proposes

@@ -36,15 +36,6 @@ def _cell(rows: list[dict], path: str, idx: int = 0):
     return None
 
 
-def _starts(rows: list[dict], prefix: str, idx: int = 0):
-    for r in rows:
-        if (r.get("path") or "").startswith(prefix):
-            cells = r.get("cells") or []
-            if idx < len(cells) and isinstance(cells[idx], (int, float)):
-                return float(cells[idx])
-    return None
-
-
 def _pct(part, whole):
     if part is None or not whole:
         return None

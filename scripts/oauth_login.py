@@ -9,11 +9,9 @@ token i .env. Refresh-tokenet utløper ikke, så dette gjøres én gang.
 import base64
 import hashlib
 import http.server
-import json
 import re
 import secrets
 import socketserver
-import sys
 import threading
 import urllib.parse
 import webbrowser
@@ -97,7 +95,7 @@ def main() -> int:
         server = socketserver.TCPServer(("127.0.0.1", PORT), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
-        print(f"\n2/4  Åpner nettleseren. Logg inn i Tripletex og godkjenn.")
+        print("\n2/4  Åpner nettleseren. Logg inn i Tripletex og godkjenn.")
         print(f"     Åpnes ikke automatisk? Lim inn denne:\n\n     {url}\n")
         webbrowser.open(url)
 
@@ -135,7 +133,7 @@ def main() -> int:
 
         set_env("TRIPLETEX_CLIENT_ID", client_id)
         set_env("TRIPLETEX_REFRESH_TOKEN", refresh)
-        print(f"\n✓ Lagret i .env")
+        print("\n✓ Lagret i .env")
         print(f"  access token  : {len(d.get('access_token',''))} tegn, "
               f"utløper om {d.get('expires_in')} s")
         print(f"  refresh token : {len(refresh)} tegn (utløper ikke)")

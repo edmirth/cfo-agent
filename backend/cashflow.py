@@ -150,6 +150,22 @@ def _schedule_receipts(invoices: list, today: date) -> list:
     return flows
 
 
+def _schedule_payments(bills: list, today: date) -> list:
+    """When our own bills leave. A bill not yet due goes on its due date; one
+    already overdue goes this week. The customer scheduler above must not be
+    reused here — it adds the lag customers take, and spreads the overdue
+    book over weeks, both of which understate what leaves the account soon."""
+    flows = []
+    for bill in bills:
+        try:
+            due = date.fromisoformat(bill["due"])
+        except (ValueError, TypeError):
+            continue
+        flows.append({"date": max(due, today), "amount": -bill["amount"],
+                      "kind": "ap", "label": f"Regning fra {bill['name']}"})
+    return flows
+
+
 def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
     """Monthly run-rates that a posting backlog cannot poison.
 
@@ -254,9 +270,7 @@ async def build(today: date | None = None) -> dict:
             committed.append({"date": today + timedelta(days=7 * (w + 1)),
                               "amount": per, "kind": "ar_unmatched",
                               "label": "Kundefordringer uten kjent faktura"})
-    for bill in _schedule_receipts(ap_open, today):
-        committed.append({**bill, "amount": -bill["amount"],
-                          "kind": "ap", "label": bill["label"]})
+    committed += _schedule_payments(ap_open, today)
 
     for item in com["items"]:
         if item["id"] not in STATUTORY_FROM_COMMITMENTS:
@@ -304,8 +318,10 @@ async def build(today: date | None = None) -> dict:
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
-    return _assemble(today, week0, opening, committed, expected,
+    data = _assemble(today, week0, opening, committed, expected,
                      rates, credit_days, warnings, ar_open, ap_open)
+    data["ar_open"] = ar_open
+    return data
 
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
