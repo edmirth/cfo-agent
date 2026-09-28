@@ -24,15 +24,14 @@ enough to run before every conversation.
 """
 import asyncio
 import logging
-import time
 from datetime import date
 
+import freshness
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.preflight")
 
 CACHE_SECONDS = 600
-_cache: dict = {}
 
 # Thresholds. These are the pre-flight's own; the materiality layer will take
 # them over when it lands.
@@ -106,6 +105,20 @@ def _answered(payload, key: str) -> bool:
     result a pre-flight must never produce. Absent means unavailable, not zero.
     """
     return isinstance(payload, dict) and key in payload
+
+
+def _tie(gl: float, sub: float) -> float:
+    """The gap between a general ledger account and its own subledger.
+
+    Both figures arrive on the account's own side: Kundereskontro comes back
+    positive against a debit balance, Leverandørreskontro negative against a
+    credit balance. So they subtract directly. Negating the payables subledger —
+    on the assumption that it arrives positive — reported a gap of exactly twice
+    the balance on books that tied perfectly. Subtracting signed values still
+    catches an account sitting on the wrong side, which comparing magnitudes
+    would quietly call a match.
+    """
+    return gl - sub
 
 
 def _check(cid, label, status, headline, detail="") -> dict:
@@ -206,9 +219,9 @@ async def build(today: date | None = None) -> dict:
 
     # 4 & 5. Subledgers against their general ledger accounts. A break means one
     # of the two is wrong, and neither figure can be quoted until it is found.
-    for cid, label_, account, report, sign in (
-            ("ar_tie", "Avstemming kundefordringer", 1500, ar, 1),
-            ("ap_tie", "Avstemming leverandørgjeld", 2400, ap, -1)):
+    for cid, label_, account, report in (
+            ("ar_tie", "Avstemming kundefordringer", 1500, ar),
+            ("ap_tie", "Avstemming leverandørgjeld", 2400, ap)):
         gl = _balance(rows, account)
         if not _answered(report, "table") or gl is None:
             checks.append(_check(cid, label_, "unavailable",
@@ -217,18 +230,13 @@ async def build(today: date | None = None) -> dict:
         sub = sum(float(r["cells"][1]) for r in _rows(report)
                   if len(r.get("cells") or []) > 1
                   and isinstance(r["cells"][1], (int, float)))
-        # Compare on the side the account belongs on. Receivables are a debit
-        # balance and the subledger is positive, so they match directly;
-        # payables are a credit balance against the same positive subledger,
-        # so they must sum to nothing. Comparing magnitudes instead would call
-        # a payables account sitting on the wrong side a clean match.
-        gap = gl - sign * sub
+        gap = _tie(gl, sub)
         ok = abs(gap) < TIE_TOLERANCE
         checks.append(_check(
             cid, label_, "ok" if ok else "warn",
             f"Konto {account} og reskontroen stemmer ({_kr(abs(gl))} kr)." if ok
             else (f"Konto {account} viser {_kr(gl)} kr, mens reskontroen tilsier "
-                  f"{_kr(sign * sub)} kr — {_kr(abs(gap))} kr i differanse."),
+                  f"{_kr(sub)} kr — {_kr(abs(gap))} kr i differanse."),
             "" if ok else "Én av de to er feil. Ingen av tallene kan siteres "
                           "før differansen er funnet."))
 
@@ -269,13 +277,11 @@ async def build(today: date | None = None) -> dict:
     return {"as_of": end, "condition": condition, "checks": checks}
 
 
+_flight = freshness.Cached(build, CACHE_SECONDS)
+
+
 async def cached() -> dict:
-    now = time.time()
-    if _cache.get("data") and now - _cache.get("at", 0) < CACHE_SECONDS:
-        return _cache["data"]
-    data = await build()
-    _cache.update({"data": data, "at": now})
-    return data
+    return await _flight.get()
 
 
 CONDITION_TEXT = {

@@ -47,7 +47,12 @@ tokens do not expire, so it stays headless afterwards.
 `backend/tlx_oauth.py` swaps the refresh token for access tokens and persists a
 rotated refresh token back to `.env`.
 
-**Read-only.** Every tool the agent can reach is a read.
+**Read-only, enforced at the toolset.** The Tripletex toolset is declared
+closed (`default_config: {enabled: false}`) and opened tool by tool from the
+allowlist in `backend/toolset.py` — 62 reads of the 146 the server offers, so a
+write tool cannot be reached even if the prompt asked for one. `/api/toolset`
+audits the list against the live server, because Tripletex adds tools and a new
+write tool should not slip in unnoticed.
 
 **Cost.** The system prompt and tool definitions carry a cache breakpoint. A
 follow-up turn reads several hundred thousand tokens from cache rather than
@@ -120,8 +125,6 @@ Sending a preset id (`daily`, `money`, `ar`, `margin`, `forecast`, `weeks`,
 - **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
   Move to Redis or Postgres before running more than one worker.
 - **No auth on the app itself.** Anyone who reaches the port gets the CFO.
-- **Read-only is only a prompt rule.** Enforce it at the toolset with
-  `default_config: {enabled: false}` plus an allowlist of read tools.
 - **The daily brief runs on request.** A cron or a scheduled deployment is what
   makes it arrive unasked.
 

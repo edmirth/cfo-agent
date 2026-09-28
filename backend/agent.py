@@ -439,7 +439,16 @@ async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict
                 _fallbacks_enabled = False
                 continue
             log.exception("Request rejected")
-            yield {"type": "error", "message": f"Forespørselen ble avvist: {detail}"}
+            # The full provider error — request id, billing links, internals —
+            # belongs in the log, not on the CEO's screen. Out of credits is the
+            # one case worth naming, because only the owner can fix it.
+            if "credit balance is too low" in detail:
+                shown = ("Anthropic-kontoen er tom for kreditt, så modellen "
+                         "svarer ikke. Tallene på forsiden virker fortsatt.")
+            else:
+                shown = ("Modellen avviste forespørselen. Detaljene ligger i "
+                         "serverloggen.")
+            yield {"type": "error", "message": shown}
             return
 
         if final is None:

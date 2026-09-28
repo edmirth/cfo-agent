@@ -7,13 +7,14 @@ from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import config
 from agent import run_turn
+from mcp_client import McpError
 from overview import cached as overview_cached
 import cards
 import company
@@ -25,6 +26,7 @@ from cashflow import cached as cashflow_cached
 from commitments import cached as commitments_cached
 from industry import dashboard as industry_dashboard, profile as industry_profile
 from preflight import cached as preflight_cached
+from summary import cached as summary_cached
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("cfo.api")
@@ -141,6 +143,26 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+def _panel(exc: Exception, what: str) -> dict:
+    """What a front-page panel is allowed to say when it cannot be computed.
+
+    These routes answer 200 with an `error` field on purpose — the frontend
+    throws per panel, so one dead panel does not take the page down. What they
+    must not do is put `str(exc)` in it: an MCP transport message or a
+    provider's billing URL is not something a managing director can act on, and
+    the request ids in it belong in the log. The log already has the traceback;
+    this is the sentence on the screen.
+    """
+    if isinstance(exc, McpError):
+        cause = "Tripletex svarte ikke på oppslaget."
+    elif "credit balance is too low" in str(exc):
+        cause = "Det er ikke kreditt på Anthropic-kontoen."
+    else:
+        cause = "Noe feilet i beregningen."
+    return {"error": f"{what} kunne ikke hentes nå. {cause} "
+                     f"Detaljene ligger i serverloggen."}
+
+
 @app.get("/api/health")
 async def health() -> dict:
     return {
@@ -168,7 +190,7 @@ async def toolset_audit() -> dict:
         return {**report, "allowed_tools": sorted(toolset.READ_TOOLS)}
     except Exception as exc:  # noqa: BLE001
         log.exception("Toolset audit failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Verktøylista")
 
 
 async def _check_definitions() -> None:
@@ -218,7 +240,7 @@ async def overview() -> dict:
         data = await overview_cached()
     except Exception as exc:  # noqa: BLE001 — forsiden skal vise en feil, ikke 500
         log.exception("Overview failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Nøkkeltallene")
     data["company"] = config.COMPANY_NAME
     return data
 
@@ -230,7 +252,7 @@ async def preflight() -> dict:
         return await preflight_cached()
     except Exception as exc:  # noqa: BLE001
         log.exception("Preflight failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Tilstanden i regnskapet")
 
 
 @app.get("/api/commitments")
@@ -240,7 +262,7 @@ async def commitments() -> dict:
         return await commitments_cached()
     except Exception as exc:  # noqa: BLE001
         log.exception("Commitments failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Forpliktelsene")
 
 
 @app.get("/api/cashflow")
@@ -250,7 +272,18 @@ async def cashflow() -> dict:
         return await cashflow_cached()
     except Exception as exc:  # noqa: BLE001
         log.exception("Cashflow failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Kontantstrømmen")
+
+
+@app.get("/api/summary")
+async def summary(refresh: bool = False) -> dict:
+    """Hvordan det går, skrevet av CFO-en. Ett modellkall per dag; refresh=true
+    tvinger en ny tekst."""
+    try:
+        return await summary_cached(refresh=refresh)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Summary failed")
+        return _panel(exc, "Oppsummeringen")
 
 
 @app.get("/api/dashboard")
@@ -265,7 +298,7 @@ async def dashboard(refresh: bool = False) -> dict:
         return await industry_dashboard()
     except Exception as exc:  # noqa: BLE001
         log.exception("Dashboard failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Bransjetallene")
 
 
 @app.get("/api/cards")
@@ -278,7 +311,7 @@ async def get_cards(refresh: bool = True) -> dict:
         return await cards.refresh() if refresh else cards.deck()
     except Exception as exc:  # noqa: BLE001
         log.exception("Cards failed")
-        return {"error": str(exc)}
+        return _panel(exc, "Sakene")
 
 
 @app.post("/api/cards/{card_id}/decide")
@@ -297,11 +330,15 @@ async def decide_card(card_id: str, req: DecisionRequest) -> dict:
 async def definitions_registry(id: str | None = None) -> dict:
     """Hva hvert tall betyr, og hva det har betydd tidligere."""
     if id:
-        return {"id": id, "history": definitions.history(id)}
+        past = definitions.history(id)
+        if not past:
+            raise HTTPException(404, f"Ingen definisjon med id «{id}».")
+        return {"id": id, "history": past}
     try:
         ledger = definitions.registry()
     except Exception as exc:  # noqa: BLE001
-        return {"error": str(exc)}
+        log.exception("Definitions registry failed")
+        return _panel(exc, "Definisjonene")
     return {**definitions.stamp(),
             "definitions": {k: {"version": h[-1]["version"],
                                 "label": h[-1]["label"],
@@ -312,18 +349,30 @@ async def definitions_registry(id: str | None = None) -> dict:
 
 
 @app.get("/api/trace")
-async def trace_account(account: int, date_from: str, date_to: str) -> dict:
+async def trace_account(
+    account: int = Query(gt=0, description="Kontonummer, positivt"),
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+) -> dict:
     """Posteringene bak en saldo. Sluttdato er inklusiv, slik folk mener den."""
+    parsed = {}
     for label, value in (("date_from", date_from), ("date_to", date_to)):
         try:
-            date.fromisoformat(value)
+            parsed[label] = date.fromisoformat(value)
         except ValueError:
             raise HTTPException(400, f"{label} må være YYYY-MM-DD, fikk «{value}»") from None
+    # Caught here rather than upstream: Tripletex rejects a reversed range with a
+    # message about the exclusive end date it never saw, which reads as our bug.
+    if parsed["date_from"] > parsed["date_to"]:
+        raise HTTPException(400, f"date_from ({date_from}) kan ikke være etter "
+                                 f"date_to ({date_to}).")
     try:
         return await trace.account(account, date_from, date_to)
     except Exception as exc:  # noqa: BLE001
+        # A failed call is not a result. Returning 200 with an error body let a
+        # client treat the rejection as data.
         log.exception("Trace failed")
-        return {"error": str(exc)}
+        raise HTTPException(502, f"Oppslaget mot Tripletex feilet: {exc}") from exc
 
 
 class CompanyText(BaseModel):

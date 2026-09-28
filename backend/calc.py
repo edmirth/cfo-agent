@@ -167,9 +167,13 @@ def _margin(i):
     if revenue == 0:
         raise CalcError("Omsetningen er null")
     v = result / revenue * 100
-    return {"value": round(v, 1), "unit": "%", "formatted": pct(v),
+    # A margin is the one ratio here that lives near zero, and one decimal turns
+    # 0.04 % into "0.0 %" — nothing left, rather than almost nothing left. Those
+    # are different findings for whoever reads it, so the thin case keeps two.
+    shown_v = round(v, 1) if abs(v) >= 1 else round(v, 2)
+    return {"value": shown_v, "unit": "%", "formatted": pct(v),
             "shown": f"{num(result)} / {num(revenue)} × 100 = {pct(v)}",
-            "note": f"Av hver hundrelapp fakturert blir {num(round(v, 1))} kroner igjen."}
+            "note": f"Av hver hundrelapp fakturert blir {num(shown_v)} kroner igjen."}
 
 
 def _wage_ratio(i):

@@ -60,7 +60,13 @@ function Shell() {
         onDelete={remove}
       />
       <SidebarInset>
-        <div className="mx-auto w-full max-w-4xl px-6 pt-4 pb-20">
+        {/* Forsiden er et oppslag med fire kort ved siden av hverandre og
+            trenger bredden. Chatten er tekst og skal beholde lesebredden. */}
+        <div
+          className={`mx-auto w-full px-6 pt-4 pb-20 ${
+            onChat ? "max-w-4xl" : "max-w-6xl"
+          }`}
+        >
           {onChat ? (
             <Chat conv={conv} />
           ) : hash === "#saker" ? (

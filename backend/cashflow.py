@@ -29,6 +29,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 
 import commitments
+import freshness
 from mcp_client import mcp
 # Shared with the pre-flight rather than copied: two readings of the monthly
 # balance report that drift apart are worse than one import.
@@ -37,7 +38,6 @@ from preflight import _account, _monthly, _rows
 log = logging.getLogger("cfo.cashflow")
 
 CACHE_SECONDS = 600
-_cache: dict = {}
 
 WEEKS = 13
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
@@ -403,13 +403,11 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
     }
 
 
+_flight = freshness.Cached(build, CACHE_SECONDS)
+
+
 async def cached() -> dict:
-    now = time.time()
-    if _cache.get("data") and now - _cache.get("at", 0) < CACHE_SECONDS:
-        return _cache["data"]
-    data = await build()
-    _cache.update({"data": data, "at": now})
-    return data
+    return await _flight.get()
 
 
 def briefing(data: dict | None) -> str:

@@ -27,17 +27,16 @@ Two things it is careful about:
 import asyncio
 import calendar
 import logging
-import time
-import company
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import company
+import freshness
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.commitments")
 
 CACHE_SECONDS = 600
-_cache: dict = {}
 
 TAX_RATE = 0.22          # alminnelig inntekt for an AS
 NEAR_DAYS = 30
@@ -314,13 +313,11 @@ async def build(today: date | None = None) -> dict:
     }
 
 
+_flight = freshness.Cached(build, CACHE_SECONDS)
+
+
 async def cached() -> dict:
-    now = time.time()
-    if _cache.get("data") and now - _cache.get("at", 0) < CACHE_SECONDS:
-        return _cache["data"]
-    data = await build()
-    _cache.update({"data": data, "at": now})
-    return data
+    return await _flight.get()
 
 
 VERDICT_TEXT = {

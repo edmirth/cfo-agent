@@ -71,7 +71,9 @@ FORMULAS: dict[str, str] = {
                     "commitments.py dates it"),
     "kontantdager": "free cash ÷ average daily operating cost",
     "likviditetsgrad": "Tripletex Likviditetsgrad 1, read from Nøkkeltallsrapport",
-    "egenkapitalandel": "Tripletex Egenkapitalandel, read from Nøkkeltallsrapport",
+    "egenkapitalandel": ("(assets 1000–1999 − debt 2100–2999) ÷ assets × 100, "
+                         "computed from the trial balance; Tripletex's own "
+                         "Egenkapitalandel row reports 0 and is not used"),
 }
 
 _COMMENT = re.compile(r"#.*$", re.MULTILINE)

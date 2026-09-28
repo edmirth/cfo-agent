@@ -33,6 +33,7 @@ from anthropic import AsyncAnthropic
 import calc
 import commitments
 import config
+import overview
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.industry")
@@ -64,10 +65,20 @@ def _m(name: str, **inputs):
         return None
 
 
+def _tile_value(value):
+    """Round a tile's figure for display, keeping a thin ratio legible."""
+    if not isinstance(value, float):
+        return value
+    return round(value, 1) if abs(value) >= 1 else round(value, 2)
+
+
 def _pct(part, whole):
     if part is None or not whole:
         return None
-    return round(part / whole * 100, 1)
+    v = part / whole * 100
+    # Same reason as in overview: a margin of 0.043 must not read as 0.0, which
+    # is the difference between thin and nothing on the dashboard's own KPI.
+    return round(v, 1) if abs(v) >= 1 else round(v, 2)
 
 
 def _div(a, b):
@@ -179,7 +190,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
     prev_start = f"{today.year - 1}-01-01"
     prev_end = today.replace(year=today.year - 1).isoformat()
 
-    pnl, prev, ratios, ar, top, emp, invoices, com = await asyncio.gather(
+    pnl, prev, ratios, ar, top, emp, invoices, com, ov = await asyncio.gather(
         _safe(mcp.call("fetch_report", {"report_name": "Resultatrapport",
                                         "period_start": start,
                                         "period_end": today.isoformat(),
@@ -204,6 +215,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
                        {"invoiceDateFrom": start, "invoiceDateTo": today.isoformat(),
                         "count": 40}), "fakturaer"),
         _safe(commitments.cached(), "forpliktelser"),
+        _safe(overview.cached(), "forsidetall"),
     )
 
     p, pr, rr = _rows(pnl), _rows(prev), _rows(ratios)
@@ -243,7 +255,9 @@ async def _gather(today: date) -> tuple[dict, dict]:
     if ar_rows:
         ar_total = sum(v for _, v in ar_rows)
 
-    equity = _at(rr, "Egenkapitalandel i % (soliditet)")
+    # Egenkapitalandelen kommer fra overview, som regner den ut av saldobalansen.
+    # Nøkkeltallsrapportens egen rad melder 0 for et selskap med ~30 % egenkapital,
+    # så den leses ikke her heller.
     ctx = {
         "revenue": revenue, "revenue_prev": _at(pr, "Driftsresultat > Driftsinntekter"),
         "operating": operating, "wages": wages, "materials": materials,
@@ -255,7 +269,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
         "top_customer_share": top_share, "top3_share": top3,
         "free_cash": (com or {}).get("free_all"),
         "liquidity": _at(rr, "Likviditetsgrad 1"),
-        "equity_ratio": round(equity * 100, 1) if equity is not None else None,
+        "equity_ratio": ((ov or {}).get("kpis") or {}).get("egenkapitalandel_pct"),
     }
 
     evidence = {
@@ -441,7 +455,10 @@ async def dashboard(today: date | None = None) -> dict:
         tiles.append({
             "id": kpi.id, "label": kpi.label, "plain": kpi.plain,
             "unit": kpi.unit, "better": kpi.better,
-            "value": round(value, 1) if isinstance(value, float) else value,
+            # One decimal, except near zero — rounding a 0.04 % margin to one
+            # decimal reported it as 0.0, which reads as nothing left rather than
+            # almost nothing. Same rule as _pct and calc._margin.
+            "value": _tile_value(value),
             "target": item.get("mal"), "alert": item.get("varsel"),
             "why": item.get("hvorfor"),
             "status": _status(value, item.get("mal"), item.get("varsel"), kpi.better),

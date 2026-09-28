@@ -51,12 +51,31 @@ export type Commitments = {
   error?: string
 }
 
+/** Én måned i saldobalansen. Null betyr «rapporten dekker ikke måneden», ikke null kroner. */
+export type Month = {
+  month: string
+  revenue: number | null
+  wages: number | null
+  result: number | null
+  bank: number | null
+}
+
 export type Overview = {
   company: string
   kpis: Record<string, number>
+  monthly?: Month[]
   top_debtor?: { name: string; amount: number; share_pct: number }
   flags?: { ubokfort_skatt?: number }
   generated_at?: string
+  error?: string
+}
+
+/** Forsidens oppsummering. `stale` er gårsdagens tekst, når dagens ikke lot seg skrive. */
+export type Summary = {
+  verdict?: string | null
+  text?: string
+  written?: string
+  stale?: boolean
   error?: string
 }
 
@@ -88,5 +107,6 @@ export const api = {
   commitments: () => get<Commitments>("/api/commitments"),
   preflight: () => get<Preflight>("/api/preflight"),
   cashflow: () => get<Cashflow>("/api/cashflow"),
+  summary: () => get<Summary>("/api/summary"),
   presets: () => get<{ presets: Preset[] }>("/api/presets"),
 }

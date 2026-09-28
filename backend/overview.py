@@ -6,16 +6,15 @@ selskap som går i pluss.
 """
 import asyncio
 import logging
-import time
 from datetime import date
 
+import freshness
 import memory
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.overview")
 
 CACHE_SECONDS = 600
-_cache: dict = {}
 
 MONTHS = ["Jan", "Feb", "Mars", "April", "Mai", "Juni",
           "Juli", "Aug", "Sept", "Okt", "Nov", "Des"]
@@ -39,7 +38,10 @@ def _cell(rows: list[dict], path: str, idx: int = 0):
 def _pct(part, whole):
     if part is None or not whole:
         return None
-    return round(part / whole * 100, 1)
+    v = part / whole * 100
+    # One decimal is right for a wage share of 83.8. It is wrong for a margin of
+    # 0.043, which reads as 0.0 — the one figure where thin and nil differ.
+    return round(v, 1) if abs(v) >= 1 else round(v, 2)
 
 
 async def build(today: date | None = None) -> dict:
@@ -75,38 +77,92 @@ async def build(today: date | None = None) -> dict:
     pre_tax = _cell(p, "Ordinært resultat før skattekostnad")
     booked_tax = _cell(p, "Skattekostnad på ordinært resultat")
 
-    # Månedsserie for omsetning, og siste saldo for bank og kundefordringer.
+    # Månedsserier til forsidekortene, og siste saldo for bank og kundefordringer.
     m = _rows(monthly)
     cols = [c.get("name") for c in monthly.get("table", {}).get("columns", [])]
-    series, cash, receivables = [], None, None
+    months = [(i, SHORT[MONTHS.index(c)]) for i, c in enumerate(cols) if c in MONTHS]
+
+    # Siste månedskolonne og «Utgående saldo» er ikke alltid like — closing tar
+    # med etterposteringer som ikke har landet i månedskolonnen ennå. Resultat-
+    # rapporten regner med closing, så serien må ende der, ellers summerer
+    # månedene til noe annet enn tallet vi viser stort på samme kort. Avviket
+    # havner i inneværende måned, som er den som ikke er ferdig uansett.
+    closing = next((i for i, c in enumerate(cols) if c == "Utgående saldo"), None)
+    if closing is not None and months:
+        months[-1] = (closing, months[-1][1])
+
     def _account_no(row: dict) -> int | None:
         head = (row.get("path") or "").split(" ", 1)[0]
         return int(head) if head.isdigit() else None
 
-    rev_rows = [r for r in m
-                if (n := _account_no(r)) is not None and 3000 <= n <= 3999]
-    if rev_rows and cols:
-        prev = 0.0
-        for i, col in enumerate(cols):
-            if col not in MONTHS:
-                continue
-            cum = 0.0
-            for r in rev_rows:                    # summer alle inntektskontoer
-                cell = r["cells"][i] if i < len(r.get("cells") or []) else None
+    def _in_range(lo: int, hi: int) -> list[dict]:
+        return [r for r in m
+                if (n := _account_no(r)) is not None and lo <= n <= hi]
+
+    def _cumulative(rows: list[dict], sign: int) -> list[float | None]:
+        """Akkumulert saldo per måned, summert konto for konto.
+
+        Saldobalansen lar cella stå tom når kontoen ikke har bevegelse den
+        måneden. Tomt betyr uendret, ikke null — så hver konto viderefører sin
+        egen forrige saldo før de summeres. Summeres kolonnen rått i stedet,
+        forsvinner hver konto som har ligget stille, og driftsresultatet bommer
+        med akkurat de kontoene."""
+        carried: list[float | None] = [None] * len(rows)
+        out: list[float | None] = []
+        started = False
+        for i, _ in months:
+            for j, r in enumerate(rows):
+                cells = r.get("cells") or []
+                cell = cells[i] if i < len(cells) else None
                 if isinstance(cell, (int, float)):
-                    cum += -float(cell)           # inntekter ligger i kredit
-            series.append({"month": SHORT[MONTHS.index(col)],
-                           "value": round(cum - prev, 2)})
-            prev = cum
-    for r in m:
-        path = r.get("path") or ""
-        cells = [c for c in (r.get("cells") or []) if isinstance(c, (int, float))]
-        if not cells:
-            continue
-        if path.startswith("1920"):
-            cash = float(cells[-1])
-        elif path.startswith("1500"):
-            receivables = float(cells[-1])
+                    carried[j] = float(cell)
+                    started = True
+            out.append(sign * sum(c for c in carried if c is not None)
+                       if started else None)
+        return out
+
+    def _balance(rows: list[dict], sign: int = 1) -> list[float | None]:
+        """Saldoen ved utgangen av hver måned, slik den står i rapporten."""
+        if not rows:
+            return [None] * len(months)
+        return [None if v is None else round(v, 2)
+                for v in _cumulative(rows, sign)]
+
+    def _flow(rows: list[dict], sign: int = 1) -> list[float | None]:
+        """Bevegelsen i måneden. Saldobalansen er akkumulert, så hver måned er
+        differansen mot forrige — og inntekter ligger i kredit, altså negative."""
+        if not rows:
+            return [None] * len(months)
+        out: list[float | None] = []
+        prev = 0.0
+        for v in _cumulative(rows, sign):
+            if v is None:
+                out.append(None)
+                continue
+            out.append(round(v - prev, 2))
+            prev = v
+        return out
+
+    bank_rows = [r for r in m if (r.get("path") or "").startswith("1920")]
+    ar_row_1500 = [r for r in m if (r.get("path") or "").startswith("1500")]
+
+    revenue_m = _flow(_in_range(3000, 3999), -1)
+    wages_m = _flow(_in_range(5000, 5999))
+    # Driftsresultat = inntekter minus driftskostnader. Kontoklasse 3 til 7 er
+    # akkurat driften; 8 er finans og skatt og holdes utenfor.
+    result_m = _flow(_in_range(3000, 7999), -1)
+    bank_m = _balance(bank_rows)
+
+    series = [{"month": name,
+               "revenue": revenue_m[j], "wages": wages_m[j],
+               "result": result_m[j], "bank": bank_m[j]}
+              for j, (_, name) in enumerate(months)]
+
+    def _last(vals: list[float | None]) -> float | None:
+        return next((v for v in reversed(vals) if v is not None), None)
+
+    cash = _last(bank_m)
+    receivables = _last(_balance(ar_row_1500)) if ar_row_1500 else None
 
     # Største enkeltkunde blant fordringene — konsentrasjonsrisikoen.
     ar_rows = sorted(
@@ -118,8 +174,23 @@ async def build(today: date | None = None) -> dict:
     top_customer = ar_rows[0] if ar_rows else None
 
     rr = _rows(ratios)
+    # Likviditetsgrad 1 er etterregnet mot saldobalansen og stemmer, så den
+    # leses. Egenkapitalandelen gjør det ikke: Nøkkeltallsrapporten melder 0 for
+    # et selskap som har rundt 30 % egenkapital, så den regnes ut her i stedet.
+    # Egenkapital er residualen — eiendeler minus gjeld — og da er årets
+    # resultat med selv om det ennå ikke er ført mot 2050.
     liquidity = _cell(rr, "Likviditetsgrad 1")
-    equity_ratio = _cell(rr, "Egenkapitalandel i % (soliditet)")
+
+    def _side_total(lo: int, hi: int) -> float | None:
+        vals = [float(r["cells"][-1]) for r in m
+                if (n := _account_no(r)) is not None and lo <= n <= hi
+                and (r.get("cells") or []) and isinstance(r["cells"][-1], (int, float))]
+        return sum(vals) if vals else None
+
+    assets = _side_total(1000, 1999)
+    debts = _side_total(2100, 2999)          # gjeld står i kredit, altså negativ
+    equity_ratio = (_pct(assets + debts, assets)
+                    if assets and debts is not None else None)
 
     unbooked_tax = None
     if pre_tax and pre_tax > 0 and not booked_tax:
@@ -140,9 +211,9 @@ async def build(today: date | None = None) -> dict:
             "bank": cash,
             "kundefordringer": receivables or ar_ledger_total,
             "likviditetsgrad": liquidity,
-            "egenkapitalandel_pct": round(equity_ratio * 100, 1) if equity_ratio is not None else None,
+            "egenkapitalandel_pct": equity_ratio,
         },
-        "revenue_by_month": series,
+        "monthly": series,
         "top_debtor": ({"name": top_customer[0], "amount": top_customer[1],
                         # samme nevner som tallet vi viser, ellers spriker de
                         "share_pct": _pct(top_customer[1],
@@ -152,16 +223,21 @@ async def build(today: date | None = None) -> dict:
     }
 
 
-async def cached() -> dict:
-    now = time.time()
-    if _cache.get("data") and now - _cache.get("at", 0) < CACHE_SECONDS:
-        return _cache["data"]
+async def _build_and_remember() -> dict:
     data = await build()
-    _cache.update({"data": data, "at": now})
     # Trend memory, written without a model in the loop. Same-day calls
-    # overwrite, so the ten-minute refresh leaves one row per day.
+    # overwrite, so the ten-minute refresh leaves one row per day. Inside the
+    # single-flight build rather than after it: two concurrent cold callers used
+    # to write this twice for the same day.
     try:
         memory.snapshot(data["kpis"], on=data["generated_at"])
     except Exception:  # noqa: BLE001 — the dashboard must render regardless
         log.exception("Kunne ikke lagre dagens nøkkeltall")
     return data
+
+
+_flight = freshness.Cached(_build_and_remember, CACHE_SECONDS)
+
+
+async def cached() -> dict:
+    return await _flight.get()

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts"
 
+import { MetricCard } from "@/components/metric-card"
+import type { Point } from "@/components/metric-card"
+import { SummaryCard } from "@/components/summary-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,8 +22,16 @@ import {
 } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { api } from "@/lib/api"
-import type { Cashflow, Commitments, Dashboard, Overview, Preflight } from "@/lib/api"
+import { api, get } from "@/lib/api"
+import type {
+  Cashflow,
+  Commitments,
+  Dashboard,
+  Month,
+  Overview,
+  Preflight,
+  Summary,
+} from "@/lib/api"
 import { dateNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
 import { useConversations } from "@/store/conversations"
 
@@ -60,6 +71,98 @@ type Data = {
   ov?: Overview
   dash?: Dashboard
   pre?: Preflight
+  sum?: Summary
+}
+
+/* ── de fire kortene ──────────────────────────────────────────── */
+// Månedstallene kommer fra saldobalansen, så de fire kortene er samme kilde som
+// resten av forsiden. Null i en måned betyr at rapporten ikke dekker den, og de
+// månedene faller ut av serien i stedet for å tegnes som null kroner.
+const pick = (m: Month[], key: keyof Omit<Month, "month">): Point[] =>
+  m.map((x) => ({ month: x.month, value: x[key] }))
+
+const sum = (p: Point[]) =>
+  p.reduce<number | null>((n, x) => (x.value == null ? n : (n ?? 0) + x.value), null)
+
+type CardSpec = {
+  label: string
+  value: string
+  series: Point[]
+  note: React.ReactNode
+  kind?: "bar" | "line"
+  partial?: boolean
+}
+
+function metrics({ ov }: Data): CardSpec[] {
+  const k = ov?.kpis || {}
+  const m = ov?.monthly || []
+
+  const revenue = pick(m, "revenue")
+  const wages = pick(m, "wages")
+  const result = pick(m, "result")
+  const bank = pick(m, "bank")
+
+  // Budsjettet er periodisert likt som omsetningen, altså hittil i år mot
+  // hittil i år. Mangler det, sier kortet hva snittmåneden har vært i stedet.
+  const budget = k.omsetning_budsjett
+  const revNote = budget
+    ? `${pct((k.omsetning / budget) * 100, 0)} av budsjettet hittil i år`
+    : (() => {
+        const seen = revenue.filter((p) => p.value != null)
+        return seen.length
+          ? `Snitt ${mill((sum(revenue) || 0) / seen.length)} per måned`
+          : "Hittil i år"
+      })()
+
+  const wageTarget = k.lonnsandel_budsjett_pct
+  const wageNote = k.lonnsandel_pct
+    ? `${pct(k.lonnsandel_pct, 0)} av omsetningen` +
+      (wageTarget ? `, mot ${pct(wageTarget, 0)} i budsjettet` : "")
+    : "Hittil i år"
+
+  // Retningen de siste tre månedene sier mer om banken enn saldoen alene.
+  const seenBank = bank.filter((p) => p.value != null)
+  const back = seenBank[Math.max(0, seenBank.length - 4)]
+  const last = seenBank[seenBank.length - 1]
+  const bankNote =
+    seenBank.length > 3 && back && last && back.value != null && last.value != null
+      ? `${last.value >= back.value ? "Opp" : "Ned"} ${mill(Math.abs(last.value - back.value))} siden ${back.month}`
+      : "På driftskontoen nå"
+
+  // Inneværende måned er ikke fakturert ferdig. Bevegelsene tones derfor ned i
+  // siste søyle; banksaldoen er ikke en bevegelse og står som den er.
+  return [
+    {
+      label: "Omsetning",
+      value: mill(k.omsetning),
+      series: revenue,
+      note: revNote,
+      partial: true,
+    },
+    {
+      label: "Lønnskostnad",
+      value: mill(sum(wages)),
+      series: wages,
+      note: wageNote,
+      partial: true,
+    },
+    {
+      label: "Penger i banken",
+      value: mill(k.bank),
+      series: bank,
+      kind: "line",
+      note: bankNote,
+    },
+    {
+      label: "Driftsresultat",
+      value: mill(k.driftsresultat),
+      series: result,
+      note: k.driftsmargin_pct
+        ? `Margin ${pct(k.driftsmargin_pct)} av omsetningen`
+        : "Hittil i år",
+      partial: true,
+    },
+  ]
 }
 
 /* ── signalene: det som krever handling ───────────────────────── */
@@ -190,18 +293,29 @@ const chartConfig = {
   expected_close: { label: "anslag", color: "var(--chart-expected)" },
 } satisfies ChartConfig
 
-function CashChart({ cash }: { cash: Cashflow }) {
+function CashChart({ cash, compact }: { cash: Cashflow; compact?: boolean }) {
   const floor = cash.assumptions?.monthly_wages || 0
   const data = cash.weeks.map((w) => ({ ...w, week: w.label.replace("Uke ", "") }))
   return (
-    <ChartContainer config={chartConfig} className="h-[280px] w-full">
+    <ChartContainer
+      config={chartConfig}
+      className={compact ? "h-[180px] w-full" : "h-[280px] w-full"}
+    >
       <LineChart data={data} margin={{ left: 8, right: 16, top: 16, bottom: 8 }}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="week" tickLine={false} axisLine={false} tickMargin={10} />
+        <XAxis
+          dataKey="week"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={10}
+          // Tretten ukenumre får ikke plass i en smal kolonne; annenhver gjør.
+          interval={compact ? 1 : 0}
+        />
         <YAxis
           tickLine={false}
           axisLine={false}
-          width={62}
+          // Smalere enn dette brekker «6,0 mill.» over to linjer.
+          width={compact ? 64 : 62}
           tickFormatter={(v) => mill(v as number)}
         />
         {floor > 0 && (
@@ -209,12 +323,16 @@ function CashChart({ cash }: { cash: Cashflow }) {
             y={floor}
             stroke="var(--destructive)"
             strokeDasharray="2 5"
-            label={{
-              value: `gulv · én månedslønn ${mill(floor)}`,
-              position: "insideBottomLeft",
-              fill: "var(--destructive)",
-              fontSize: 11,
-            }}
+            label={
+              compact
+                ? undefined
+                : {
+                    value: `gulv · én månedslønn ${mill(floor)}`,
+                    position: "insideBottomLeft",
+                    fill: "var(--destructive)",
+                    fontSize: 11,
+                  }
+            }
           />
         )}
         <ChartTooltip
@@ -264,6 +382,7 @@ export function Brief() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [had] = useState(seenIds)
+  const [rewriting, setRewriting] = useState(false)
 
   const loadAll = () => {
     setLoading(true)
@@ -279,9 +398,27 @@ export function Brief() {
       setLoading(false)
       setFailed(res.every((r) => r.status === "rejected"))
     })
+    // Oppsummeringen står for seg: den er skrevet, ikke regnet ut, og skal
+    // verken holde igjen resten av forsiden eller felle den om den feiler.
+    api
+      .summary()
+      .then((sum) => setD((s) => ({ ...s, sum })))
+      // Grunnen beholdes. Kortet skal kunne si hvorfor det ikke står noe der,
+      // ellers ser en tom oppsummering likedan ut uansett årsak.
+      .catch((e: unknown) =>
+        setD((s) => ({ ...s, sum: { error: e instanceof Error ? e.message : String(e) } })),
+      )
   }
 
   useEffect(loadAll, [])
+
+  const rewrite = () => {
+    setRewriting(true)
+    get<Summary>("/api/summary?refresh=true")
+      .then((sum) => setD((s) => ({ ...s, sum })))
+      .catch(() => {})
+      .finally(() => setRewriting(false))
+  }
 
   const signals = useMemo(() => buildSignals(d), [d])
   useEffect(() => {
@@ -325,28 +462,67 @@ export function Brief() {
         )}
       </header>
 
-      {d.cash && (
-        <section>
-          <Separator className="mb-6" />
-          <div className="mb-4 flex items-baseline justify-between gap-4">
-            <h2 className="text-[17px] font-semibold">Kontanter, 13 uker</h2>
-            <span className="text-muted-foreground font-mono text-xs">
-              Fra {dateNo(d.cash.as_of)} · {kr(d.cash.opening)} kr på konto nå
-            </span>
-          </div>
-          <CashChart cash={d.cash} />
-          <p className="text-muted-foreground mt-4 text-sm">
-            Tynnest i{" "}
-            <b className="text-foreground font-mono">
-              {d.cash.low_committed.label.toLowerCase()}
-            </b>{" "}
-            (fra {dateNo(d.cash.low_committed.start)}):{" "}
-            <b className="text-foreground font-mono">{kr(d.cash.low_committed.amount)} kr</b>{" "}
-            bundet. Åpne kundefakturaer: {kr(d.cash.open_invoices?.receivable_total)} kr på{" "}
-            {d.cash.open_invoices?.receivable} fakturaer.
-          </p>
-        </section>
-      )}
+      {/* Slik driften har sett ut de siste månedene. */}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {metrics(d).map((c) => (
+          <MetricCard
+            key={c.label}
+            label={c.label}
+            value={c.value}
+            series={c.series}
+            note={c.note}
+            kind={c.kind}
+            partial={c.partial}
+            loading={loading && !d.ov}
+          />
+        ))}
+      </section>
+
+      {/* Ordene til venstre, de neste tretten ukene til høyre. */}
+      <section className="grid items-stretch gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <SummaryCard
+            data={d.sum}
+            loading={loading && !d.sum}
+            refreshing={rewriting}
+            onRefresh={rewrite}
+            onAsk={() =>
+              ask(
+                "Gå gjennom hvordan det går i selskapet nå: omsetning, lønnskostnad, driftsresultat og penger på konto de siste månedene. Hva har endret seg, og hva bør jeg gjøre noe med?",
+                "Hvordan det går",
+              )
+            }
+          />
+        </div>
+        <Card className="lg:col-span-1">
+          <CardContent className="grid gap-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-muted-foreground font-mono text-[10px] tracking-[0.12em] uppercase">
+                Kontanter, 13 uker
+              </span>
+              {d.cash && (
+                <span className="text-muted-foreground/70 font-mono text-[10px]">
+                  {mill(d.cash.opening)} nå
+                </span>
+              )}
+            </div>
+            {d.cash ? (
+              <>
+                <CashChart cash={d.cash} compact />
+                <p className="text-muted-foreground text-xs leading-snug">
+                  Tynnest i{" "}
+                  <b className="text-foreground font-mono">
+                    {d.cash.low_committed.label.toLowerCase()}
+                  </b>
+                  : {kr(d.cash.low_committed.amount)} kr bundet.
+                </p>
+              </>
+            ) : (
+              <Skeleton className="h-[180px] w-full" />
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       {d.dash?.kpis?.length ? (
         <section>

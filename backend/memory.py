@@ -156,6 +156,12 @@ def resolve_finding(finding_id: str, outcome: str, status: str = "resolved") -> 
         raise NotFound(f"No finding {finding_id}")
 
 
+def open_findings() -> list[dict]:
+    """Everything flagged and not yet closed, oldest first."""
+    with _lock:
+        return [dict(f) for f in _load()["findings"] if f.get("status") == "open"]
+
+
 def add_forecast(period: str, metric: str, expected: float,
                  basis: str, low: float | None = None,
                  high: float | None = None) -> dict:

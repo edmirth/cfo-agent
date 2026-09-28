@@ -133,11 +133,15 @@
 :root {
     --chart-committed: #1B4FD8;
     --chart-expected: #A35A00;
+    --chart-negative: #e7000b;
 }
 
 .dark {
     --chart-committed: #4E7FE0;
     --chart-expected: #B87C22;
+    /* Ikke --destructive: den er en tekstfarge og ligger utenfor lyshetsbåndet
+       for flatemerker i mørk modus. Dette er samme rødt, trinnet inn i båndet. */
+    --chart-negative: #e54b52;
 }
 
 /* Arbeidssporet: linja som skjer akkurat nå lyser svakt. */
