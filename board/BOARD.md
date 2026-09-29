@@ -4,14 +4,10 @@ kanban-plugin: board
 
 ## Backlog
 
-- [ ] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability
-- [ ] Schedule VAT and AGA on future sales in the 13-week forecast @agent #forecast
-- [ ] Roll due dates forward off weekends and Norwegian holidays @agent #forecast
 - [ ] Add tests for the single-flight cache and the equity ratio @agent #tests
 - [ ] Build an in-app screen to connect a customer's own accounting system @either #platform
 - [ ] Add login and authentication in front of every API route @either #platform
 - [ ] Move chat sessions from an in-process dict into a shared store @either #platform
-- [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 - [ ] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast
 - [ ] Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] Lane 2 epic: budget-vs-actual, rolling reforecast and FTE-based KPIs @either #kpi
@@ -27,6 +23,11 @@ kanban-plugin: board
 
 
 ## Next
+
+- [ ] Roll due dates forward off weekends and Norwegian holidays @agent #forecast
+- [ ] Schedule VAT and AGA on future sales in the 13-week forecast @agent #forecast
+- [ ] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability
+- [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 
 
 
