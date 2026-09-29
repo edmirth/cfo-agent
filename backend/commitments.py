@@ -32,6 +32,7 @@ from datetime import date, timedelta
 
 import company
 import freshness
+import workdays
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.commitments")
@@ -158,6 +159,26 @@ GROUPS = [
 ASSUMED_DUE = {"leverandorgjeld", "ansatte_eiere", "annen_gjeld"}
 
 
+# Which way a date moves when it lands on a weekend or a holiday. Statutory
+# deadlines roll forward to the next working day; wages roll back to the last
+# one, because staff are not left short over a weekend. Supplier bills are
+# absent from both: those carry a real due date from the invoice, and guessing
+# which way a given supplier shifts it would be inventing a fact.
+PAID_EARLY = {"skyldig_lonn", "feriepenger"}
+SHIFTED = PAID_EARLY | {"mva_oppgjor", "mva_lopende", "forskuddstrekk", "aga",
+                        "aga_ferie", "betalbar_skatt", "arets_skatt"}
+
+
+def _shift(group_id: str, due: date) -> date:
+    """Move a due date onto a working day, in the direction that obligation
+    actually moves. Anything not listed keeps the date it was given."""
+    if group_id in PAID_EARLY:
+        return workdays.backward(due)
+    if group_id in SHIFTED:
+        return workdays.forward(due)
+    return due
+
+
 def _assumed_due() -> set[str]:
     if company.setting("lonn_utbetalingsdag"):
         return ASSUMED_DUE
@@ -249,7 +270,7 @@ async def build(today: date | None = None) -> dict:
             owed = 0.0
         if abs(owed) < 0.5:
             continue
-        due = g.due(today)
+        due = _shift(g.id, g.due(today))
         items.append({"id": g.id, "label": g.label, "plain": g.plain,
                       "amount": round(owed, 2), "kind": g.kind,
                       "due": due.isoformat(), "days": (due - today).days,
@@ -275,7 +296,7 @@ async def build(today: date | None = None) -> dict:
     pre_tax = _cell(p, "Ordinært resultat før skattekostnad")
     booked_tax = _cell(p, "Skattekostnad på ordinært resultat")
     if pre_tax and pre_tax > 0 and not booked_tax:
-        due = _tax_due(today)
+        due = _shift("arets_skatt", _tax_due(today))
         items.append({
             "id": "arets_skatt", "label": "Skatt på årets overskudd",
             "plain": "selskapsskatt på overskuddet så langt i år, som ennå "

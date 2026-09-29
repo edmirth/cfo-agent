@@ -30,6 +30,7 @@ from datetime import date, timedelta
 
 import commitments
 import freshness
+import workdays
 from mcp_client import mcp
 # Shared with the pre-flight rather than copied: two readings of the monthly
 # balance report that drift apart are worse than one import.
@@ -287,7 +288,8 @@ async def build(today: date | None = None) -> dict:
     net_wages = rates["wages"] * (1 - WITHHOLDING_SHARE)
     month = today
     while True:
-        pay_day = date(month.year, month.month, monthrange(month.year, month.month)[1])
+        pay_day = workdays.backward(
+            date(month.year, month.month, monthrange(month.year, month.month)[1]))
         if pay_day >= horizon:
             break
         if pay_day >= today:
@@ -395,6 +397,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             "pay_lag_days": PAY_LAG_DAYS,
             "late_spread_weeks": LATE_SPREAD_WEEKS,
             "withholding_share": WITHHOLDING_SHARE,
+            # Said out loud because it moves which week is the tight one.
+            "working_day_shift": ("statutory dues roll forward to the next "
+                                  "working day, wages back to the last"),
             "monthly_revenue": round(rates["revenue"], 2),
             "monthly_wages": round(rates["wages"], 2),
             "monthly_opex": round(rates["opex"], 2),
