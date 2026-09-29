@@ -17,3 +17,5 @@ The account has no credit. Verified directly against the API, not inferred: `POS
 
 ## Log
 - 2026-09-29 (agent): created
+- 2026-09-29 (edmir): moved to Done in Obsidian
+- 2026-09-29 (agent): verified — /v1/messages returns 200, credit is live

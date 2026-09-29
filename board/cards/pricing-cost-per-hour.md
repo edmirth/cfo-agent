@@ -1,5 +1,5 @@
 ---
-title: Pricing support via cost-per-hour
+title: Compute cost-per-hour from hours and projects to support pricing
 owner: @either
 milestone: #decisions
 created: 2026-09-29

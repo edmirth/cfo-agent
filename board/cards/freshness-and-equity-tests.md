@@ -1,5 +1,5 @@
 ---
-title: Cover freshness.py and the equity ratio with tests
+title: Add tests for the single-flight cache and the equity ratio
 owner: @agent
 milestone: #tests
 created: 2026-09-29

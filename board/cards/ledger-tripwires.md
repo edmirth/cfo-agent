@@ -1,5 +1,5 @@
 ---
-title: Checks the machine should not need to reason its way to
+title: Add deterministic ledger tripwires to the pre-flight checks
 owner: @agent
 milestone: #warnings
 created: 2026-09-29

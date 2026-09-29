@@ -1,5 +1,5 @@
 ---
-title: Produce a monthly pack that survives a board
+title: Build a monthly financial pack on a cadence, with an archive
 owner: @either
 milestone: #pack
 created: 2026-09-29

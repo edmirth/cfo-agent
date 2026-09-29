@@ -1,5 +1,5 @@
 ---
-title: Don't cache a build whose Tripletex reports failed
+title: Retry failed Tripletex report builds instead of caching empty KPIs
 owner: @agent
 milestone: #reliability
 created: 2026-09-29

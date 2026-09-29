@@ -1,5 +1,5 @@
 ---
-title: What a bank will want to see
+title: Build a financing view: equity ratio, bank requirements, credit-line odds
 owner: @agent
 milestone: #decisions
 created: 2026-09-29

@@ -1,5 +1,5 @@
 ---
-title: A rolling reforecast the agent owns
+title: Build a rolling reforecast that is scored against actuals
 owner: @either
 milestone: #kpi
 created: 2026-09-29

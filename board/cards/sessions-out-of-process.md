@@ -1,5 +1,5 @@
 ---
-title: Move sessions out of the process
+title: Move chat sessions from an in-process dict into a shared store
 owner: @either
 milestone: #platform
 created: 2026-09-29

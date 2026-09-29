@@ -1,5 +1,5 @@
 ---
-title: Turn collections into a process
+title: Build a daily collections list that flags repeat late payers
 owner: @either
 milestone: #liquidity
 created: 2026-09-29

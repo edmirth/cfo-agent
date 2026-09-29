@@ -1,5 +1,5 @@
 ---
-title: Let customers connect their own accounting system
+title: Build an in-app screen to connect a customer's own accounting system
 owner: @either
 milestone: #platform
 created: 2026-09-29

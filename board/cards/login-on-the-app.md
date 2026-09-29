@@ -1,5 +1,5 @@
 ---
-title: Put a login on the app
+title: Add login and authentication in front of every API route
 owner: @either
 milestone: #platform
 created: 2026-09-29

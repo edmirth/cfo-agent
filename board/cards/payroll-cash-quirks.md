@@ -1,5 +1,5 @@
 ---
-title: Model the two payroll quirks that move cash
+title: Model December half-tax and the feriepenger month in the payroll forecast
 owner: @agent
 milestone: #forecast
 created: 2026-09-29

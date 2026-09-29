@@ -1,5 +1,5 @@
 ---
-title: Variance against their own budget, line by line
+title: Add budget-vs-actual variance per line, with the cause named
 owner: @agent
 milestone: #kpi
 created: 2026-09-29

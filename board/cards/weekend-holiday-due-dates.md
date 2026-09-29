@@ -1,5 +1,5 @@
 ---
-title: Shift due dates off weekends and Norwegian holidays
+title: Roll due dates forward off weekends and Norwegian holidays
 owner: @agent
 milestone: #forecast
 created: 2026-09-29

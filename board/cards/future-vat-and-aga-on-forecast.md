@@ -1,5 +1,5 @@
 ---
-title: Put future VAT and arbeidsgiveravgift on the cashflow expected line
+title: Schedule VAT and AGA on future sales in the 13-week forecast
 owner: @agent
 milestone: #forecast
 created: 2026-09-29

@@ -1,5 +1,5 @@
 ---
-title: Explain the receivables gap
+title: Find why open invoices do not reconcile to account 1500
 owner: @agent
 milestone: #liquidity
 created: 2026-09-29

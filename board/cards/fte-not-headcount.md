@@ -1,5 +1,5 @@
 ---
-title: Divide by FTE, not headcount
+title: Use FTE from Tripletex instead of headcount in per-employee KPIs
 owner: @agent
 milestone: #kpi
 created: 2026-09-29

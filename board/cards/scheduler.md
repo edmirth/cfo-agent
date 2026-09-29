@@ -1,5 +1,5 @@
 ---
-title: Make things run unasked
+title: Add a scheduler so the daily brief and checks run unprompted
 owner: @either
 milestone: #ops
 created: 2026-09-29

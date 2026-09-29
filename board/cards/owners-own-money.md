@@ -1,5 +1,5 @@
 ---
-title: How much can come out, and what it costs
+title: Compare salary vs dividend for taking money out of the company
 owner: @agent
 milestone: #decisions
 created: 2026-09-29
