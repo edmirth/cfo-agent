@@ -14,6 +14,7 @@ kanban-plugin: board
 - [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 - [ ] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast
 - [ ] Build a daily collections list that flags repeat late payers @either #liquidity
+- [ ] Lane 2 epic: budget-vs-actual, rolling reforecast and FTE-based KPIs @either #kpi
 - [ ] Add budget-vs-actual variance per line, with the cause named @agent #kpi
 - [ ] Build a rolling reforecast that is scored against actuals @either #kpi
 - [ ] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi
