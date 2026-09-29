@@ -32,11 +32,12 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Roll due dates forward off weekends and Norwegian holidays @agent #forecast
 
 
 
 ## Done
+
+- [x] Roll due dates forward off weekends and Norwegian holidays @agent #forecast ✓ 2026-09-30
 
 - [x] Top up the Anthropic credit balance @edmir #ops ✓ 2026-09-29
 - [x] Enforce read-only with a Tripletex toolset allowlist @agent #platform ✓ 2026-09-29
