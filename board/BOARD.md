@@ -24,12 +24,13 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Schedule VAT and AGA on future sales in the 13-week forecast @agent #forecast
 - [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 
 
 
 ## Doing
+
+- [ ] Split booked VAT by term so each lands on its own due date @agent #forecast
 
 
 

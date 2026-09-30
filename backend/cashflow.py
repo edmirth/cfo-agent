@@ -51,8 +51,8 @@ TRAILING_MONTHS = 3          # basis for the recurring run-rates
 # are excluded there and modelled here instead — counting both would charge the
 # same krone twice.
 STATUTORY_FROM_COMMITMENTS = {
-    "mva_oppgjor", "mva_lopende", "aga", "aga_ferie", "feriepenger",
-    "betalbar_skatt", "arets_skatt", "forskuddstrekk",
+    "mva_oppgjor", "mva_lopende", "mva_forrige_termin", "aga", "aga_ferie",
+    "feriepenger", "betalbar_skatt", "arets_skatt", "forskuddstrekk",
 }
 
 

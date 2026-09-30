@@ -165,7 +165,7 @@ ASSUMED_DUE = {"leverandorgjeld", "ansatte_eiere", "annen_gjeld"}
 # absent from both: those carry a real due date from the invoice, and guessing
 # which way a given supplier shifts it would be inventing a fact.
 PAID_EARLY = {"skyldig_lonn", "feriepenger"}
-SHIFTED = PAID_EARLY | {"mva_oppgjor", "mva_lopende", "forskuddstrekk", "aga",
+SHIFTED = PAID_EARLY | {"mva_oppgjor", "mva_lopende", "mva_forrige_termin", "forskuddstrekk", "aga",
                         "aga_ferie", "betalbar_skatt", "arets_skatt"}
 
 
@@ -177,6 +177,58 @@ def _shift(group_id: str, due: date) -> date:
     if group_id in SHIFTED:
         return workdays.forward(due)
     return due
+
+
+MVA_RUNNING = ((2700, 2739),)
+
+
+def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
+               today: date) -> None:
+    """Date a completed VAT term to its own deadline, not the next one.
+
+    2700/2710 hold the term being accrued. They also hold the *previous* term
+    whenever the bookkeeper has not yet moved it to the settlement account —
+    and that previous term is already owed, on a date that can be two months
+    earlier. Reading the closing balance as one number and dating all of it to
+    the next settlement is how 797 572 kr due 12 October came to be forecast as
+    leaving on 10 December.
+
+    The split is read off the report rather than estimated: the balance as at
+    the end of the last completed term is that term, because a term that was
+    transferred out shows zero in its own month column.
+    """
+    running = next((i for i in items if i["id"] == "mva_lopende"), None)
+    term = _completed_term(today)
+    if running is None or term is None:
+        return
+    month, due = term
+    at_end = _at_month(rows, MVA_RUNNING, columns, month)
+    if at_end is None:
+        return
+    completed = round(-at_end, 2)
+    total = running["amount"]
+    # Transferred normally, or nothing left behind: one term, one date.
+    if completed < 0.5 or total < 0.5:
+        return
+    completed = min(completed, total)
+    remainder = round(total - completed, 2)
+
+    running["amount"] = remainder
+    running["plain"] = ("moms på det som er bokført i denne terminen så langt — "
+                        "beløpet vokser mens bilagene føres")
+    running["accruing"] = True
+    items.append({
+        "id": "mva_forrige_termin",
+        "label": "Merverdiavgift, avsluttet termin",
+        "plain": "moms for en termin som er over og forfaller på egen dato, "
+                 "selv om den ennå ikke er overført til oppgjørskontoen",
+        "amount": completed, "kind": "holding",
+        "due": _shift("mva_forrige_termin", due).isoformat(),
+        "days": (_shift("mva_forrige_termin", due) - today).days,
+        "accounts": running["accounts"], "estimated": False,
+        "assumed_due": False})
+    if remainder < 0.5:
+        items.remove(running)
 
 
 def _assumed_due() -> set[str]:
@@ -197,6 +249,51 @@ def _account(row: dict) -> int | None:
 def _closing(row: dict) -> float:
     cells = [c for c in (row.get("cells") or []) if isinstance(c, (int, float))]
     return float(cells[-1]) if cells else 0.0
+
+
+MONTH_COLUMNS = ["Jan", "Feb", "Mars", "April", "Mai", "Juni",
+                 "Juli", "Aug", "Sept", "Okt", "Nov", "Des"]
+
+
+def _at_month(rows: list[dict], ranges, columns: list[str], month: int) -> float | None:
+    """Summed balance across `ranges` as at the end of `month` (1-12).
+
+    The monthly saldobalanse reflects posting dates, so a term that was
+    transferred out shows zero in its own month column. That is what makes the
+    split below readable off the report rather than guessed."""
+    try:
+        idx = columns.index(MONTH_COLUMNS[month - 1])
+    except (ValueError, IndexError):
+        return None
+    total, found = 0.0, False
+    for r in rows:
+        n = _account(r)
+        if n is None or not any(low <= n <= high for low, high in ranges):
+            continue
+        cells = r.get("cells") or []
+        if idx < len(cells) and isinstance(cells[idx], (int, float)):
+            total += float(cells[idx])
+            found = True
+    return total if found else None
+
+
+def _completed_term(today: date) -> tuple[int, date] | None:
+    """The most recent VAT term that has ended, and when it falls due.
+
+    Terms run two months and settle on the 10th of the month after — Jul-Aug on
+    10 October. A term that ended is owed on a known date whether or not the
+    bookkeeper has moved it to the settlement account yet."""
+    best = None
+    for (m1, m2), (dm, dd) in MVA_TERMS:
+        for year in (today.year - 1, today.year):
+            end = date(year + (1 if m2 < m1 else 0), m2,
+                       calendar.monthrange(year + (1 if m2 < m1 else 0), m2)[1])
+            if end >= today:
+                continue
+            due = date(year if dm > m2 else year + 1, dm, dd)
+            if best is None or end > best[1]:
+                best = (m2, end, due)
+    return (best[0], best[2]) if best else None
 
 
 def _sum_range(rows: list[dict], ranges) -> tuple[float, list[str]]:
@@ -247,6 +344,7 @@ async def build(today: date | None = None) -> dict:
     pnl = {} if isinstance(pnl, Exception) else (pnl or {})
 
     rows = balance.get("table", {}).get("rows", []) or []
+    columns = [c.get("name") for c in balance.get("table", {}).get("columns", [])]
 
     # Liabilities are credit balances, so what is owed is the balance negated.
     # A liability sitting in debit is a posting problem, not a negative
@@ -276,6 +374,8 @@ async def build(today: date | None = None) -> dict:
                       "due": due.isoformat(), "days": (due - today).days,
                       "accounts": accounts, "estimated": False,
                       "assumed_due": g.id in assumed})
+
+    _split_vat(items, rows, columns, today)
 
     # Withheld employee tax is meant to sit on a restricted account. Where it
     # does, that money is not in the operating account and subtracting it from
