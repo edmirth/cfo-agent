@@ -31,12 +31,13 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability
 
 
 
 
 ## Done
+
+- [x] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability ✓ 2026-09-30
 
 - [x] Roll due dates forward off weekends and Norwegian holidays @agent #forecast ✓ 2026-09-30
 
