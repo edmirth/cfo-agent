@@ -29,7 +29,6 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 
 
 
@@ -37,6 +36,8 @@ kanban-plugin: board
 
 
 ## Done
+
+- [x] Find why open invoices do not reconcile to account 1500 @agent #liquidity ✓ 2026-09-30
 
 - [x] Split booked VAT by term so each lands on its own due date @agent #forecast ✓ 2026-09-30
 
