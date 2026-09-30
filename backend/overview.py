@@ -60,10 +60,12 @@ async def build(today: date | None = None) -> dict:
                                   "period_start": start, "period_end": end, "limit": 0}),
         return_exceptions=True,
     )
+    failed = []
     for name, r in (("Resultatrapport", pnl), ("Nøkkeltall", ratios),
                     ("Kundereskontro", ar), ("Saldobalanse", monthly)):
         if isinstance(r, Exception):
             log.warning("%s feilet: %s", name, r)
+            failed.append(name)
     pnl, ratios, ar, monthly = [({} if isinstance(x, Exception) else x)
                                 for x in (pnl, ratios, ar, monthly)]
 
@@ -213,6 +215,9 @@ async def build(today: date | None = None) -> dict:
             "likviditetsgrad": liquidity,
             "egenkapitalandel_pct": equity_ratio,
         },
+        # Named, not a bare flag: whoever reads this should be able to say
+        # which figures are missing, and the cache uses it to retry sooner.
+        "partial": failed or None,
         "monthly": series,
         "top_debtor": ({"name": top_customer[0], "amount": top_customer[1],
                         # samme nevner som tallet vi viser, ellers spriker de
@@ -229,14 +234,23 @@ async def _build_and_remember() -> dict:
     # overwrite, so the ten-minute refresh leaves one row per day. Inside the
     # single-flight build rather than after it: two concurrent cold callers used
     # to write this twice for the same day.
-    try:
-        memory.snapshot(data["kpis"], on=data["generated_at"])
-    except Exception:  # noqa: BLE001 — the dashboard must render regardless
-        log.exception("Kunne ikke lagre dagens nøkkeltall")
+    # Never from a partial build. The cache forgets a bad figure in 45 seconds;
+    # the trend store keeps it for good, and a day recorded with null revenue
+    # because a report timed out is a hole in the history that nothing later
+    # fills in.
+    if data.get("partial"):
+        log.warning("Hopper over dagens snapshot — mangler %s",
+                    ", ".join(data["partial"]))
+    else:
+        try:
+            memory.snapshot(data["kpis"], on=data["generated_at"])
+        except Exception:  # noqa: BLE001 — the dashboard must render regardless
+            log.exception("Kunne ikke lagre dagens nøkkeltall")
     return data
 
 
-_flight = freshness.Cached(_build_and_remember, CACHE_SECONDS)
+_flight = freshness.Cached(_build_and_remember, CACHE_SECONDS,
+                           degraded=lambda d: bool(d.get("partial")))
 
 
 async def cached() -> dict:

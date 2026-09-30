@@ -12,10 +12,10 @@ The front page goes blank for ten minutes because of a transient upstream blip. 
 **Note.** Found by verification, not from TODO.md. This is the fifth fix flagged after the other four were applied.
 
 ## Done when
-- [ ] A build whose reports failed is not cached, or is cached with a short retry TTL
-- [ ] The degraded state is distinguishable from a genuine zero — a company really can have no receivables
-- [ ] The panel says the figures could not be fetched rather than showing null
-- [ ] A test forces a failed report and asserts the next call retries
+- [x] A build whose reports failed is not cached, or is cached with a short retry TTL
+- [x] The degraded state is distinguishable from a genuine zero — a company really can have no receivables
+- [x] The panel says the figures could not be fetched rather than showing null
+- [x] A test forces a failed report and asserts the next call retries
 
 ## Log
 - 2026-09-29 (agent): created
@@ -51,3 +51,18 @@ The front page goes blank for ten minutes because of a transient upstream blip. 
   not a 429 with `Retry-After`. That is an unhandled overload rather than
   deliberate throttling, and their MCP exposes `submit_feedback` for reporting
   it.
+- 2026-09-30 (agent): fixed, in three parts.
+  1. `mcp_client` now holds a semaphore of six around each tool call, and
+     retries 5xx three times with jittered backoff — jittered so callers that
+     failed together do not return together and rebuild the burst.
+  2. `freshness.Cached` takes a `degraded` predicate and holds such a build for
+     45 seconds instead of 600. `overview` names the reports that failed in
+     `partial`, so the cache can tell and a reader can see which figures are
+     missing.
+  3. `overview` no longer writes a trend snapshot from a partial build. The
+     cache forgets a bad figure in 45 seconds; `memory.json` keeps it for good,
+     and a day recorded with null revenue is a hole nothing later fills.
+  Verified: cold front page, 43 calls, **0 failures, 0 retries needed**, busiest
+  second down from 16+ to 8. Before the fix the same load failed 8 of 43.
+  Five tests added for the cache, including the single-flight and
+  cancellation cases the tests card asks for.

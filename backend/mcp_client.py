@@ -10,6 +10,7 @@ import asyncio
 import itertools
 import json
 import logging
+import random
 
 import httpx2 as httpx
 
@@ -17,6 +18,28 @@ import config
 from tlx_oauth import tokens
 
 log = logging.getLogger("cfo.mcp")
+
+# Tripletex answers a burst with HTTP 500 and an HTML error page, not a 429, so
+# there is no Retry-After to obey and we have to hold the line ourselves.
+# Measured over 1 173 calls: 0.3 % fail with four or fewer requests in flight in
+# the same second, 7 % at nine to fifteen, 32 % at sixteen or more. Eight
+# modules here call asyncio.gather and they nest — industry gathers overview,
+# which gathers four reports — so a cold front page put sixteen-plus report
+# requests on the wire at once and roughly a third of them fell over.
+#
+# Six is measured, not guessed. A cold front page fires 43 calls whatever the
+# cap: at six the busiest second carries eight, with no 500s and no retries, and
+# the slowest endpoint lands in 8.8s. Four is equally clean but 15.5s, because
+# then the queue does the waiting.
+MAX_INFLIGHT = 6
+_inflight = asyncio.Semaphore(MAX_INFLIGHT)
+
+# A 5xx from an overloaded report engine is transient: the same report fetched
+# on its own succeeds every time. Retrying is right, but only behind the
+# semaphore, or the retries are themselves the next burst.
+RETRY_STATUS = (500, 502, 503, 504)
+MAX_ATTEMPTS = 3
+BACKOFF_SECONDS = 0.4
 
 
 class McpError(RuntimeError):
@@ -96,18 +119,32 @@ class McpClient:
 
     async def call(self, tool: str, arguments: dict | None = None) -> dict:
         """Kall ett MCP-verktøy og returner det strukturerte innholdet."""
-        for attempt in (1, 2):
+        reconnected = False
+        for attempt in range(1, MAX_ATTEMPTS + 1):
             await self._connect()
             at = await tokens.access_token()
             assert self._http is not None
-            r = await self._http.post(config.TRIPLETEX_MCP_URL + "/", headers=self._headers(at), json={
-                "jsonrpc": "2.0", "id": next(self._ids), "method": "tools/call",
-                "params": {"name": tool, "arguments": arguments or {}}})
+            # Held only around the request itself. The handshake has its own
+            # lock and runs once; queueing it here would deadlock the first
+            # caller behind requests that cannot start until it finishes.
+            async with _inflight:
+                r = await self._http.post(config.TRIPLETEX_MCP_URL + "/", headers=self._headers(at), json={
+                    "jsonrpc": "2.0", "id": next(self._ids), "method": "tools/call",
+                    "params": {"name": tool, "arguments": arguments or {}}})
 
             # Sesjonen kan ha falt ut; bygg den på nytt og prøv én gang til.
-            if r.status_code in (401, 404) and attempt == 1:
+            if r.status_code in (401, 404) and not reconnected:
                 log.info("MCP-sesjonen var utgått, kobler opp på nytt")
+                reconnected = True
                 self._ready = False
+                continue
+            if r.status_code in RETRY_STATUS and attempt < MAX_ATTEMPTS:
+                # Jittered, so callers that failed together do not come back
+                # together and rebuild the burst that failed them.
+                delay = BACKOFF_SECONDS * 2 ** (attempt - 1) * (1 + random.random())
+                log.warning("%s svarte %s, forsøk %s av %s — venter %.1fs",
+                            tool, r.status_code, attempt, MAX_ATTEMPTS, delay)
+                await asyncio.sleep(delay)
                 continue
             if r.status_code != 200:
                 raise McpError(f"{tool} svarte {r.status_code}: {r.text[:200]}")

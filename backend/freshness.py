@@ -25,16 +25,31 @@ from collections.abc import Awaitable, Callable
 class Cached:
     """A value rebuilt on demand, at most once at a time."""
 
-    def __init__(self, build: Callable[[], Awaitable[dict]], seconds: int) -> None:
+    def __init__(self, build: Callable[[], Awaitable[dict]], seconds: int,
+                 degraded: Callable[[dict], bool] | None = None,
+                 degraded_seconds: int = 45) -> None:
         self._build = build
         self._seconds = seconds
+        # A build can succeed and still be missing half its figures, when a
+        # report failed and the caller carried on without it. Holding that for
+        # the full ten minutes is how a two-second upstream blip blanked the
+        # front page: we cause the failure, then we memorise it. Keep it just
+        # long enough to stop a stampede, then go and ask again.
+        self._degraded = degraded
+        self._degraded_seconds = degraded_seconds
+
         self._data: dict | None = None
         self._at = 0.0
         self._flight: asyncio.Task | None = None
 
+    def _ttl(self, data: dict) -> int:
+        if self._degraded is not None and self._degraded(data):
+            return self._degraded_seconds
+        return self._seconds
+
     def fresh(self) -> dict | None:
         """The cached value while it still counts as current, else None."""
-        if self._data is not None and time.time() - self._at < self._seconds:
+        if self._data is not None and time.time() - self._at < self._ttl(self._data):
             return self._data
         return None
 
