@@ -30,13 +30,14 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Split booked VAT by term so each lands on its own due date @agent #forecast
 
 
 
 
 
 ## Done
+
+- [x] Split booked VAT by term so each lands on its own due date @agent #forecast ✓ 2026-09-30
 
 - [x] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability ✓ 2026-09-30
 
