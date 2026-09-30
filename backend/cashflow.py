@@ -61,11 +61,21 @@ def _monday(d: date) -> date:
 
 
 def _month_bounds(anchor: date, back: int) -> tuple[date, date]:
+    """First day of the month, and the first day of the next — end EXCLUSIVE.
+
+    search_invoices treats invoiceDateTo as exclusive. Passing the last day of
+    the month therefore dropped every invoice dated on it, and this company
+    invoices monthly at month end, so most of its receivables were invisible:
+    1 215 575 kr of open invoices against 2 539 600 kr on account 1500, and the
+    missing half was spread over three weeks as an unexplained residual.
+    """
     year, month = anchor.year, anchor.month - back
     while month < 1:
         month += 12
         year -= 1
-    return date(year, month, 1), date(year, month, monthrange(year, month)[1])
+    first = date(year, month, 1)
+    nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return first, nxt
 
 
 def _kr(v) -> str:

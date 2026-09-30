@@ -24,11 +24,12 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 
 
 
 ## Doing
+
+- [ ] Find why open invoices do not reconcile to account 1500 @agent #liquidity
 
 
 
