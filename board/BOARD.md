@@ -20,12 +20,13 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
 
 
 
 
 ## Done
+
+- [x] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings ✓ 2026-10-02
 
 - [x] Pay the skattetrekk on pay day, and stop treating feriepenger as cash @agent #forecast ✓ 2026-10-01
 
