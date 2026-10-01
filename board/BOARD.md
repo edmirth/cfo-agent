@@ -16,11 +16,12 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Add tests for the single-flight cache and the equity ratio @agent #tests
 - [ ] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi
 
 
 ## Doing
+
+- [ ] Add tests for the single-flight cache and the equity ratio @agent #tests
 
 
 

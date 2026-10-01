@@ -76,3 +76,14 @@ than an ordinary month, which compounds the missing run above.
   December. `commitments` now agrees: skyldig_lonn due 2026-10-20.
 - 2026-10-01 (agent): six tests, including one asserting both modules reference
   the same function object, so this cannot regress by reimplementation.
+- 2026-10-01 (edmir/agent): **the setting itself was wrong.** The pay day is the
+  10th, not the 20th. `state/company.md` said 20; the edit to 10 had gone into
+  the repo seed `company.md`, which is only copied to `state/` on first run, and
+  was commented out there besides. Corrected through /api/company so it
+  versioned. The code needed no change — it read the setting correctly — but the
+  run dates logged above were gathered on the wrong value. With the 10th the
+  runs fall in Uke 41 (Fri 9 Oct, the 10th being a Saturday), Uke 46 and Uke 50,
+  and the low week returns to Uke 50 at the same 1 739 632 kr.
+  Newly visible: December payroll and the VAT settlement both land on 10
+  December — 987 332 kr out in one week, the largest concentration in the
+  quarter, invisible while the pay day was wrong.
