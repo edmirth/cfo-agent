@@ -35,6 +35,41 @@ def _cell(rows: list[dict], path: str, idx: int = 0):
     return None
 
 
+def account_number(row: dict) -> int | None:
+    """The account number a saldobalanse row belongs to, or None for a heading."""
+    head = (row.get("path") or "").split(" ", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
+def _side_total(rows: list[dict], lo: int, hi: int) -> float | None:
+    """Closing balances summed across an account range, None if the range is
+    absent entirely. Absent and zero are different: one is a company with no
+    such accounts, the other is a company whose accounts net out."""
+    vals = [float(r["cells"][-1]) for r in rows
+            if (n := account_number(r)) is not None and lo <= n <= hi
+            and (r.get("cells") or []) and isinstance(r["cells"][-1], (int, float))]
+    return sum(vals) if vals else None
+
+
+def equity_ratio(rows: list[dict]) -> float | None:
+    """Equity as a share of assets, from the trial balance.
+
+    Equity is the residual — assets less debt — so this year's result is in it
+    even before it has been posted to 2050. Tripletex's own Egenkapitalandel row
+    reports 0 for a company with roughly 30 % equity, which is why it is computed
+    here rather than read.
+
+    Debt accounts absent is not missing data: it is a company that owes nothing,
+    and its equity ratio is 100 %, not unknown. Assets absent is missing data,
+    because every going concern has some.
+    """
+    assets = _side_total(rows, 1000, 1999)
+    if not assets:
+        return None
+    debts = _side_total(rows, 2100, 2999) or 0.0    # kredit, altså negativ
+    return _pct(assets + debts, assets)
+
+
 def _pct(part, whole):
     if part is None or not whole:
         return None
@@ -183,16 +218,7 @@ async def build(today: date | None = None) -> dict:
     # resultat med selv om det ennå ikke er ført mot 2050.
     liquidity = _cell(rr, "Likviditetsgrad 1")
 
-    def _side_total(lo: int, hi: int) -> float | None:
-        vals = [float(r["cells"][-1]) for r in m
-                if (n := _account_no(r)) is not None and lo <= n <= hi
-                and (r.get("cells") or []) and isinstance(r["cells"][-1], (int, float))]
-        return sum(vals) if vals else None
-
-    assets = _side_total(1000, 1999)
-    debts = _side_total(2100, 2999)          # gjeld står i kredit, altså negativ
-    equity_ratio = (_pct(assets + debts, assets)
-                    if assets and debts is not None else None)
+    equity = equity_ratio(m)
 
     unbooked_tax = None
     if pre_tax and pre_tax > 0 and not booked_tax:
@@ -213,7 +239,7 @@ async def build(today: date | None = None) -> dict:
             "bank": cash,
             "kundefordringer": receivables or ar_ledger_total,
             "likviditetsgrad": liquidity,
-            "egenkapitalandel_pct": equity_ratio,
+            "egenkapitalandel_pct": equity,
         },
         # Named, not a bare flag: whoever reads this should be able to say
         # which figures are missing, and the cache uses it to retry sooner.
