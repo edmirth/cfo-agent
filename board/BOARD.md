@@ -22,11 +22,12 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Pay wages on the day company.md says, not month end @agent #forecast
 
 
 
 ## Done
+
+- [x] Pay wages on the day company.md says, not month end @agent #forecast ✓ 2026-10-01
 
 - [x] Find why open invoices do not reconcile to account 1500 @agent #liquidity ✓ 2026-09-30
 - [x] Split booked VAT by term so each lands on its own due date @agent #forecast ✓ 2026-09-30
