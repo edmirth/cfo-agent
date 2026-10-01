@@ -37,13 +37,13 @@ answer the forecast exists to give — which week is tightest, and how much is
 left — is wrong today.
 
 ## Done when
-- [ ] `cashflow.py` takes the pay day from `company.setting("lonn_utbetalingsdag")`, the same source `commitments.py` uses
-- [ ] Month end remains the fallback when the setting is absent, and is declared as an assumption rather than silently assumed
-- [ ] Three wage runs appear in a 13-week horizon that spans three pay days, not two
-- [ ] The December run lands on Fri 18 Dec, the 20th being a Sunday
-- [ ] `commitments` and `cashflow` cannot disagree again — one function, imported, not two implementations
-- [ ] The low week and its amount are recomputed and reported, since both are expected to change
-- [ ] A test covers a pay day on a weekend, and a horizon whose last pay day falls between the 20th and month end
+- [x] `cashflow.py` takes the pay day from `company.setting("lonn_utbetalingsdag")`, the same source `commitments.py` uses
+- [x] Month end remains the fallback when the setting is absent, and is declared as an assumption rather than silently assumed
+- [x] Three wage runs appear in a 13-week horizon that spans three pay days, not two
+- [x] The December run lands on Fri 18 Dec, the 20th being a Sunday
+- [x] `commitments` and `cashflow` cannot disagree again — one function, imported, not two implementations
+- [x] The low week and its amount are recomputed and reported, since both are expected to change
+- [x] A test covers a pay day on a weekend, and a horizon whose last pay day falls between the 20th and month end
 
 ## Note
 
@@ -58,3 +58,21 @@ than an ordinary month, which compounds the missing run above.
 
 ## Log
 - 2026-10-01 (agent): created
+- 2026-10-01 (agent): built. `commitments.payday(year, month)` is now the single
+  implementation, public, and `cashflow` imports it instead of computing month
+  end. `_next_payroll` is a thin wrapper over it. The forecast declares which
+  source the date came from, since month end is our guess and the 20th is theirs.
+- 2026-10-01 (agent): verified live. Three wage runs where there were two:
+
+  | | before | after |
+  |---|---|---|
+  | October | Uke 44 (30 Oct) | **Uke 43 (20 Oct)** |
+  | November | Uke 49 (30 Nov) | **Uke 47 (20 Nov)** |
+  | December | missing | **Uke 51 (18 Dec)** |
+
+  **The low point moved: Uke 50 -> Uke 51, now 1 739 632 kr.** The shift is
+  smaller than the 758 000 kr that was missing, because moving every run ten
+  days earlier also drains the earlier weeks — the whole curve moved, not just
+  December. `commitments` now agrees: skyldig_lonn due 2026-10-20.
+- 2026-10-01 (agent): six tests, including one asserting both modules reference
+  the same function object, so this cannot regress by reimplementation.

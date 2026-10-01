@@ -298,8 +298,9 @@ async def build(today: date | None = None) -> dict:
     net_wages = rates["wages"] * (1 - WITHHOLDING_SHARE)
     month = today
     while True:
-        pay_day = workdays.backward(
-            date(month.year, month.month, monthrange(month.year, month.month)[1]))
+        # The same pay day commitments uses — imported, not reimplemented. Two
+        # implementations disagreed and the forecast lost a December payroll.
+        pay_day = workdays.backward(commitments.payday(month.year, month.month))
         if pay_day >= horizon:
             break
         if pay_day >= today:
@@ -410,6 +411,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             # Said out loud because it moves which week is the tight one.
             "working_day_shift": ("statutory dues roll forward to the next "
                                   "working day, wages back to the last"),
+            # Which it is matters: month end is our guess, the 20th is theirs.
+            "pay_day": ("fra company.md" if commitments.payday_is_stated()
+                        else "månedsslutt, antatt — ikke oppgitt i company.md"),
             "monthly_revenue": round(rates["revenue"], 2),
             "monthly_wages": round(rates["wages"], 2),
             "monthly_opex": round(rates["opex"], 2),

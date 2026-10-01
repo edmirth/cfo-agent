@@ -70,23 +70,39 @@ def _next_june(today: date) -> date:
     return date(today.year if today.month < 6 else today.year + 1, 6, 30)
 
 
-def _next_payroll(today: date) -> date:
-    """Wages already earned are paid with the next run.
+def payday(year: int, month: int) -> date:
+    """The day wages leave the account in a given month.
+
+    Public, and the only implementation, because two of them disagreed. This
+    module read `lonn_utbetalingsdag` from company.md while cashflow.py computed
+    its own pay day as month end, so the same wages were dated the 20th in one
+    place and the 31st in the other. Over a 13-week horizon that put two runs
+    ten days late and dropped December's entirely, month end falling outside the
+    window where the 20th fell inside it.
 
     The pay day is a company habit the ledger does not state. Where they have
-    written it in company.md we use it; otherwise month end is the assumption,
-    and it is shown as one.
+    written it down we use it; otherwise month end is the assumption, and it is
+    declared as one.
     """
+    last = calendar.monthrange(year, month)[1]
     stated = company.setting("lonn_utbetalingsdag")
-    year, month = today.year, today.month
-    if stated:
-        day = max(1, min(int(stated), 28))
-        if today.day > day:                 # this month's run has gone
-            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-        return date(year, month, min(day, calendar.monthrange(year, month)[1]))
-    if today.day > 25:
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return date(year, month, calendar.monthrange(year, month)[1])
+    day = min(int(stated), last) if stated else last
+    return date(year, month, max(1, day))
+
+
+def payday_is_stated() -> bool:
+    """Whether the pay day comes from the company or from our assumption."""
+    return company.setting("lonn_utbetalingsdag") is not None
+
+
+def _next_payroll(today: date) -> date:
+    """Wages already earned are paid with the next run."""
+    run = payday(today.year, today.month)
+    if run < today:                          # this month's run has gone
+        year, month = ((today.year + 1, 1) if today.month == 12
+                       else (today.year, today.month + 1))
+        run = payday(year, month)
+    return run
 
 
 def _second_due(today: date, terms: list) -> date:

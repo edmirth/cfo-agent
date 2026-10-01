@@ -3,7 +3,7 @@
 # Fjern skigarden (#) foran en linje for å slå den på.
 
 lonn_etterskuddsvis_mnd: 1     # lønn i september gjelder arbeid utført i august
-# lonn_utbetalingsdag: 20      # hvilken dag i måneden lønnen kjøres
+# lonn_utbetalingsdag: 10      # hvilken dag i måneden lønnen kjøres
 # kredittid_dager: 45          # settes bare hvis fakturaene ikke sier det selv
 ---
 
