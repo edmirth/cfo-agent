@@ -39,6 +39,15 @@ INBOX_NOTE = 1            # any unbooked voucher is worth a word
 INBOX_WARN = 15           # this many is a posting backlog, not a queue
 TIE_TOLERANCE = 100.0     # kroner; below this a subledger gap is rounding
 STALL_MONTHS = 2          # an AP account frozen this long has stopped posting
+
+# An accrual is allowed to sit still for a while — several are settled
+# bimonthly, and a quiet quarter is not a fault. Four months is past any normal
+# rhythm. The floor exists because small balances legitimately never move:
+# 2990 at -6 112 and 2991 at -10 000 have been unchanged all year and nothing is
+# wrong with either. Flagging those would train the owner to ignore the check,
+# which costs more than the check is worth.
+STALE_MONTHS = 4
+STALE_MIN_KR = 50_000
 COMPLETE_WARN = 0.50      # month below half the trailing average: not posted
 COMPLETE_NOTE = 0.80
 
@@ -105,6 +114,27 @@ def _answered(payload, key: str) -> bool:
     result a pre-flight must never produce. Absent means unavailable, not zero.
     """
     return isinstance(payload, dict) and key in payload
+
+
+def _frozen_months(row: dict, columns: list[str]) -> int:
+    """How many month-ends in a row this account has closed on the same figure.
+
+    Pair each cell with its column *before* dropping non-numeric ones: filtering
+    first and zipping after would shift every month by one the moment a single
+    cell reads #AUTH!, and a moving account would be called frozen.
+    """
+    raw = row.get("cells") or []
+    months = [float(c) for c, col in zip(raw, columns)
+              if col in MONTHS and isinstance(c, (int, float))]
+    if not months:
+        return 0
+    frozen = 0
+    for value in reversed(months[:-1]):
+        if abs(value - months[-1]) < 0.01:
+            frozen += 1
+        else:
+            break
+    return frozen
 
 
 def _tie(gl: float, sub: float) -> float:
@@ -194,15 +224,7 @@ async def build(today: date | None = None) -> dict:
         # filtering first and zipping after would shift every month by one
         # the moment a single cell reads #AUTH!, and the stall check would
         # then compare the wrong months and call a moving account frozen.
-        raw = ap_row.get("cells") or []
-        month_cells = [float(c) for c, col in zip(raw, columns)
-                       if col in MONTHS and isinstance(c, (int, float))]
-        frozen = 0
-        for value in reversed(month_cells[:-1] or []):
-            if month_cells and abs(value - month_cells[-1]) < 0.01:
-                frozen += 1
-            else:
-                break
+        frozen = _frozen_months(ap_row, columns)
         problems = []
         if gl_ap > 0:
             problems.append(f"saldoen er {_kr(gl_ap)} kr i debet, der gjeld skal stå i kredit")
@@ -268,6 +290,42 @@ async def build(today: date | None = None) -> dict:
                 " Måneden er ikke ferdig bokført; forholdstall som blander den "
                 "med en fullt bokført kostnadsside blir feil." if status == "warn"
                 else "")))
+
+    # 8. Accruals that have stopped moving. A year-end accrual that was never
+    # reversed keeps being read as a current liability, and it is subtracted
+    # from the owner's free cash every day until someone notices. Equity
+    # (2000-2099) is excluded: it is supposed to sit still.
+    stale = []
+    for r in rows:
+        account = _account(r)
+        if account is None or not 2100 <= account <= 2999:
+            continue
+        cells = _numbers(r)
+        owed = -(cells[-1] if cells else 0.0)
+        if owed < STALE_MIN_KR:
+            continue
+        frozen = _frozen_months(r, columns)
+        if frozen >= STALE_MONTHS:
+            stale.append((r.get("path", "").strip(), owed, frozen))
+    stale.sort(key=lambda t: -t[1])
+    if stale:
+        worst_name, worst_owed, worst_frozen = stale[0]
+        rest = (f" Det samme gjelder {len(stale) - 1} konto til."
+                if len(stale) == 2 else
+                f" Det samme gjelder {len(stale) - 1} andre kontoer."
+                if len(stale) > 2 else "")
+        checks.append(_check(
+            "stale_accrual", "Periodiseringer som står stille", "warn",
+            f"{worst_name} står på {_kr(worst_owed)} kr og har ikke beveget "
+            f"seg på {worst_frozen} måneder.{rest}",
+            "Beløpet regnes som gjeld som forfaller, og trekkes fra de frie "
+            "pengene hver dag. Er dette en periodisering fra årsoppgjøret som "
+            "aldri ble reversert, er den frie likviditeten høyere enn den ser "
+            "ut — og er den reell, bør den ha en forfallsdato."))
+    else:
+        checks.append(_check(
+            "stale_accrual", "Periodiseringer som står stille", "ok",
+            "Ingen periodiseringer har stått stille lenge nok til å uroe."))
 
     worst = max((RANK.get(c["status"], 0) for c in checks), default=0)
     ties_broken = any(c["status"] == "warn" and c["id"].endswith("_tie") for c in checks)

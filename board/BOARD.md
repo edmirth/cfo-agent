@@ -16,10 +16,11 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
 
 
 ## Doing
+
+- [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
 
 
 
