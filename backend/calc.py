@@ -214,14 +214,15 @@ def _annualise(i):
 
 
 def _per_head(i):
-    value, heads = _need(i, "value", "headcount")
-    if heads == 0:
-        raise CalcError("Ingen ansatte")
-    v = value / heads
+    value, fte = _need(i, "value", "fte")
+    if fte == 0:
+        raise CalcError("Ingen årsverk")
+    v = value / fte
     return {"value": round(v, 2), "unit": "kr", "formatted": kr(v),
-            "shown": f"{num(value)} / {num(heads)} = {kr(v)}",
-            "note": ("Antall ansatte er hoder, ikke årsverk. Er mange på deltid, "
-                     "er tallet per årsverk høyere.")}
+            "shown": f"{num(value)} / {num(fte)} årsverk = {kr(v)}",
+            "note": ("Per årsverk, ikke per hode. Stillingsprosentene er hentet "
+                     "fra arbeidsforholdene i Tripletex, så deltid teller som "
+                     "den brøken den er.")}
 
 
 def _runway(i):
@@ -271,7 +272,8 @@ METRICS: dict[str, tuple] = {
     "dso": (_dso, "receivables, revenue, days [, vat_rate]",
             "days customers take to pay, VAT gross-up applied"),
     "annualise": (_annualise, "value, days_elapsed", "year-end run rate"),
-    "per_head": (_per_head, "value, headcount", "per employee, with the FTE caveat"),
+    "per_head": (_per_head, "value, fte",
+                 "per full-time equivalent, from the employment percentages"),
     "runway": (_runway, "cash, monthly_cost", "months the money lasts"),
     "accruing_tax": (_accruing_tax, "pre_tax [, rate]", "unbooked corporation tax"),
     "vat_gross": (_vat_gross, "net [, vat_rate]", "net figure grossed up by VAT"),

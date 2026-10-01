@@ -16,10 +16,11 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi
 
 
 ## Doing
+
+- [ ] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi
 
 
 

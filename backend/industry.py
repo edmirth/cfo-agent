@@ -55,6 +55,47 @@ class Kpi:
     compute: Callable     # (ctx) -> float | None
 
 
+# One round-trip instead of thirty-four. The percentages live on each
+# employment, so the headcount list alone cannot give them, and firing
+# get_employee per person would put the whole payroll back on the wire every
+# time a cold dashboard builds — the exact shape that was making Tripletex
+# answer 500. The sandbox loops inside Tripletex and returns two numbers.
+FTE_SCRIPT = """
+const emps = (await tlx.search_employees({count: 100})).employees || [];
+let pct = 0, withPct = 0;
+for (const e of emps) {
+  const r = await tlx.get_employee({employeeId: e.id});
+  const d = r.currentEmployment && r.currentEmployment.currentDetails;
+  if (d && typeof d.percentage === "number" && d.percentage > 0) {
+    pct += d.percentage; withPct++;
+  }
+}
+print(JSON.stringify({headcount: emps.length, with_percentage: withPct,
+                      fte: Math.round(pct) / 100}));
+"""
+
+
+def _staffing(result) -> tuple[int | None, float | None]:
+    """Headcount and full-time equivalents.
+
+    FTE is used only when every employee has a position percentage. One person
+    without one would otherwise be counted as nobody, which quietly shrinks the
+    denominator and flatters every per-employee figure — the opposite of the
+    error this replaces.
+    """
+    try:
+        payload = json.loads((result.get("output") or [""])[0])
+    except (AttributeError, IndexError, ValueError, TypeError):
+        return None, None
+    heads = payload.get("headcount") or None
+    fte = payload.get("fte")
+    if not heads or not fte or payload.get("with_percentage") != heads:
+        log.warning("Årsverk ikke komplett (%s av %s har stillingsprosent) — "
+                    "bruker hoder", payload.get("with_percentage"), heads)
+        return heads, None
+    return heads, float(fte)
+
+
 def _m(name: str, **inputs):
     """One definition per figure: the dashboard computes through calc.py
     rather than keeping a second implementation of the same formula. The
@@ -96,13 +137,13 @@ CATALOGUE: list[Kpi] = [
         "%", "high", lambda c: _m("margin", result=c["operating"], revenue=c["revenue"])),
     Kpi("omsetning_per_ansatt", "Omsetning per ansatt",
         "hvor mye hver ansatt drar inn i året", "kr", "high",
-        lambda c: _m("per_head", value=c["revenue_annualised"], headcount=c["employees"])),
+        lambda c: _m("per_head", value=c["revenue_annualised"], fte=c["fte"])),
     Kpi("lonn_per_ansatt", "Lønnskostnad per ansatt",
         "hva en ansatt koster i året, alt inkludert", "kr", "low",
-        lambda c: _m("per_head", value=c["wages_annualised"], headcount=c["employees"])),
+        lambda c: _m("per_head", value=c["wages_annualised"], fte=c["fte"])),
     Kpi("resultat_per_ansatt", "Resultat per ansatt",
         "hvor mye hver ansatt sitter igjen med til selskapet", "kr", "high",
-        lambda c: _m("per_head", value=c["operating_annualised"], headcount=c["employees"])),
+        lambda c: _m("per_head", value=c["operating_annualised"], fte=c["fte"])),
     Kpi("vekst", "Vekst mot i fjor",
         "om dere selger mer eller mindre enn på samme tid i fjor", "%", "high",
         lambda c: _m("change", now=c["revenue"], before=c["revenue_prev"])),
@@ -210,7 +251,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
                                         "period_start": start,
                                         "period_end": today.isoformat(),
                                         "limit": 0}), "topp 20"),
-        _safe(mcp.call("search_employees", {"count": 100}), "ansatte"),
+        _safe(mcp.call("tripletex_run_script", {"code": FTE_SCRIPT}), "årsverk"),
         _safe(mcp.call("search_invoices",
                        {"invoiceDateFrom": start, "invoiceDateTo": today.isoformat(),
                         "count": 40}), "fakturaer"),
@@ -226,7 +267,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
     costs = _at(p, "Driftsresultat > Driftskostnader")
     opex = (costs - (wages or 0) - (materials or 0)) if costs is not None else None
 
-    employees = len((emp or {}).get("employees") or []) or None
+    employees, fte = _staffing(emp or {})
     days = (today - date(today.year, 1, 1)).days + 1
     annualise = 365 / days if days else 1
 
@@ -261,7 +302,12 @@ async def _gather(today: date) -> tuple[dict, dict]:
     ctx = {
         "revenue": revenue, "revenue_prev": _at(pr, "Driftsresultat > Driftsinntekter"),
         "operating": operating, "wages": wages, "materials": materials,
-        "opex": opex, "employees": employees, "ar": ar_total,
+        # Deliberately not falling back to headcount. calc's note says "per
+        # årsverk", and dividing heads under that label would be a worse lie
+        # than the one being fixed. Without percentages the three per-employee
+        # KPIs return nothing and the log says why.
+        "opex": opex, "employees": employees, "fte": fte,
+        "ar": ar_total,
         "days_elapsed": days,
         "revenue_annualised": revenue * annualise if revenue else None,
         "wages_annualised": wages * annualise if wages else None,
@@ -274,7 +320,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
 
     evidence = {
         "selskap": config.COMPANY_NAME,
-        "antall_ansatte": employees,
+        "antall_ansatte": employees, "arsverk": fte,
         "omsetning_hittil_i_ar": revenue,
         "kostnadsstruktur_pct": {
             "lønn": _pct(wages, revenue), "varer": _pct(materials, revenue),

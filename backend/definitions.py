@@ -47,7 +47,7 @@ FORMULAS: dict[str, str] = {
     "dso": ("receivables ÷ (revenue × (1 + VAT)) × days; revenue is grossed up "
             f"at {calc.VAT_RATE:.2f} because receivables include VAT"),
     "annualise": "value ÷ days elapsed × 365",
-    "per_head": "value ÷ headcount; heads, not full-time equivalents",
+    "per_head": "value ÷ FTE, where FTE is the sum of the employment percentages",
     "runway": "cash ÷ monthly cost",
     "accruing_tax": f"profit before tax × {calc.TAX_RATE:.2f}",
     "vat_gross": f"net × (1 + {calc.VAT_RATE:.2f})",
@@ -57,9 +57,9 @@ FORMULAS: dict[str, str] = {
     # is exactly where a silent change of meaning does its damage.
     "lonnsandel": "total payroll cost (5000–5999) ÷ operating revenue × 100",
     "driftsmargin": "operating result ÷ operating revenue × 100",
-    "omsetning_per_ansatt": "revenue annualised ÷ headcount",
-    "lonn_per_ansatt": "payroll cost annualised ÷ headcount",
-    "resultat_per_ansatt": "operating result annualised ÷ headcount",
+    "omsetning_per_ansatt": "revenue annualised ÷ FTE (sum of employment percentages ÷ 100)",
+    "lonn_per_ansatt": "payroll cost annualised ÷ FTE (sum of employment percentages ÷ 100)",
+    "resultat_per_ansatt": "operating result annualised ÷ FTE (sum of employment percentages ÷ 100)",
     "vekst": "revenue this year to date vs the same period last year, in per cent",
     "varekostandel": "cost of goods (4000–4999) ÷ revenue × 100",
     "bruttomargin": "(revenue − cost of goods) ÷ revenue × 100",
