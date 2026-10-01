@@ -42,12 +42,12 @@ Three pay days sit in the current horizon, and the third shares Uke 50 — the
 low week — with the VAT settlement.
 
 ## Done when
-- [ ] Pay-day outflow is gross cash wages: the trekk leaves with the salary
-- [ ] Feriepenger accrual is out of the monthly run-rate, since it is paid in June and already dated there
-- [ ] The modelled pay day reconciles against the 853 060 kr that actually left on 10 September, within the run-rate's own tolerance
-- [ ] `WITHHOLDING_SHARE` and the skattetrekkskonto offset in `commitments.py` are gone, not left as dead regime
-- [ ] `assumptions` says the trekk leaves with the salary, so the owner can see the rule
-- [ ] The low week and its amount are recomputed and reported
+- [x] Pay-day outflow is gross cash wages: the trekk leaves with the salary
+- [x] Feriepenger accrual is out of the monthly run-rate, since it is paid in June and already dated there
+- [x] The modelled pay day reconciles against the 853 060 kr that actually left on 10 September, within the run-rate's own tolerance
+- [x] `WITHHOLDING_SHARE` and the skattetrekkskonto offset in `commitments.py` are gone, not left as dead regime
+- [x] `assumptions` says the trekk leaves with the salary, so the owner can see the rule
+- [x] The low week and its amount are recomputed and reported
 
 ## Note
 
@@ -58,3 +58,20 @@ example on the ledger-tripwires card.
 
 ## Log
 - 2026-10-01 (agent): created
+- 2026-10-01 (agent): built. `wages_cash` is a second run-rate over 5000-5019
+  plus 5030-5099, so the feriepenger accrual on 5020 is out of it, and the pay
+  day takes that figure gross. `WITHHOLDING_SHARE` is gone.
+- 2026-10-01 (agent): reconciled. The run-rate gives 979 065 — which is just
+  5000 YTD divided by nine (975 162) plus sykepenger. The 853 060 that actually
+  left on 10 September is 0.87x that, inside the 0.5x-2x band the run-rate
+  itself keeps, so the two agree as well as a monthly average can agree with one
+  month.
+- 2026-10-01 (agent): **the low week falls from 1 739 632 to 1 076 408 kr.**
+  Uke 50 now carries the December payroll and the VAT settlement together —
+  1 208 406 kr out in one week.
+- 2026-10-01 (agent): `commitments` no longer nets a skattetrekkskonto balance
+  off the withholding; 1950 reads 0.0 and there is no such account to net. A
+  residual on 2600 is now dated today — under the new rule it is a transfer that
+  should already have gone, not one waiting for a term.
+- 2026-10-01 (agent): the pay-day item was still labelled "Netto lønn" after it
+  stopped being the net. It now reads "Lønn og skattetrekk".

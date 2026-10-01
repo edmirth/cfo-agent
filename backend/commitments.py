@@ -17,9 +17,10 @@ is the number he will make decisions on.
 
 Two things it is careful about:
 
-- **Money already set aside.** Withheld employee tax is supposed to sit on a
-  restricted account (1950). Where it does, it is not in the operating account
-  and must not be subtracted from it twice.
+- **When, not whether, the tax leaves.** Until 2026 withheld employee tax sat
+  on a restricted account and was settled bimonthly; from 2026 it goes to
+  Skatteetaten on pay day, so it leaves with the salary and is not a commitment
+  waiting for a term date.
 - **When, not just how much.** Holiday pay in June is not the same problem as
   VAT in three weeks, and presenting them as one lump is how a solvent company
   is told it is broke.
@@ -393,17 +394,23 @@ async def build(today: date | None = None) -> dict:
 
     _split_vat(items, rows, columns, today)
 
-    # Withheld employee tax is meant to sit on a restricted account. Where it
-    # does, that money is not in the operating account and subtracting it from
-    # the operating account as well would count it twice.
+    # Until 2026 withheld employee tax sat on a restricted account (1950) and
+    # was settled on a bimonthly term, so the balance there had to be netted off
+    # or it was subtracted from the operating account twice. That regime is
+    # gone: from 2026 there is no skattetrekkskonto and the trekk is paid to
+    # Skatteetaten the same day as the salary. 1950 was emptied in January and
+    # the offset is retired with it.
+    #
+    # A balance left on 2600 is therefore not money waiting for a term date —
+    # it is a transfer that should already have gone, so it is dated today
+    # rather than to a settlement that no longer exists.
     covered = 0.0
     trekk = next((i for i in items if i["id"] == "forskuddstrekk"), None)
-    if trekk and restricted > 0:
-        covered = min(restricted, trekk["amount"])
-        trekk["amount"] = round(trekk["amount"] - covered, 2)
-        trekk["covered_by_restricted"] = round(covered, 2)
-        if trekk["amount"] < 0.5:
-            items.remove(trekk)
+    if trekk:
+        trekk["due"] = today.isoformat()
+        trekk["days"] = 0
+        trekk["plain"] = ("skattetrekk som skulle vært overført til Skatteetaten "
+                          "samme dag som lønnen")
 
     # Corporation tax on this year's profit. Norwegian SMBs commonly book it
     # only at year end, so an interim result looks better than it is and the

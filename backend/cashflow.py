@@ -44,7 +44,10 @@ WEEKS = 13
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
 LATE_SPREAD_WEEKS = 3        # already-overdue invoices land across this many
 PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
-WITHHOLDING_SHARE = 0.30     # of gross wages, held back and paid on term dates
+# No WITHHOLDING_SHARE any more. Until 2026 the tax withheld from wages was held
+# back and settled on a bimonthly term, so only the net left on pay day. From
+# 2026 there is no skattetrekkskonto and the trekk goes to Skatteetaten the same
+# day as the salary — so what leaves the account on pay day is the gross.
 TRAILING_MONTHS = 3          # basis for the recurring run-rates
 
 # Taken from commitments.py, which already dates them. Wages and supplier bills
@@ -212,7 +215,13 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
         return (sum(v for _, v in kept) / len(kept)) if kept else mid
 
     rates = {"revenue": rate(3000, 3999, -1, "Omsetning"),
+             # The full wage cost, accrual and all — what the P&L carries.
              "wages": rate(5000, 5099, 1, "Lønn"),
+             # What actually leaves on pay day. Feriepenger (5020) is excluded:
+             # it accrues monthly but is paid next summer, and commitments
+             # already dates it there, so counting it here pays it twice.
+             "wages_cash": (rate(5000, 5019, 1, "Lønn")
+                            + rate(5030, 5099, 1, "Andre lønnsposter")),
              "opex": rate(6000, 7999, 1, "Driftskostnader")}
     return rates, notes
 
@@ -295,7 +304,8 @@ async def build(today: date | None = None) -> dict:
 
     # Net wages leave on the last working day of each month; what is withheld
     # leaves later, on the term dates already counted above.
-    net_wages = rates["wages"] * (1 - WITHHOLDING_SHARE)
+    # Gross, not net: the trekk leaves with the salary from 2026.
+    payroll_cash = rates["wages_cash"]
     month = today
     while True:
         # The same pay day commitments uses — imported, not reimplemented. Two
@@ -304,8 +314,9 @@ async def build(today: date | None = None) -> dict:
         if pay_day >= horizon:
             break
         if pay_day >= today:
-            committed.append({"date": pay_day, "amount": -net_wages,
-                              "kind": "wages", "label": "Netto lønn"})
+            committed.append({"date": pay_day, "amount": -payroll_cash,
+                              "kind": "wages",
+                              "label": "Lønn og skattetrekk"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
@@ -407,7 +418,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             "credit_days": credit_days,
             "pay_lag_days": PAY_LAG_DAYS,
             "late_spread_weeks": LATE_SPREAD_WEEKS,
-            "withholding_share": WITHHOLDING_SHARE,
+            "skattetrekk": ("betales til Skatteetaten samme dag som lønnen, "
+                            "så hele bruttolønnen går ut på lønningsdagen"),
+            "feriepenger_i_lonnsraten": False,
             # Said out loud because it moves which week is the tight one.
             "working_day_shift": ("statutory dues roll forward to the next "
                                   "working day, wages back to the last"),
@@ -416,6 +429,7 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
                         else "månedsslutt, antatt — ikke oppgitt i company.md"),
             "monthly_revenue": round(rates["revenue"], 2),
             "monthly_wages": round(rates["wages"], 2),
+            "monthly_wages_cash": round(rates["wages_cash"], 2),
             "monthly_opex": round(rates["opex"], 2),
         },
         "warnings": warnings,
