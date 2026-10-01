@@ -12,6 +12,7 @@ kanban-plugin: board
 - [ ] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast
 - [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
 - [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
+- [ ] Pay wages on the day company.md says, not month end @agent #forecast
 
 
 ## Next
