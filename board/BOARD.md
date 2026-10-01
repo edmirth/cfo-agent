@@ -11,28 +11,25 @@ kanban-plugin: board
 - [ ] Move chat sessions from an in-process dict into a shared store @either #platform
 - [ ] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast
 - [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
-- [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
+- [ ] Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them.
 
 
 ## Next
 
+- [ ] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings
 
 
 ## Doing
 
-
-
+- [ ] Pay the skattetrekk on pay day, and stop treating feriepenger as cash @agent #forecast
 
 
 
 ## Done
 
 - [x] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi ✓ 2026-10-01
-
 - [x] Add tests for the single-flight cache and the equity ratio @agent #tests ✓ 2026-10-01
-
 - [x] Pay wages on the day company.md says, not month end @agent #forecast ✓ 2026-10-01
-
 - [x] Find why open invoices do not reconcile to account 1500 @agent #liquidity ✓ 2026-09-30
 - [x] Split booked VAT by term so each lands on its own due date @agent #forecast ✓ 2026-09-30
 - [x] Retry failed Tripletex report builds instead of caching empty KPIs @agent #reliability ✓ 2026-09-30
