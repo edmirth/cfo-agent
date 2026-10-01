@@ -21,12 +21,13 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Add tests for the single-flight cache and the equity ratio @agent #tests
 
 
 
 
 ## Done
+
+- [x] Add tests for the single-flight cache and the equity ratio @agent #tests ✓ 2026-10-01
 
 - [x] Pay wages on the day company.md says, not month end @agent #forecast ✓ 2026-10-01
 
