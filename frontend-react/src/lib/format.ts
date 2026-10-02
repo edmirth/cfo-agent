@@ -1,8 +1,12 @@
 /* Tall og datoer på norsk. Portert fra den gamle frontenden, uendret oppførsel:
  * mellomrom som tusenskille, komma som desimaltegn, og enheten backend oppgir. */
 
-export const kr = (n: number | null | undefined) =>
-  n == null ? "–" : Math.round(n).toLocaleString("nb-NO").replace(/ /g, " ")
+export const kr = (n: number | null | undefined) => {
+  if (n == null) return "–"
+  // Math.round(-0.4) is -0, and that prints as «-0». Nobody owes minus nothing.
+  const v = Math.round(n) || 0
+  return v.toLocaleString("nb-NO").replace(/ /g, " ")
+}
 
 export const mill = (n: number | null | undefined) => {
   if (n == null) return "–"
@@ -29,6 +33,10 @@ const DAYS = ["søndag", "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "l�
 
 export const dateNo = (iso: string) =>
   new Date(iso).toLocaleDateString("nb-NO", { day: "numeric", month: "long" })
+
+/** «6. okt» — «6. oktober» is too wide to put on thirteen rows. */
+export const dateShortNo = (iso: string) =>
+  new Date(iso).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })
 
 export const dayNo = (iso: string) => DAYS[new Date(iso).getDay()]
 

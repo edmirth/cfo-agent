@@ -15,7 +15,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Place the 13 Week Cash Table on a better visual part, so that it it at least over the CFO summary and under the 4 cards, but that it is visible to see and track.
 
 
 ## Doing
@@ -24,6 +23,7 @@ kanban-plugin: board
 
 ## Done
 
+- [x] Place the 13 Week Cash Table on a better visual part, so that it it at least over the CFO summary and under the 4 cards, but that it is visible to see and track. ✓ 2026-10-02
 - [x] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast ✓ 2026-10-02
 - [x] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings ✓ 2026-10-02
 - [x] Pay the skattetrekk on pay day, and stop treating feriepenger as cash @agent #forecast ✓ 2026-10-01

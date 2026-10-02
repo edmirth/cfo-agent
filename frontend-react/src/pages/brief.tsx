@@ -22,6 +22,14 @@ import {
 } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { api, get } from "@/lib/api"
 import type {
   Cashflow,
@@ -32,7 +40,7 @@ import type {
   Preflight,
   Summary,
 } from "@/lib/api"
-import { dateNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
+import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
 import { useConversations } from "@/store/conversations"
 
 /* ── hva som er nytt siden sist ───────────────────────────────── */
@@ -293,14 +301,11 @@ const chartConfig = {
   expected_close: { label: "anslag", color: "var(--chart-expected)" },
 } satisfies ChartConfig
 
-function CashChart({ cash, compact }: { cash: Cashflow; compact?: boolean }) {
+function CashChart({ cash }: { cash: Cashflow }) {
   const floor = cash.assumptions?.monthly_wages || 0
   const data = cash.weeks.map((w) => ({ ...w, week: w.label.replace("Uke ", "") }))
   return (
-    <ChartContainer
-      config={chartConfig}
-      className={compact ? "h-[180px] w-full" : "h-[280px] w-full"}
-    >
+    <ChartContainer config={chartConfig} className="h-[280px] w-full">
       <LineChart data={data} margin={{ left: 8, right: 16, top: 16, bottom: 8 }}>
         <CartesianGrid vertical={false} />
         <XAxis
@@ -308,14 +313,14 @@ function CashChart({ cash, compact }: { cash: Cashflow; compact?: boolean }) {
           tickLine={false}
           axisLine={false}
           tickMargin={10}
-          // Tretten ukenumre får ikke plass i en smal kolonne; annenhver gjør.
-          interval={compact ? 1 : 0}
+          // Alle tretten, nå kurven har hele bredden å stå på.
+          interval={0}
         />
         <YAxis
           tickLine={false}
           axisLine={false}
-          // Smalere enn dette brekker «6,0 mill.» over to linjer.
-          width={compact ? 64 : 62}
+          // Smalere enn dette brekker «800 000» over to linjer.
+          width={74}
           tickFormatter={(v) => mill(v as number)}
         />
         {floor > 0 && (
@@ -323,16 +328,12 @@ function CashChart({ cash, compact }: { cash: Cashflow; compact?: boolean }) {
             y={floor}
             stroke="var(--destructive)"
             strokeDasharray="2 5"
-            label={
-              compact
-                ? undefined
-                : {
-                    value: `gulv · én månedslønn ${mill(floor)}`,
-                    position: "insideBottomLeft",
-                    fill: "var(--destructive)",
-                    fontSize: 11,
-                  }
-            }
+            label={{
+              value: `gulv · én månedslønn ${mill(floor)}`,
+              position: "insideBottomLeft",
+              fill: "var(--destructive)",
+              fontSize: 11,
+            }}
           />
         )}
         <ChartTooltip
@@ -373,6 +374,94 @@ function CashChart({ cash, compact }: { cash: Cashflow; compact?: boolean }) {
         <ChartLegend content={<ChartLegendContent />} />
       </LineChart>
     </ChartContainer>
+  )
+}
+
+/* Uke for uke, under kurven. Kurven viser formen, tabellen er den man følger:
+ * «hvilken uke er det tynt, og hvor mye kommer inn den uka». Inn og Ut legger
+ * bundet og forventet sammen i én kolonne, mens de to saldoene står hver for
+ * seg — samme oppsett som tabellen CFO-en har i prompten, så det han sier i
+ * samtalen og det som står på skjermen er det samme bildet. */
+function CashTable({ cash }: { cash: Cashflow }) {
+  const low = cash.low_committed.label
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          {["Uke", "Fra", "Inn", "Ut", "Bundet", "Forventet"].map((h, i) => (
+            <TableHead
+              key={h}
+              className={`text-muted-foreground h-8 font-mono text-[10px] tracking-[0.12em] uppercase ${
+                i > 1 ? "text-right" : ""
+              }`}
+            >
+              {h}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {cash.weeks.map((w) => {
+          const thin = w.label === low
+          return (
+            <TableRow
+              key={w.index}
+              // Den tynneste uka er hele poenget med tabellen, så den er den
+              // ene raden som får lov til å rope.
+              className={thin ? "bg-muted/60 hover:bg-muted/60" : undefined}
+            >
+              <TableCell className="py-2 font-medium">
+                {w.label}
+                {thin && (
+                  <span className="text-muted-foreground ml-2 font-mono text-[10px] tracking-[0.12em] uppercase">
+                    tynnest
+                  </span>
+                )}
+                {w.index === 0 && !thin && (
+                  <span className="text-muted-foreground/70 ml-2 font-mono text-[10px] tracking-[0.12em] uppercase">
+                    nå
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground py-2 font-mono text-xs">
+                {dateShortNo(w.start)}
+              </TableCell>
+              {/* En uke uten bevegelse er et faktum, ikke et hull, så nullen
+                  blir stående — men dempet, så øyet går til ukene der det
+                  faktisk skjer noe. */}
+              <TableCell
+                className={`py-2 text-right font-mono tabular-nums ${
+                  w.in + w.expected_in ? "" : "text-muted-foreground/40"
+                }`}
+              >
+                {kr(w.in + w.expected_in)}
+              </TableCell>
+              <TableCell
+                className={`py-2 text-right font-mono tabular-nums ${
+                  w.out + w.expected_out ? "text-muted-foreground" : "text-muted-foreground/40"
+                }`}
+              >
+                {kr(-(w.out + w.expected_out))}
+              </TableCell>
+              <TableCell
+                className={`py-2 text-right font-mono font-medium tabular-nums ${
+                  w.committed_close < 0 ? "text-destructive" : ""
+                }`}
+              >
+                {kr(w.committed_close)}
+              </TableCell>
+              <TableCell
+                className={`py-2 text-right font-mono tabular-nums ${
+                  w.expected_close < 0 ? "text-destructive" : "text-muted-foreground"
+                }`}
+              >
+                {kr(w.expected_close)}
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -478,50 +567,68 @@ export function Brief() {
         ))}
       </section>
 
-      {/* Ordene til venstre, de neste tretten ukene til høyre. */}
-      <section className="grid items-stretch gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <SummaryCard
-            data={d.sum}
-            loading={loading && !d.sum}
-            refreshing={rewriting}
-            onRefresh={rewrite}
-            onAsk={() =>
-              ask(
-                "Gå gjennom hvordan det går i selskapet nå: omsetning, lønnskostnad, driftsresultat og penger på konto de siste månedene. Hva har endret seg, og hva bør jeg gjøre noe med?",
-                "Hvordan det går",
-              )
-            }
-          />
+      {/* Under de fire kortene og over CFO-ens ord: de tretten ukene i full
+          bredde. Dette er svaret på «klarer jeg det», og det satt i en tredjedel
+          av en rad ved siden av prosa — 180 piksler kurve, annenhver ukenummer,
+          ingen tall å følge. Nå kurven over tabellen, og tabellen er den man
+          leser med fingeren. */}
+      <section>
+        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="text-[17px] font-semibold">De neste 13 ukene</h2>
+          {d.cash && (
+            <span className="text-muted-foreground font-mono text-xs">
+              {kr(d.cash.opening)} kr nå · tynnest{" "}
+              {d.cash.low_committed.label.toLowerCase()} fra{" "}
+              {dateNo(d.cash.low_committed.start)}
+            </span>
+          )}
         </div>
-        <Card className="lg:col-span-1">
-          <CardContent className="grid gap-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-muted-foreground font-mono text-[10px] tracking-[0.12em] uppercase">
-                Kontanter, 13 uker
-              </span>
-              {d.cash && (
-                <span className="text-muted-foreground/70 font-mono text-[10px]">
-                  {mill(d.cash.opening)} nå
-                </span>
-              )}
-            </div>
+        <Card>
+          {/* grid-cols-[minmax(0,1fr)], ikke bare «grid»: en rute er som
+              standard minst like bred som innholdet, og tabellen med seks
+              kolonner presset kortet forbi skjermkanten på mobil — der ble
+              Bundet og Forventet liggende utenfor, uten noe å rulle i. Nå
+              krymper ruta, og tabellen ruller inni sin egen boks. */}
+          <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {d.cash ? (
               <>
-                <CashChart cash={d.cash} compact />
-                <p className="text-muted-foreground text-xs leading-snug">
+                <CashChart cash={d.cash} />
+                <CashTable cash={d.cash} />
+                <p className="text-muted-foreground text-xs leading-relaxed">
                   Tynnest i{" "}
                   <b className="text-foreground font-mono">
                     {d.cash.low_committed.label.toLowerCase()}
                   </b>
-                  : {kr(d.cash.low_committed.amount)} kr bundet.
+                  : {kr(d.cash.low_committed.amount)} kr bundet
+                  {d.cash.goes_negative
+                    ? `, og den forventede linjen går i minus i ${d.cash.goes_negative.label.toLowerCase()}.`
+                    : ". Kontoen går ikke i minus i perioden."}{" "}
+                  Bundet er bare det som alt er fakturert inn og ut, lønn og
+                  skattedatoer. Forventet legger vanlig drift på toppen, og er
+                  et anslag.
                 </p>
               </>
             ) : (
-              <Skeleton className="h-[180px] w-full" />
+              <Skeleton className="h-[280px] w-full" />
             )}
           </CardContent>
         </Card>
+      </section>
+
+      {/* CFO-ens egne ord, i full bredde nå kurven har flyttet opp. */}
+      <section>
+        <SummaryCard
+          data={d.sum}
+          loading={loading && !d.sum}
+          refreshing={rewriting}
+          onRefresh={rewrite}
+          onAsk={() =>
+            ask(
+              "Gå gjennom hvordan det går i selskapet nå: omsetning, lønnskostnad, driftsresultat og penger på konto de siste månedene. Hva har endret seg, og hva bør jeg gjøre noe med?",
+              "Hvordan det går",
+            )
+          }
+        />
       </section>
 
       {d.dash?.kpis?.length ? (
