@@ -3,10 +3,10 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "rec
 
 import { MetricCard } from "@/components/metric-card"
 import type { Point } from "@/components/metric-card"
+import { SignalList } from "@/components/signal-list"
 import { SummaryCard } from "@/components/summary-card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartLegend,
@@ -41,6 +41,8 @@ import type {
   Summary,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
+import { rank } from "@/lib/signals"
+import type { Signal } from "@/lib/signals"
 import { useConversations } from "@/store/conversations"
 
 /* ── hva som er nytt siden sist ───────────────────────────────── */
@@ -61,17 +63,6 @@ const markSeen = (ids: string[], had: Set<string>) => {
     /* ignorér */
   }
 }
-
-type Signal = {
-  id: string
-  sev: "crit" | "warn" | "note"
-  tag: string
-  title: string
-  body: string
-  ask: string
-}
-
-const RANK = { crit: 0, warn: 1, note: 2 }
 
 type Data = {
   cash?: Cashflow
@@ -180,6 +171,7 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
   if (cash) {
     const floor = cash.assumptions?.monthly_wages || 0
     if (cash.goes_negative) {
+      const week = cash.weeks.find((w) => w.start === cash.goes_negative?.start)
       out.push({
         id: "cash_negative",
         sev: "crit",
@@ -187,6 +179,8 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
         title: `Kontoen går i minus i ${cash.goes_negative.label.toLowerCase()}`,
         body: `Med det som allerede er fakturert inn og ut, er kontoen tom i uka fra ${dateNo(cash.goes_negative.start)}.`,
         ask: "Gå gjennom kontantstrømmen uke for uke fram til uka vi går i minus. Hva er de største utbetalingene, og hva kan flyttes?",
+        amount: week ? Math.abs(week.committed_close) : undefined,
+        due: cash.goes_negative.start,
       })
     } else {
       const dip = cash.weeks.find((w) => w.committed_close < floor)
@@ -198,15 +192,19 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
           title: `Under gulvet i ${dip.label.toLowerCase()}`,
           body: `Den sikre kontantstrømmen faller til ${kr(dip.committed_close)} kr i uka fra ${dateNo(dip.start)} — under én månedslønn (${kr(floor)} kr).`,
           ask: `Hvorfor faller kontantstrømmen under én månedslønn i ${dip.label}? Vis ukene rundt, og hvilke innbetalinger som må komme inn for å unngå det.`,
+          amount: floor - dip.committed_close,
+          due: dip.start,
         })
       }
     }
   }
 
   if (com) {
-    const heldSum = (com.items || [])
-      .filter((i) => i.kind === "holding")
-      .reduce((n, i) => n + i.amount, 0)
+    const held = (com.items || []).filter((i) => i.kind === "holding")
+    const heldSum = held.reduce((n, i) => n + i.amount, 0)
+    // Nærmeste forfall blant forpliktelsene er det som avgjør hvor mye det haster.
+    const soonest = (items: typeof held) =>
+      items.map((i) => i.due).filter(Boolean).sort()[0]
     if (com.verdict === "negative" || com.free_all < 0) {
       out.push({
         id: "free_all_negative",
@@ -215,6 +213,8 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
         title: "Forpliktelsene er større enn det som står på konto",
         body: `Det står ${kr(com.bank)} kr i banken. Trekker du fra alt som er lovet bort, mangler det ${kr(Math.abs(com.free_all))} kr før alt er betalt. Fritt akkurat nå: ${kr(com.free_now)} kr.`,
         ask: "Bryt ned forpliktelsene mine etter forfall og vis hvor mye som er fritt hver måned framover. Hva bør settes av nå?",
+        amount: Math.abs(com.free_all),
+        due: soonest(com.items || []),
       })
     }
     if (heldSum > 0 && !com.restricted) {
@@ -225,6 +225,8 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
         title: "Statens penger står på driftskontoen",
         body: `${kr(heldSum)} kr er moms, arbeidsgiveravgift og skattetrekk dere holder på vegne av staten. Ingenting er satt av på egen konto, så de ser ut som driftsmidler helt til de forfaller.`,
         ask: "Hvor mye av pengene på konto er egentlig statens, når forfaller hver del, og hvordan bør jeg sette dem av?",
+        amount: heldSum,
+        due: soonest(held),
       })
     }
   }
@@ -234,13 +236,20 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
   )) {
     const v = k.value as number
     const over = k.better === "low" ? v > k.alert : v < k.alert
+    // Bare hovedtallet kan være kritisk. Bransjeprofilen har allerede pekt ut
+    // det ene nøkkeltallet som avgjør denne driften; lar vi alle som ligger
+    // forbi varselnivået bli kritiske, står det fire røde kort der og da sier
+    // fargen ingenting lenger. De andre blir advarsler, og rangeres i stedet
+    // etter hvor langt unna målet de ligger.
+    const miss = k.target ? Math.abs(v - k.target) / Math.abs(k.target) : 0
     out.push({
       id: `kpi:${k.id}:${Math.round(v)}`,
-      sev: k.status === "bad" && (k.headline || over) ? "crit" : "warn",
+      sev: k.status === "bad" && k.headline ? "crit" : "warn",
       tag: "Nøkkeltall",
       title: `${k.label} er ${unit(v, k.unit)} mot ${unit(k.target, k.unit, 0)} i mål`,
       body: k.why,
       ask: `Hvorfor ligger ${k.label.toLowerCase()} på ${unit(v, k.unit)}? Er dette et nivåskifte eller en engangseffekt, og hva skal til for å nå målet?`,
+      nudge: Math.min(200, miss * 200) + (k.status === "bad" ? 60 : 0) + (over ? 40 : 0),
     })
   }
 
@@ -253,6 +262,7 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
       title: `${d.name} er ${pct(d.share_pct, 0)} av alt kundene skylder`,
       body: `De skylder ${kr(d.amount)} kr av totalt ${kr(ov.kpis?.kundefordringer)} kr. Blir den betalingen forsinket, er det kontantstrømmen deres som venter.`,
       ask: `Gå gjennom ${d.name}: hva er fakturert, hva er forfalt, hvor lenge har de brukt på å betale før, og hva er eksponeringen vår hvis de stopper?`,
+      amount: d.amount,
     })
   }
   if (ov?.flags?.ubokfort_skatt) {
@@ -263,10 +273,11 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
       title: "Skatten er ikke satt av",
       body: `Regnskapet viser 0 i skattekostnad. Med 22 % selskapsskatt bygger det seg opp rundt ${kr(ov.flags.ubokfort_skatt)} kr som ikke er synlig i resultatet.`,
       ask: "Hvor mye skatt burde vært avsatt hittil i år, og hva gjør det med resultatet?",
+      amount: ov.flags.ubokfort_skatt,
     })
   }
 
-  return out.sort((a, b) => RANK[a.sev] - RANK[b.sev])
+  return rank(out)
 }
 
 /* ── overskriften: én setning, den viktigste ──────────────────── */
@@ -631,6 +642,23 @@ export function Brief() {
         />
       </section>
 
+      {signals.length > 0 && (
+        <section>
+          <Separator className="mb-6" />
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <h2 className="text-[17px] font-semibold">Krever handling</h2>
+            <span className="text-muted-foreground font-mono text-xs">
+              {fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
+            </span>
+          </div>
+          <SignalList
+            signals={signals}
+            seen={had}
+            onAsk={(s: Signal) => ask(s.ask, s.title)}
+          />
+        </section>
+      )}
+
       {d.dash?.kpis?.length ? (
         <section>
           <Separator className="mb-6" />
@@ -694,58 +722,6 @@ export function Brief() {
           </div>
         </section>
       ) : null}
-
-      {signals.length > 0 && (
-        <section>
-          <Separator className="mb-6" />
-          <div className="mb-4 flex items-baseline justify-between gap-4">
-            <h2 className="text-[17px] font-semibold">Krever handling</h2>
-            <span className="text-muted-foreground font-mono text-xs">
-              {fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
-            </span>
-          </div>
-          <div className="grid gap-3">
-            {signals.map((s) => (
-              <Card
-                key={s.id}
-                className="border-l-4 py-4 gap-2"
-                style={{
-                  borderLeftColor:
-                    s.sev === "crit"
-                      ? "var(--destructive)"
-                      : s.sev === "warn"
-                        ? "var(--chart-expected)"
-                        : "var(--border)",
-                }}
-              >
-                <CardHeader className="gap-1 px-5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground font-mono text-[10px] tracking-[0.12em] uppercase">
-                      {s.tag}
-                    </span>
-                    {!had.has(s.id) && (
-                      <Badge variant="secondary" className="h-4 px-1.5 text-[9px] uppercase">
-                        nytt
-                      </Badge>
-                    )}
-                  </div>
-                  <CardTitle className="text-[15px]">{s.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="px-5">
-                  <p className="text-muted-foreground text-sm">{s.body}</p>
-                  <Button
-                    variant="link"
-                    className="mt-2 h-auto p-0 text-sm"
-                    onClick={() => ask(s.ask, s.title)}
-                  >
-                    Grav i dette →
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
 
       {d.pre?.checks?.some((c) => c.status !== "ok") && (
         <Collapsible className="pt-2">
