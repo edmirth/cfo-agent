@@ -11,6 +11,7 @@ kanban-plugin: board
 - [ ] Move chat sessions from an in-process dict into a shared store @either #platform
 - [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
 - [ ] Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them.
+- [ ] Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
 
 
 ## Next
