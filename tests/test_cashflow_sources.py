@@ -182,3 +182,87 @@ def test_annen_gjeld_is_scheduled_by_someone():
     assert "ansatte_eiere" not in cashflow.STATUTORY_FROM_COMMITMENTS
     assert "leverandorgjeld" not in cashflow.STATUTORY_FROM_COMMITMENTS
     assert "skyldig_lonn" not in cashflow.STATUTORY_FROM_COMMITMENTS
+
+
+# ------------------------------------------ what future trading owes back
+def test_vat_on_future_sales_is_dated_to_its_own_term():
+    """Not to the next deadline — to the deadline of the term the invoicing
+    falls in. October's VAT is due 10 December, which is why the money leaves
+    before October's invoicing is collected around 22 December."""
+    import commitments
+    assert commitments.term_due(2026, 10, commitments.MVA_TERMS) == date(2026, 12, 10)
+    assert commitments.term_due(2026, 9, commitments.MVA_TERMS) == date(2026, 12, 10)
+
+
+def test_a_november_term_settles_in_the_new_year():
+    """The one term that rolls the year. Getting it wrong dates February's
+    deadline to the February that has already been and gone."""
+    import commitments
+    assert commitments.term_due(2026, 11, commitments.MVA_TERMS) == date(2027, 2, 10)
+    assert commitments.term_due(2026, 12, commitments.SKATT_TERMS) == date(2027, 1, 15)
+
+
+def test_the_vat_deduction_is_read_from_the_books():
+    """2700 against 2710. Both are cleared by the same settlement, so the ratio
+    inside a term needs no differencing and does not drift across the boundary."""
+    rows = [{"path": "2700 Utgående mva", "cells": [0, -1191110.90]},
+            {"path": "2710 Inngående mva", "cells": [0, 145027.23]}]
+    share, measured = cashflow._vat_input_share(rows)
+    assert measured
+    assert abs(share - 0.1218) < 0.001, share
+
+
+def test_an_unreadable_vat_ratio_pays_the_whole_output_vat():
+    """For a few days after a settlement both accounts are empty. Guessing a
+    deduction there would understate the payment; paying it all is too strict,
+    which is the safe direction."""
+    rows = [{"path": "2700 Utgående mva", "cells": [0, -100.0]},
+            {"path": "2710 Inngående mva", "cells": [0, 0.0]}]
+    share, measured = cashflow._vat_input_share(rows)
+    assert (share, measured) == (0.0, False)
+
+
+def test_a_wild_deduction_is_capped():
+    """Input VAT near output VAT means a posting error, not a bargain, and
+    believing it would quietly halve the payment."""
+    rows = [{"path": "2700 Utgående mva", "cells": [0, -1000000.0]},
+            {"path": "2710 Inngående mva", "cells": [0, 950000.0]}]
+    share, _ = cashflow._vat_input_share(rows)
+    assert share == 0.5
+
+
+def test_aga_rides_along_with_the_payroll_run():
+    """Due on the term covering the month the wages are paid, not on pay day.
+    The 2770 balance commitments dates covers a-meldinger already filed, so a
+    run still ahead of us adds to it rather than repeating it."""
+    import company
+    original = company.setting
+    company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
+    try:
+        flows = cashflow._payroll_runs(date(2026, 10, 1), date(2026, 12, 28),
+                                       904000.0, 139549.0)
+        aga = [f for f in flows if f["kind"] == "aga_future"]
+        assert len(aga) == 1, [f["label"] for f in aga]
+        # October wages sit in the September/October term, due 15 November —
+        # a Sunday in 2026, so it rolls forward to the 16th.
+        assert aga[0]["date"] == date(2026, 11, 16), aga[0]["date"]
+        assert aga[0]["amount"] == -139549.0
+        assert "oktober" in aga[0]["label"]
+    finally:
+        company.setting = original
+
+
+def test_a_withheld_holiday_month_owes_no_employer_contribution():
+    """No ordinary salary, no AGA on it. The feriepenger's own AGA sits on 2785
+    and commitments dates it to the payout."""
+    import company
+    original = company.setting
+    company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10,
+                                         "ferie_uker": 5}.get(k, d)
+    try:
+        flows = cashflow._payroll_runs(date(2026, 5, 15), date(2026, 8, 15),
+                                       904000.0, 139549.0)
+        june = [f for f in flows if f["date"].month == 6 or "juni" in f["label"]]
+        assert not june, f"June drew feriepenger, so it owes neither: {june}"
+    finally:
+        company.setting = original

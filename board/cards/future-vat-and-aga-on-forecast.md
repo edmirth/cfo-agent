@@ -12,11 +12,11 @@ The timing is the point. October's invoicing is collected 22 Dec (31 Oct + 45 cr
 **Note.** Came out of the question about the 13-week forecast and the 45-day terms. The 45 days themselves are already handled correctly — credit_days is the measured median of 71 open invoices.
 
 ## Done when
-- [ ] Future invoicing books its output VAT out on the termin due date
-- [ ] AGA on future payroll is scheduled on its own term dates
-- [ ] Both appear in `assumptions`, so the owner can see what is modelled
-- [ ] The committed and expected lines stay internally consistent: no gross receipt without its liability
-- [ ] A test pins the Oct-sales/10-Dec-VAT case
+- [x] Future invoicing books its output VAT out on the termin due date
+- [x] AGA on future payroll is scheduled on its own term dates
+- [x] Both appear in `assumptions`, so the owner can see what is modelled
+- [x] The committed and expected lines stay internally consistent: no gross receipt without its liability
+- [x] A test pins the Oct-sales/10-Dec-VAT case
 
 ## Log
 - 2026-09-29 (agent): created
@@ -69,3 +69,26 @@ were: October is not booked yet. It will grow as bilagsføring proceeds.
   VAT outflow at all before. Totals unchanged, so nothing is double-counted.
 - 2026-09-30 (agent): AGA was checked and left alone — 2770 holds only
   September's, correctly dated to 15 Nov, so it has no equivalent problem.
+
+- 2026-10-02 (agent): this card was moved to Done on 30 September with all five
+  boxes unticked, and the behaviour it describes was still live today. What
+  shipped then was the board line — booked VAT split across its own term dates —
+  not the card. Found during a full inspection of cashflow.py after the owner
+  queried the brief; measured 390 003 kr of VAT inside a 1 950 013 kr inflow
+  landing in week 50, which was the low point.
+- 2026-10-02 (agent): `commitments.term_due(year, month, terms)` answers the
+  question `_next_due` cannot — not "what is the next deadline" but "when does
+  the term containing this month fall due" — including the November/December
+  roll into the new year. Output VAT on each future invoicing month is now
+  dated to its own termin, whether or not the receipt itself lands inside the
+  window; that is the case that hurts, liability in and cash out.
+- 2026-10-02 (agent): the input-VAT deduction is read off the ledger, not
+  assumed — 2700 against 2710, which is the one pair that needs no differencing
+  because a settlement clears both on the same day. Measured 12,2 % live.
+  Capped at 50 %, and when 2700 is too small to read a ratio off the whole
+  output VAT is scheduled out and a warning says so: too strict, not too kind.
+- 2026-10-02 (agent): AGA rides along with each payroll run onto the term
+  covering the month the wages are paid, scaled with the wage so a withheld
+  holiday month owes none. No double count with the 2770 balance: that covers
+  a-meldinger already filed, a run still ahead of us has not been reported.
+  Live effect — 139 549 kr on 16 November, 342 517 kr of VAT on 10 December.

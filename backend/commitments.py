@@ -55,6 +55,24 @@ SKATT_TERMS = [((1, 2), (3, 15)), ((3, 4), (5, 15)), ((5, 6), (7, 15)),
                ((7, 8), (9, 15)), ((9, 10), (11, 15)), ((11, 12), (1, 15))]
 
 
+def term_due(year: int, month: int, terms: list) -> date:
+    """When the term containing `month` falls due.
+
+    `_next_due` answers "what is the next deadline from here", which is the
+    right question for a balance already sitting in the ledger. It is the wrong
+    one for activity that has not happened yet: VAT on November's invoicing is
+    not due at the next deadline, it is due at November's own. Public because
+    the forecast needs it to date liabilities it is creating itself.
+    """
+    for months, (due_month, due_day) in terms:
+        if month in months:
+            # A term settled in a lower month number than it covers settles in
+            # the new year — November/December VAT falls due in February.
+            roll = due_month < months[0]
+            return date(year + 1 if roll else year, due_month, due_day)
+    raise ValueError(f"no term covers month {month}")
+
+
 def _next_due(today: date, terms: list) -> date:
     """The first settlement date on or after today."""
     candidates = []

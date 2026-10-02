@@ -73,6 +73,18 @@ VIRKEDAGER = 26              # the six-day week holiday and feriepenger run on
 MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
                "august", "september", "oktober", "november", "desember"]
 
+# Invoicing that has not happened yet brings in gross cash and creates a
+# liability on the same krone. The forecast used to take the first and not the
+# second: 1 950 013 kr landing in the window with 390 003 kr of VAT inside it
+# that never left again, and the inflow landed in the tightest week. Money
+# leaves before it arrives — October's VAT falls due 10 December while October's
+# invoicing is collected around 22 December — so having neither side overstated
+# comfort in exactly the weeks that were already the problem.
+MVA_RATE = 0.25
+# Below this the output-VAT balance is too small to read a ratio off, which
+# happens for a few days after every settlement clears both accounts.
+VAT_RATIO_MIN = 50_000
+
 # Taken from commitments.py, which already dates them. Wages and supplier bills
 # are excluded there and modelled here instead — counting both would charge the
 # same krone twice.
@@ -310,8 +322,47 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
              "wages_cash": rate([(5000, 5019), (5030, 5099)], 1, "Lønn"),
+             # Not part of opex, and not double counted: commitments dates the
+             # 2770 balance for payrolls already reported, this rates the ones
+             # still to come. 5401 stays out, being the feriepenger's own.
+             "aga": rate([(5400, 5400)], 1, "Arbeidsgiveravgift"),
              "opex": rate(OPEX_RANGES, 1, "Driftskostnader")}
     return rates, notes
+
+
+def _closing_range(rows: list, low: int, high: int) -> float:
+    """Closing balance across an account range, from the last numeric cell."""
+    total = 0.0
+    for r in rows:
+        n = _account(r)
+        if n is None or not (low <= n <= high):
+            continue
+        cells = [c for c in (r.get("cells") or []) if isinstance(c, (int, float))]
+        if cells:
+            total += float(cells[-1])
+    return total
+
+
+def _vat_input_share(rows: list) -> tuple[float, bool]:
+    """How much of the output VAT the input VAT cancels, per this company.
+
+    Not every krone collected is paid over: VAT on what the company buys is
+    deducted first. The share is read from 2700 against 2710 rather than
+    assumed, and those two are the one pair in the ledger that needs no
+    differencing — a settlement clears both on the same day, so their ratio
+    inside a term is the live ratio with no drift across the boundary.
+
+    Returns the share and whether it could be measured. Unmeasured means the
+    whole output VAT is scheduled out, which is the safe direction to be wrong.
+    """
+    out = abs(_closing_range(rows, 2700, 2709))
+    inn = abs(_closing_range(rows, 2710, 2719))
+    if out < VAT_RATIO_MIN:
+        return 0.0, False
+    # Capped: a deduction above half would mean the company buys nearly as much
+    # as it sells, which for a cleaning company means a posting error, not a
+    # bargain, and a too-large deduction understates the payment.
+    return min(inn / out, 0.5), True
 
 
 def _ferie_withheld() -> tuple[float, int, bool]:
@@ -330,7 +381,8 @@ def _ferie_withheld() -> tuple[float, int, bool]:
     return min(1.0, weeks * 6 / VIRKEDAGER), weeks, bool(ok)
 
 
-def _payroll_runs(today: date, horizon: date, payroll_cash: float) -> list[dict]:
+def _payroll_runs(today: date, horizon: date, payroll_cash: float,
+                  aga_monthly: float = 0.0) -> list[dict]:
     """Every pay day between now and the horizon, and what leaves on it.
 
     Gross, not net: from 2026 the trekk goes to Skatteetaten the same day as
@@ -359,6 +411,23 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float) -> list[dict]
             if round(amount) > 0:
                 flows.append({"date": pay_day, "amount": -amount,
                               "kind": "wages", "label": label})
+            # Arbeidsgiveravgift on that run, due on the term covering the
+            # month it is paid in. The 2770 balance commitments already dates
+            # covers a-meldinger filed up to today; a run still ahead of us has
+            # not been reported yet, so this adds to that balance rather than
+            # repeating it. Scaled with the wage, so a withheld holiday month
+            # carries no employer's contribution either — the feriepenger's own
+            # AGA sits on 2785 and commitments dates it to the payout.
+            share = (amount / payroll_cash) if payroll_cash else 0.0
+            aga = aga_monthly * share
+            if round(aga) > 0:
+                due = workdays.forward(commitments.term_due(
+                    month.year, month.month, commitments.SKATT_TERMS))
+                if today <= due < horizon:
+                    flows.append({
+                        "date": due, "amount": -aga, "kind": "aga_future",
+                        "label": f"Arbeidsgiveravgift på lønn "
+                                 f"{MONTH_NAMES[month.month - 1]}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
     return flows
@@ -478,7 +547,8 @@ async def build(today: date | None = None) -> dict:
         committed.append({"date": max(due, today), "amount": -item["amount"],
                           "kind": "statutory", "label": item["label"]})
 
-    committed += _payroll_runs(today, horizon, rates["wages_cash"])
+    committed += _payroll_runs(today, horizon, rates["wages_cash"],
+                               rates["aga"])
 
     # Trading that has not happened yet: invoicing goes out at month end and is
     # collected on the terms this company's customers actually take. Running
@@ -487,15 +557,29 @@ async def build(today: date | None = None) -> dict:
     terms = [(date.fromisoformat(i["due"]) - date.fromisoformat(i["invoiced"])).days
              for i in ar_open if i.get("invoiced") and i.get("due")]
     credit_days = int(statistics.median(terms)) if terms else 30
+    vat_share, vat_measured = _vat_input_share(rows)
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
         landing = month_end + timedelta(days=credit_days + PAY_LAG_DAYS)
         if today <= landing < horizon:
-            expected.append({"date": landing, "amount": rates["revenue"] * 1.25,
+            expected.append({"date": landing,
+                             "amount": rates["revenue"] * (1 + MVA_RATE),
                              "kind": "new_sales",
                              "label": f"Fakturering {MONTH_NAMES[month.month - 1]}"
                                       f", betalt"})
+        # The VAT on that invoicing, whether or not the customer has paid by
+        # then — the deadline does not wait for the money. Scheduled even when
+        # the receipt itself falls outside the window, because that is the case
+        # that hurts: the liability inside, the cash outside.
+        net_vat = rates["revenue"] * MVA_RATE * (1 - vat_share)
+        vat_due = workdays.forward(
+            commitments.term_due(month.year, month.month, commitments.MVA_TERMS))
+        if today <= vat_due < horizon and round(net_vat) > 0:
+            expected.append({"date": vat_due, "amount": -net_vat,
+                             "kind": "vat_future",
+                             "label": f"Merverdiavgift på fakturering "
+                                      f"{MONTH_NAMES[month.month - 1]}"})
         cost_day = month_end
         if month > date(today.year, today.month, 1) and today <= cost_day < horizon:
             expected.append({"date": cost_day, "amount": -rates["opex"],
@@ -505,14 +589,24 @@ async def build(today: date | None = None) -> dict:
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
+    if not vat_measured:
+        warnings.append(
+            "Forholdet mellom utgående og inngående merverdiavgift lot seg "
+            "ikke måle — konto 2700 er tom eller nettopp gjort opp. Prognosen "
+            "legger derfor ut hele den utgående momsen på ny fakturering, uten "
+            "fradrag for moms på det dere selv kjøper. Det er for strengt, ikke "
+            "for snilt, men det er verdt å vite.")
+
     data = _assemble(today, week0, opening, committed, expected,
-                     rates, credit_days, warnings, ar_open, ap_open)
+                     rates, credit_days, warnings, ar_open, ap_open,
+                     vat_share, vat_measured)
     data["ar_open"] = ar_open
     return data
 
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
-              warnings, ar_open, ap_open) -> dict:
+              warnings, ar_open, ap_open, vat_share=0.0,
+              vat_measured=False) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
     ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
 
@@ -615,6 +709,11 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             "monthly_wages": round(rates["wages"], 2),
             "monthly_wages_cash": round(rates["wages_cash"], 2),
             "monthly_opex": round(rates["opex"], 2),
+            "monthly_aga": round(rates.get("aga", 0.0), 2),
+            # The liability side of trading that has not happened yet.
+            "mva_sats": MVA_RATE,
+            "mva_fradrag_andel": round(vat_share, 3),
+            "mva_fradrag_malt": vat_measured,
         },
         "warnings": warnings,
     }
@@ -671,6 +770,23 @@ def briefing(data: dict | None) -> str:
                f"{_kr(a['monthly_opex'])} kr, kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
+
+    # The half of the forecast that is easy to leave out, because it is a bill
+    # arriving for money that already came in.
+    out.append(
+        f"**Ny fakturering tar med seg sin egen regning.** Momsen på det som "
+        f"faktureres framover er lagt ut på terminforfallet sitt, ikke på den "
+        f"dagen kunden betaler — og de to er sjelden samme uke. Satsen er "
+        f"{round(a['mva_sats'] * 100)} %, med "
+        + (f"{round(a['mva_fradrag_andel'] * 100)} % fradrag for inngående "
+           f"moms, målt på konto 2700 mot 2710."
+           if a.get("mva_fradrag_malt") else
+           "ingen fradrag for inngående moms, fordi forholdet ikke lot seg "
+           "måle — det er for strengt, ikke for snilt.")
+        + f" Arbeidsgiveravgift på lønn som ennå ikke er kjørt ligger på samme "
+          f"måte på sitt eget terminforfall, {_kr(a['monthly_aga'])} kr i "
+          f"måneden. Begge deler er anslag som følger av omsetnings- og "
+          f"lønnsraten over: endrer han den ene, endrer han disse.\n")
 
     # The two months that do not behave like the other ten. Only said when one
     # of them is actually inside the window: a note about December in February
