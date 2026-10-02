@@ -24,7 +24,6 @@ answer. Nothing here is a black box: he is being asked to make decisions on it.
 import asyncio
 import logging
 import statistics
-import time
 from calendar import monthrange
 from datetime import date, timedelta
 
@@ -49,7 +48,9 @@ PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
 # back and settled on a bimonthly term, so only the net left on pay day. From
 # 2026 there is no skattetrekkskonto and the trekk goes to Skatteetaten the same
 # day as the salary — so what leaves the account on pay day is the gross.
-TRAILING_MONTHS = 3          # basis for the recurring run-rates
+# No TRAILING_MONTHS either: it said the run-rates used a trailing window, and
+# they never did — `_run_rates` takes a median over every closed month. A
+# constant that documents behaviour the code does not have is worse than none.
 
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
@@ -75,9 +76,20 @@ MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
 # Taken from commitments.py, which already dates them. Wages and supplier bills
 # are excluded there and modelled here instead — counting both would charge the
 # same krone twice.
+#
+# `annen_gjeld` is here because nothing else carries it: 2990/2991 is never
+# invoiced, so the payables list cannot see it, and it was leaving the forecast
+# entirely. `leverandorgjeld` stays out, being the payables list's own job, and
+# `skyldig_lonn` stays out because the pay-day run already pays it.
+#
+# `ansatte_eiere` is deliberately NOT here. commitments dates it to today, but
+# that is an assumption about undated debt, not a fact — money owed to the owner
+# is usually not demand debt, and scheduling 38 000 kr out of this week would
+# raise an alarm the ledger does not support. Named so the gap is a decision.
 STATUTORY_FROM_COMMITMENTS = {
     "mva_oppgjor", "mva_lopende", "mva_forrige_termin", "aga", "aga_ferie",
     "feriepenger", "betalbar_skatt", "arets_skatt", "forskuddstrekk",
+    "annen_gjeld",
 }
 
 
@@ -109,13 +121,20 @@ def _kr(v) -> str:
     return f"{round(v):,}".replace(",", " ")
 
 
-async def _open_invoices(today: date, tool: str, rows_key: str,
+async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                          outstanding_key: str, name_key: str) -> tuple[list, list]:
     """Open invoices with their due dates.
 
     The search caps at 100 rows per call and offers no paging, so the range is
     walked a month at a time. A month that comes back exactly full may have
     been truncated, and that is reported rather than quietly under-counting.
+
+    Both registers answer under `rows`. They did not always appear to: the
+    supplier call read `invoices`, a key the response has never carried, so
+    `r.get(...) or []` was empty every time and every supplier bill was dropped
+    before it reached the forecast — silently, because the call itself
+    succeeded. `what` names the register in the warnings, since two sources
+    sharing one sentence left nobody able to tell which one was short.
     """
     calls = []
     for back in range(AR_MONTHS_BACK):
@@ -127,24 +146,28 @@ async def _open_invoices(today: date, tool: str, rows_key: str,
 
     seen, out, warnings = set(), [], []
     for back, r in enumerate(results):
+        start, _ = _month_bounds(today, back)
+        when = f"{MONTH_NAMES[start.month - 1]} {start.year}"
         if isinstance(r, Exception):
-            start, _ = _month_bounds(today, back)
-            warnings.append(f"Fakturaer for {start:%B %Y} kunne ikke hentes "
-                            f"({r}). Tallene under er ufullstendige.")
+            warnings.append(f"{what} for {when} kunne ikke hentes ({r}). "
+                            f"Tallene under er ufullstendige.")
             continue
-        rows = r.get(rows_key) or []
+        rows = r.get("rows") or []
         if len(rows) >= 100:
-            start, _ = _month_bounds(today, back)
-            warnings.append(f"Det er minst 100 fakturaer i {start:%B %Y}; "
-                            f"lista kan være avkortet.")
+            warnings.append(f"Det er minst 100 {what.lower()} i {when}; lista "
+                            f"kan være avkortet.")
         for row in rows:
-            if row.get("id") in seen:
-                continue
-            seen.add(row.get("id"))
+            # A row with no id is not a duplicate of the last row with no id.
+            # Putting None in `seen` made the first one swallow every one after.
+            key = row.get(id_key)
+            if key is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
             amount = row.get(outstanding_key) or 0
             if not amount or not row.get("dueDate"):
                 continue
-            out.append({"id": row.get("id"), "name": row.get(name_key) or "",
+            out.append({"id": key, "name": row.get(name_key) or "",
                         "due": row["dueDate"], "invoiced": row.get("invoiceDate"),
                         "amount": float(amount),
                         # Carried for the reminder drafts in cards.py: a chase
@@ -217,38 +240,81 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
     """
     notes: list[str] = []
 
-    def rate(low, high, flip, name):
-        series = [(m, v * flip) for m, v in _monthly(rows, columns, low, high)][:-1]
+    def series_for(ranges) -> list:
+        """One monthly series across several account ranges.
+
+        Summed before the outlier filter runs, never after. Filtering each
+        range on its own and adding the results lets a quiet month in one range
+        be judged against that range's own median, which is not the question —
+        the question is what the whole cost base does in a month.
+        """
+        merged: dict = {}
+        order: list = []
+        for low, high in ranges:
+            for m, v in _monthly(rows, columns, low, high):
+                if m not in merged:
+                    merged[m] = 0.0
+                    order.append(m)
+                merged[m] += v
+        return [(m, merged[m]) for m in order]
+
+    def rate(ranges, flip, name):
+        series = [(m, v * flip) for m, v in series_for(ranges)][:-1]
         values = [v for _, v in series]
         if not values:
             return 0.0
         mid = statistics.median(values)
         if mid <= 0:
             return sum(values) / len(values)
-        kept = [(m, v) for m, v in series if 0.5 * mid <= v <= 2 * mid]
-        dropped = [m for m, v in series if v < 0.5 * mid]
-        if dropped:
-            # Format the number on its own: the sentence has commas of its own.
+        kept = [v for _, v in series if 0.5 * mid <= v <= 2 * mid]
+        low_months = [m for m, v in series if v < 0.5 * mid]
+        high_months = [m for m, v in series if v > 2 * mid]
+        # Computed once, and before it is quoted. Quoting it inside the note
+        # while `kept` was empty divided by zero and took the whole forecast
+        # down with it — reachable whenever credit notes put some months below
+        # half the median and others above double it.
+        average = (sum(kept) / len(kept)) if kept else mid
+        # Format the number on its own: the sentence has commas of its own.
+        said = f"{name} er lagt inn med {_kr(average)} kr i måneden."
+        if low_months:
             notes.append(
-                f"{name} er lagt inn med {_kr(sum(v for _, v in kept) / len(kept))} "
-                f"kr i måneden. {', '.join(dropped)} er holdt utenfor — de ligger "
+                f"{said} {', '.join(low_months)} er holdt utenfor — de ligger "
                 f"langt under de andre månedene, og det betyr nesten alltid at "
                 f"bilag ikke er bokført, ikke at kostnaden forsvant.")
-        return (sum(v for _, v in kept) / len(kept)) if kept else mid
+        if high_months:
+            # Said for the same reason the low ones are. A month at several
+            # times the median pulls the rate down when it is dropped, and a
+            # rate quietly lowered is the dangerous direction to be wrong in.
+            notes.append(
+                f"{said} {', '.join(high_months)} er holdt utenfor — de ligger "
+                f"langt over de andre månedene. Det er som regel etterslep som "
+                f"ble bokført på én gang, eller noe som bare skjedde denne ene "
+                f"gangen, men sjekk det før du stoler på snittet.")
+        return average
 
-    rates = {"revenue": rate(3000, 3999, -1, "Omsetning"),
+    # Every krone that leaves the account has to be in exactly one of these.
+    # 4000-4999 and 5100-5999 were in none of them: varekjøp, underentreprise,
+    # pensjon and yrkesskade simply did not exist in the forecast, about
+    # 116 000 kr a month against a modelled opex of 156 000.
+    OPEX_RANGES = [(4000, 4999),      # varekjøp og underentreprise
+                   (5100, 5399),      # andre lønnsposter som ikke er kontant
+                   (5402, 5999),      # pensjon, yrkesskade, personalkostnad
+                   (6000, 7999)]      # ordinære driftskostnader
+    # 5400/5401 are the gap in that list: arbeidsgiveravgift is dated by
+    # commitments from its own balance, and taking it here as well would pay it
+    # twice.
+    rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning"),
              # The full wage cost, accrual and all — what the P&L carries.
-             "wages": rate(5000, 5099, 1, "Lønn"),
+             "wages": rate([(5000, 5099)], 1, "Lønn"),
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
-             "wages_cash": (rate(5000, 5019, 1, "Lønn")
-                            + rate(5030, 5099, 1, "Andre lønnsposter")),
-             "opex": rate(6000, 7999, 1, "Driftskostnader")}
+             "wages_cash": rate([(5000, 5019), (5030, 5099)], 1, "Lønn"),
+             "opex": rate(OPEX_RANGES, 1, "Driftskostnader")}
     return rates, notes
 
 
-def _ferie_withheld() -> tuple[float, int]:
+def _ferie_withheld() -> tuple[float, int, bool]:
     """How much of one month's ordinary salary the holiday month withholds.
 
     Holiday is counted in virkedager, six to the week, twenty-six to the month
@@ -309,10 +375,11 @@ async def build(today: date | None = None) -> dict:
                                   "period_start": start_year,
                                   "period_end": today.isoformat(), "limit": 0}),
         commitments.cached(),
-        _open_invoices(today, "search_invoices", "rows",
+        _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
                        "amountOutstanding", "customerName"),
-        _open_invoices(today, "search_supplier_invoices", "invoices",
-                       "outstandingAmount", "supplierName"),
+        # Supplier rows are keyed by voucherId, not id.
+        _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
+                       "voucherId", "outstandingAmount", "supplierName"),
         return_exceptions=True,
     )
     if isinstance(balance, Exception):
@@ -364,6 +431,43 @@ async def build(today: date | None = None) -> dict:
                               "label": "Kundefordringer uten kjent faktura"})
     committed += _schedule_payments(ap_open, today)
 
+    # The same check as on 1500 above, which 2400 never had — and the asymmetry
+    # was backwards. Being short on receivables flatters the forecast; being
+    # short on payables hides money going out, and that is the side nobody
+    # noticed was empty for as long as the supplier search read the wrong key.
+    # A liability is a credit balance, so what is owed is the balance negated.
+    gl_ap = next((-r["cells"][-1] for r in rows if _account(r) == 2400
+                  and isinstance((r.get("cells") or [None])[-1], (int, float))), None)
+    ap_total = sum(b["amount"] for b in ap_open)
+    if gl_ap and gl_ap - ap_total > 1000:
+        residual = gl_ap - ap_total
+        # Dated to this week, not spread like the receivables. An undated bill
+        # is already late more often than it is early, and the overdue book
+        # must not be made to look further away than it is.
+        committed.append({"date": today, "amount": -residual,
+                          "kind": "ap_unmatched",
+                          "label": "Leverandørgjeld uten kjent faktura"})
+        warnings.append(
+            f"Konto 2400 viser {_kr(gl_ap)} kr i leverandørgjeld, men de åpne "
+            f"leverandørfakturaene summerer bare til {_kr(ap_total)} kr. De "
+            f"resterende {_kr(residual)} kr er lagt inn denne uka, uten "
+            f"forfallsdato å feste dem til. Noen bør finne ut hva de består av.")
+    elif gl_ap is not None and ap_total - gl_ap > 1000:
+        # The other direction, and it is not symmetrical. Here the register
+        # claims more is outstanding than the ledger says is owed, so the
+        # forecast pays bills the books consider settled. It is NOT trimmed to
+        # the ledger: the invoices carry real due dates and the difference has
+        # no one invoice to take it from, so capping would mean choosing which
+        # supplier to stop paying. Said out loud instead, and left standing —
+        # paying too early is the survivable mistake of the two.
+        warnings.append(
+            f"De åpne leverandørfakturaene summerer til {_kr(ap_total)} kr, "
+            f"men konto 2400 viser bare {_kr(gl_ap)} kr i leverandørgjeld. "
+            f"Prognosen betaler ut hele {_kr(ap_total)} kr, altså "
+            f"{_kr(ap_total - gl_ap)} kr mer enn bøkene sier dere skylder. "
+            f"Som regel er det fakturaer som er betalt uten at restbeløpet ble "
+            f"nullet i reskontroen. Verdt å rydde i.")
+
     for item in com["items"]:
         if item["id"] not in STATUTORY_FROM_COMMITMENTS:
             continue
@@ -390,11 +494,14 @@ async def build(today: date | None = None) -> dict:
         if today <= landing < horizon:
             expected.append({"date": landing, "amount": rates["revenue"] * 1.25,
                              "kind": "new_sales",
-                             "label": f"Fakturering {month:%B}, betalt"})
+                             "label": f"Fakturering {MONTH_NAMES[month.month - 1]}"
+                                      f", betalt"})
         cost_day = month_end
         if month > date(today.year, today.month, 1) and today <= cost_day < horizon:
             expected.append({"date": cost_day, "amount": -rates["opex"],
-                             "kind": "opex", "label": f"Driftskostnader {month:%B}"})
+                             "kind": "opex",
+                             "label": f"Driftskostnader "
+                                      f"{MONTH_NAMES[month.month - 1]}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
