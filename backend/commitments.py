@@ -66,9 +66,36 @@ def _next_due(today: date, terms: list) -> date:
     return min(candidates)
 
 
-def _next_june(today: date) -> date:
-    """Feriepenger are paid out with the June run."""
-    return date(today.year if today.month < 6 else today.year + 1, 6, 30)
+FERIE_MONTH = 6          # the usual payout month, where nothing is stated
+
+
+def ferie_month() -> int:
+    """The month feriepenger is paid out in.
+
+    June for most Norwegian companies, but not all: some pay with the July run,
+    and a company that shuts in a different month moves it. Public and the only
+    implementation, for the same reason `payday` is — the forecast withholds a
+    month's ordinary salary against this month, and a second opinion about
+    which month that is would put the feriepenger in one week and the missing
+    salary in another.
+    """
+    stated = company.setting("ferie_utbetalingsmnd")
+    if stated and 1 <= int(stated) <= 12:
+        return int(stated)
+    return FERIE_MONTH
+
+
+def ferie_month_is_stated() -> bool:
+    """Whether the payout month comes from the company or from our assumption."""
+    stated = company.setting("ferie_utbetalingsmnd")
+    return stated is not None and 1 <= int(stated) <= 12
+
+
+def _next_ferie(today: date) -> date:
+    """Feriepenger are paid out with one named month's run, once a year."""
+    month = ferie_month()
+    year = today.year if today.month <= month else today.year + 1
+    return date(year, month, calendar.monthrange(year, month)[1])
 
 
 def payday(year: int, month: int) -> date:
@@ -148,10 +175,10 @@ GROUPS = [
           lambda d: _next_due(d, SKATT_TERMS)),
     Group("aga_ferie", "Arbeidsgiveravgift på feriepenger", "avgiften på "
           "feriepengene, som forfaller sammen med dem", ((2780, 2789),),
-          "holding", _next_june),
+          "holding", _next_ferie),
     Group("feriepenger", "Skyldig feriepenger", "feriepenger de ansatte har "
           "tjent opp og får utbetalt til sommeren", ((2940, 2944),), "holding",
-          _next_june),
+          _next_ferie),
     Group("skyldig_lonn", "Skyldig og periodisert lønn", "lønn for arbeid som "
           "allerede er utført, men ikke utbetalt", ((2945, 2949),), "bill",
           _next_payroll),

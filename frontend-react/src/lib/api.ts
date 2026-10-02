@@ -36,7 +36,9 @@ export type Cashflow = {
   low_expected: { label: string; start: string; amount: number }
   goes_negative: { label: string; start: string } | null
   open_invoices: { receivable: number; receivable_total: number }
-  assumptions: { monthly_wages: number; [k: string]: number }
+  // Mixed by design: the figures are numbers, the stated-or-assumed notes are
+  // prose, and feriepenger_maned_oppgitt is a flag.
+  assumptions: { monthly_wages: number; [k: string]: number | string | boolean }
   warnings: string[]
   error?: string
 }

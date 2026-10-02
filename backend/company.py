@@ -47,7 +47,12 @@ KNOWN = {
                                 "lønnen utbetales"),
     "lonn_utbetalingsdag": ("int", "dag i måneden lønnen kjøres (1–31)"),
     "kredittid_dager": ("int", "standard betalingsfrist på fakturaene deres"),
+    "ferie_utbetalingsmnd": ("int", "måneden feriepengene utbetales (1-12)"),
+    "ferie_uker": ("int", "hvor mange uker ferie de ansatte har"),
 }
+
+MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
+               "august", "september", "oktober", "november", "desember"]
 
 _cache: dict = {}
 
@@ -205,6 +210,22 @@ def briefing() -> str:
     if data["settings"].get("kredittid_dager"):
         out.append(f"Standard betalingsfrist er "
                    f"{data['settings']['kredittid_dager']} dager.\n")
+    ferie_month = data["settings"].get("ferie_utbetalingsmnd")
+    ferie_weeks = data["settings"].get("ferie_uker")
+    if ferie_month or ferie_weeks:
+        # Both change which week of the forecast is the tight one, so the
+        # agent is told them in the same breath as the pay day.
+        said = []
+        if ferie_month:
+            said.append(f"feriepengene utbetales i {MONTH_NAMES[ferie_month - 1]}"
+                        if 1 <= int(ferie_month) <= 12 else "")
+        if ferie_weeks:
+            said.append(f"de ansatte har {ferie_weeks} uker ferie")
+        said = [s for s in said if s]
+        if said:
+            out.append(f"{' og '.join(said).capitalize()}. I den måneden tar de "
+                       f"ansatte ut feriepenger i stedet for vanlig lønn, så "
+                       f"lønnen den måneden er lavere eller faller bort.\n")
     if data["story"]:
         out.append(data["story"])
     return "\n".join(out)

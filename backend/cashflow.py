@@ -29,6 +29,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 
 import commitments
+import company
 import freshness
 import workdays
 from mcp_client import mcp
@@ -49,6 +50,27 @@ PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
 # 2026 there is no skattetrekkskonto and the trekk goes to Skatteetaten the same
 # day as the salary — so what leaves the account on pay day is the gross.
 TRAILING_MONTHS = 3          # basis for the recurring run-rates
+
+# Two Norwegian payroll facts that break the twelve-identical-months assumption.
+#
+# **Half tax in December.** The tax tables take half the usual trekk from the
+# December run, so staff take home more. It does not move the company's cash:
+# since 2026 the trekk leaves on pay day with the salary, so net plus trekk is
+# the same gross in December as in March — the split between the employee and
+# Skatteetaten is all that changes, and the other half is never withheld later.
+# Modelled as what it is, a declaration rather than a number, because inflating
+# December's outflow would be the old pre-2026 regime in disguise.
+#
+# **The feriepenger month.** In the month holiday pay goes out, staff draw
+# feriepenger instead of ordinary salary and that month's salary is withheld in
+# the same run. commitments.py already dates the accrued feriepenger to it; if
+# the ordinary salary is also charged there, that month pays the staff twice.
+HALF_TAX_MONTH = 12
+FERIE_WEEKS = 5              # ferieloven gives 4 + 1, most agreements give 5
+VIRKEDAGER = 26              # the six-day week holiday and feriepenger run on
+
+MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
+               "august", "september", "oktober", "november", "desember"]
 
 # Taken from commitments.py, which already dates them. Wages and supplier bills
 # are excluded there and modelled here instead — counting both would charge the
@@ -226,6 +248,56 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
     return rates, notes
 
 
+def _ferie_withheld() -> tuple[float, int]:
+    """How much of one month's ordinary salary the holiday month withholds.
+
+    Holiday is counted in virkedager, six to the week, twenty-six to the month
+    — the same convention feriepenger itself is calculated on. Five weeks is
+    thirty of them, more than a month, so for staff on a monthly salary the
+    whole run is withheld and feriepenger is the only payment. Four weeks
+    withholds twenty-four twenty-sixths and a fraction of the salary still
+    goes out. Capped at one: nobody pays negative wages.
+    """
+    stated = company.setting("ferie_uker")
+    ok = stated is not None and 0 <= int(stated) <= 10
+    weeks = int(stated) if ok else FERIE_WEEKS
+    return min(1.0, weeks * 6 / VIRKEDAGER), weeks, bool(ok)
+
+
+def _payroll_runs(today: date, horizon: date, payroll_cash: float) -> list[dict]:
+    """Every pay day between now and the horizon, and what leaves on it.
+
+    Gross, not net: from 2026 the trekk goes to Skatteetaten the same day as
+    the salary, so the whole of it leaves the account on pay day. December is
+    no exception — see HALF_TAX_MONTH above. The feriepenger month is, and it
+    is the one month that can produce no flow at all.
+    """
+    ferie_month = commitments.ferie_month()
+    withheld, _, _ = _ferie_withheld()
+    flows, month = [], today
+    while True:
+        # The same pay day commitments uses — imported, not reimplemented. Two
+        # implementations disagreed and the forecast lost a December payroll.
+        pay_day = workdays.backward(commitments.payday(month.year, month.month))
+        if pay_day >= horizon:
+            break
+        if pay_day >= today:
+            amount, label = payroll_cash, "Lønn og skattetrekk"
+            if month.month == ferie_month and withheld:
+                amount = payroll_cash * (1 - withheld)
+                label = (f"Lønn, {round(withheld * 100)} % holdt igjen mot "
+                         f"feriepengene")
+            # A fully withheld month is left off the table rather than shown as
+            # a zero: the feriepenger line from commitments is the payment that
+            # month, and a 0 kr wage line beside it reads like an error.
+            if round(amount) > 0:
+                flows.append({"date": pay_day, "amount": -amount,
+                              "kind": "wages", "label": label})
+        month = (date(month.year + 1, 1, 1) if month.month == 12
+                 else date(month.year, month.month + 1, 1))
+    return flows
+
+
 async def build(today: date | None = None) -> dict:
     today = today or date.today()
     week0 = _monday(today)
@@ -302,23 +374,7 @@ async def build(today: date | None = None) -> dict:
         committed.append({"date": max(due, today), "amount": -item["amount"],
                           "kind": "statutory", "label": item["label"]})
 
-    # Net wages leave on the last working day of each month; what is withheld
-    # leaves later, on the term dates already counted above.
-    # Gross, not net: the trekk leaves with the salary from 2026.
-    payroll_cash = rates["wages_cash"]
-    month = today
-    while True:
-        # The same pay day commitments uses — imported, not reimplemented. Two
-        # implementations disagreed and the forecast lost a December payroll.
-        pay_day = workdays.backward(commitments.payday(month.year, month.month))
-        if pay_day >= horizon:
-            break
-        if pay_day >= today:
-            committed.append({"date": pay_day, "amount": -payroll_cash,
-                              "kind": "wages",
-                              "label": "Lønn og skattetrekk"})
-        month = (date(month.year + 1, 1, 1) if month.month == 12
-                 else date(month.year, month.month + 1, 1))
+    committed += _payroll_runs(today, horizon, rates["wages_cash"])
 
     # Trading that has not happened yet: invoicing goes out at month end and is
     # collected on the terms this company's customers actually take. Running
@@ -351,6 +407,8 @@ async def build(today: date | None = None) -> dict:
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
+    ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
+
     def bucket(flow) -> int | None:
         idx = (flow["date"] - week0).days // 7
         if idx < 0:
@@ -421,6 +479,25 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             "skattetrekk": ("betales til Skatteetaten samme dag som lønnen, "
                             "så hele bruttolønnen går ut på lønningsdagen"),
             "feriepenger_i_lonnsraten": False,
+            # The two months that are not like the other ten.
+            "halv_skatt_i_desember": ("nettolønnen i desember er høyere, men "
+                                      "trekket går ut samme dag, så beløpet "
+                                      "ut av kontoen er det samme bruttoet "
+                                      "som en vanlig måned"),
+            # Values, not sentences: the briefing builds the prose. A month
+            # name with "antatt" glued onto it reads fine in a key-value list
+            # and wrecks any sentence it is dropped into.
+            "feriepenger_maned": MONTH_NAMES[commitments.ferie_month() - 1],
+            "feriepenger_maned_oppgitt": commitments.ferie_month_is_stated(),
+            "ferie_uker": ferie_weeks,
+            "ferie_uker_oppgitt": ferie_weeks_stated,
+            "ferie_lonn_holdt_igjen": round(ferie_withheld, 3),
+            # Carried rather than recomputed from the rounded share above —
+            # 2/26 of a month's wages is not 7.7 % of them, and a figure in
+            # the prose that disagrees with the table costs more trust than
+            # both are worth.
+            "ferie_lonn_utbetalt": round(
+                rates["wages_cash"] * (1 - ferie_withheld), 2),
             # Said out loud because it moves which week is the tight one.
             "working_day_shift": ("statutory dues roll forward to the next "
                                   "working day, wages back to the last"),
@@ -487,6 +564,43 @@ def briefing(data: dict | None) -> str:
                f"{_kr(a['monthly_opex'])} kr, kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
+
+    # The two months that do not behave like the other ten. Only said when one
+    # of them is actually inside the window: a note about December in February
+    # is noise, and noise is what gets the real notes skimmed past.
+    months = {int(w["start"][5:7]) for w in data["weeks"]}
+    months |= {int(w["end"][5:7]) for w in data["weeks"]}
+    ferie = a.get("feriepenger_maned", "")
+    ferie_month = next((i + 1 for i, n in enumerate(MONTH_NAMES) if n == ferie),
+                       None)
+    if ferie_month in months and a.get("ferie_lonn_holdt_igjen"):
+        held = a["ferie_lonn_holdt_igjen"]
+        run = (f"holdt helt tilbake — feriepengene er hele utbetalingen"
+               if held >= 1 else
+               f"satt ned til {_kr(a['ferie_lonn_utbetalt'])} kr fra "
+               f"{_kr(a['monthly_wages_cash'])} kr")
+        # Whether this rests on their word or on ours decides how hard he is
+        # allowed to lean on it, so it is said either way, not only when weak.
+        source = ("Både måneden og de "
+                  f"{a['ferie_uker']} ukene ferie står i company.md."
+                  if a.get("feriepenger_maned_oppgitt")
+                  and a.get("ferie_uker_oppgitt") else
+                  f"Måneden er antatt til {ferie} og ferien til "
+                  f"{a['ferie_uker']} uker — det står ikke i company.md, og "
+                  f"det flytter en hel månedslønn mellom to uker, så det er "
+                  f"verdt å få bekreftet.")
+        out.append(
+            f"**Feriemåneden ligger i perioden.** I {ferie} tar de ansatte ut "
+            f"feriepenger i stedet for vanlig lønn, og lønnskjøringen den "
+            f"måneden er derfor {run}. Feriepengene selv ligger i den bundne "
+            f"linjen, med beløpet fra konto 2940. {source}\n")
+    if HALF_TAX_MONTH in months:
+        out.append(
+            f"**Halv skatt i desember.** De ansatte får mer netto i desember, "
+            f"men trekket betales til Skatteetaten samme dag som lønnen, så "
+            f"beløpet ut av bedriftens konto er den samme bruttolønnen som i "
+            f"en vanlig måned. Si det hvis han venter en tyngre desember av "
+            f"den grunn — desember er tung av andre grunner, ikke denne.\n")
 
     if data.get("warnings"):
         out.append("**Det som svekker prognosen** — say these in the owner's "

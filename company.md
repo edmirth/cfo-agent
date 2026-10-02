@@ -5,6 +5,8 @@
 lonn_etterskuddsvis_mnd: 1     # lønn i september gjelder arbeid utført i august
 # lonn_utbetalingsdag: 10      # hvilken dag i måneden lønnen kjøres
 # kredittid_dager: 45          # settes bare hvis fakturaene ikke sier det selv
+# ferie_utbetalingsmnd: 6      # måneden feriepengene utbetales
+# ferie_uker: 5                # hvor mange uker ferie de ansatte har
 ---
 
 # Slik fungerer Ullensaker Renholdsteknikk
