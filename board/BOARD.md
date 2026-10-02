@@ -20,11 +20,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast
 
 
 ## Done
 
+- [x] Model December half-tax and the feriepenger month in the payroll forecast @agent #forecast ✓ 2026-10-02
 - [x] Add deterministic ledger tripwires to the pre-flight checks @agent #warnings ✓ 2026-10-02
 - [x] Pay the skattetrekk on pay day, and stop treating feriepenger as cash @agent #forecast ✓ 2026-10-01
 - [x] Use FTE from Tripletex instead of headcount in per-employee KPIs @agent #kpi ✓ 2026-10-01
