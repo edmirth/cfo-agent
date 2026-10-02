@@ -152,3 +152,37 @@ def test_december_is_explained_only_when_it_is_in_the_window():
         assert "Feriemåneden" not in text, "June is outside this window"
     finally:
         company.setting = original
+
+
+def test_feriepenger_is_dated_to_the_payroll_run_not_month_end():
+    """The payout and the withheld salary are one event. Dating the money to
+    the last of the month put it two forecast weeks away from the salary it
+    replaces, and the week of the run then showed no staff cost at all."""
+    original = _with_settings(lonn_utbetalingsdag=10)
+    try:
+        payout = commitments._next_ferie(date(2026, 1, 15))
+        withheld_on = commitments.payday(2026, 6)
+        assert payout == withheld_on == date(2026, 6, 10), payout
+    finally:
+        company.setting = original
+
+
+def test_month_end_is_still_the_fallback_for_the_payout():
+    original = _with_settings()
+    try:
+        assert commitments._next_ferie(date(2026, 1, 15)) == date(2026, 6, 30)
+    finally:
+        company.setting = original
+
+
+def test_a_payout_already_run_is_dated_to_next_year():
+    """What sits on 2940 the day after the run is next year's accrual, not an
+    unpaid balance — but only after the run, not for the whole month. The old
+    code rolled the entire month forward, dating a balance owed on 5 June
+    twelve months out."""
+    original = _with_settings(lonn_utbetalingsdag=10)
+    try:
+        assert commitments._next_ferie(date(2026, 6, 5)) == date(2026, 6, 10)
+        assert commitments._next_ferie(date(2026, 6, 25)) == date(2027, 6, 10)
+    finally:
+        company.setting = original

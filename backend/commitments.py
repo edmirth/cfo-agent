@@ -110,10 +110,24 @@ def ferie_month_is_stated() -> bool:
 
 
 def _next_ferie(today: date) -> date:
-    """Feriepenger are paid out with one named month's run, once a year."""
+    """Feriepenger are paid out with one named month's payroll run.
+
+    With the run, not at month end. The two are the same event: the holiday
+    month's ordinary salary is withheld *because* feriepenger is paid instead,
+    and cashflow withholds it on the pay day. Dating the payout to the last of
+    the month put the money three forecast weeks away from the salary it
+    replaces, so the week of the run showed no staff cost at all while the
+    briefing told the owner the two were paired. `payday` is the one
+    implementation of when wages leave, and it still falls back to month end
+    for a company that has not said otherwise.
+    """
     month = ferie_month()
-    year = today.year if today.month <= month else today.year + 1
-    return date(year, month, calendar.monthrange(year, month)[1])
+    year = today.year
+    if today.month > month or (today.month == month and today > payday(year, month)):
+        # This year's run has gone. What is left on 2940 is next year's
+        # accrual building up, and it is due at next year's run.
+        year += 1
+    return payday(year, month)
 
 
 def payday(year: int, month: int) -> date:
