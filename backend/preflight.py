@@ -82,19 +82,27 @@ def _balance(rows: list[dict], account: int) -> float | None:
 
 def _monthly(rows: list[dict], columns: list[str], low: int, high: int) -> list[tuple[str, float]]:
     """Per-month movement for an account range. The report is cumulative, so a
-    month is the difference from the one before it."""
+    month is the difference from the one before it.
+
+    A blank cell means the account did not move that month, not that it went
+    to zero — so each account carries its own last balance forward before the
+    column is summed, as `overview._cumulative` does. Summing the raw column
+    instead drops every quiet account for a month and books it back the next:
+    one blank rent cell turned a 10 000 kr cost month into −2 000, and every
+    run-rate and completeness check built on the series with it."""
     band = [r for r in rows if (n := _account(r)) is not None and low <= n <= high]
     if not band:
         return []
+    carried = [0.0] * len(band)
     out, prev = [], 0.0
     for i, col in enumerate(columns):
         if col not in MONTHS:
             continue
-        cum = 0.0
-        for r in band:
+        for j, r in enumerate(band):
             cells = r.get("cells") or []
             if i < len(cells) and isinstance(cells[i], (int, float)):
-                cum += float(cells[i])
+                carried[j] = float(cells[i])
+        cum = sum(carried)
         out.append((col, cum - prev))
         prev = cum
     return out
