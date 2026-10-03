@@ -139,11 +139,12 @@ export function Chat({ conv }: { conv: Conversation | null }) {
     if (near) endRef.current?.scrollIntoView({ block: "end" })
   })
 
+  // Enter sender skjemaet selv om knappen er deaktivert. Å tømme feltet først
+  // og spørre etterpå kastet spørsmålet hver gang ask() avviste det — så feltet
+  // tømmes først når spørsmålet faktisk er tatt imot.
   const send = (e: React.FormEvent) => {
     e.preventDefault()
-    const v = value
-    setValue("")
-    ask(v, undefined, !conv)
+    if (ask(value, undefined, !conv)) setValue("")
   }
 
   return (
