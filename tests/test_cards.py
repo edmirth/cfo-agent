@@ -84,3 +84,50 @@ def test_approved_card_returns_once_the_condition_cleared_and_recurs():
     cards.reconcile([], sources_ok=True)                   # paid: key released
     cards.reconcile([_card("collections:Skanska", "Skanska 20 d")], sources_ok=True)
     assert [x["title"] for x in cards.deck()["open"]] == ["Skanska 20 d"]
+
+
+def _approve_days_ago(card_id, days):
+    cards.decide(card_id, "ok")
+    data = cards._load()
+    for c in data["cards"]:
+        if c["id"] == card_id:
+            c["closed"] = (date.today() - timedelta(days=days)).isoformat()
+    cards._save(data)
+
+
+def test_still_late_two_weeks_after_approval_comes_back_as_a_follow_up():
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    _approve_days_ago(c["id"], 13)
+    cards.reconcile([_card("collections:Skanska", "Skanska 83 d")], sources_ok=True)
+    assert cards.deck()["open"] == []                    # day 13: still answered
+
+    _approve_days_ago(c["id"], 14)
+    cards.reconcile([_card("collections:Skanska", "Skanska 84 d")], sources_ok=True)
+    [back] = cards.deck()["open"]
+    assert back["id"] != c["id"] and back["title"] == "Skanska 84 d"
+    assert back["follow_up"]["of"] == c["id"]
+    assert back["body"].startswith("Oppfølging: du valgte «Ok» for 14 dager siden")
+
+
+def test_a_follow_up_keeps_saying_so_when_refreshed():
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    _approve_days_ago(c["id"], 20)
+    cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
+    cards.reconcile([{**_card("collections:Skanska", "y"), "body": "ny tekst"}],
+                    sources_ok=True)
+    [back] = cards.deck()["open"]
+    assert back["body"].startswith("Oppfølging:") and back["body"].endswith("ny tekst")
+    assert back["body"].count("Oppfølging:") == 1
+
+
+def test_approving_the_follow_up_starts_a_new_fortnight():
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    _approve_days_ago(c["id"], 20)
+    cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
+    [back] = cards.deck()["open"]
+    cards.decide(back["id"], "ok")
+    cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
+    assert cards.deck()["open"] == []
