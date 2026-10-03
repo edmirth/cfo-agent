@@ -97,3 +97,92 @@ def test_a_term_past_its_deadline_is_not_split_off_again():
     commitments._split_vat(items, rows, cols, date(2026, 10, 15))
     assert [i["id"] for i in items] == ["mva_lopende"]
     assert items[0]["amount"] == 200000.0
+
+
+# ------------------------------------------------------ paid ahead of time
+import asyncio
+
+AUG_PAID_COLS = COLUMNS[:-1] + ["Okt", "Utgående saldo"]
+AUG_PAID_ROWS = [{"path": "2700 Utgående merverdiavgift, høy sats",
+                  "cells": [0] + [0] * 7 + [-939143.19, -1050000, -200000, -200000]}]
+
+
+class _Postings:
+    def __init__(self, postings=None, fail=False):
+        self.postings, self.fail, self.asked = postings or [], fail, []
+
+    async def call(self, tool, args):
+        self.asked.append((tool, args))
+        if self.fail:
+            raise RuntimeError("Tripletex svarte ikke")
+        # A hundred at a time, like the real endpoint.
+        page = self.postings[args["from"]:args["from"] + args["count"]]
+        return {"postings": page,
+                "hasMore": args["from"] + args["count"] < len(self.postings)}
+
+
+def _paid_early(stub, today=date(2026, 10, 8)):
+    original = commitments.mcp
+    commitments.mcp = stub
+    try:
+        return asyncio.run(commitments._paid_early(AUG_PAID_ROWS, AUG_PAID_COLS, today))
+    finally:
+        commitments.mcp = original
+
+
+def test_a_term_paid_before_its_deadline_is_not_split_off():
+    # Jul-Aug paid on 5 October straight against 2700; on the 8th all that is
+    # left is Sept-Oct, due 10 December — not 12 October.
+    stub = _Postings([{"voucherId": 7, "amount": 939143.19},
+                      {"voucherId": 8, "amount": -12500.0}])
+    assert _paid_early(stub) is True
+    tool, args = stub.asked[0]
+    assert tool == "search_ledger_postings"
+    assert args["dateFrom"] == "2026-09-01" and args["dateTo"] == "2026-10-09"
+    items = [_running(200000.0)]
+    commitments._split_vat(items, AUG_PAID_ROWS, AUG_PAID_COLS, date(2026, 10, 8),
+                           paid=True)
+    assert [(i["id"], i["due"]) for i in items] == [("mva_lopende", "2026-12-10")]
+
+
+def test_a_payment_split_across_output_and_input_vat_still_counts():
+    # One settlement voucher: debit 2700 for the output, credit 2710 for the input.
+    stub = _Postings([{"voucherId": 7, "amount": 1100000.0},
+                      {"voucherId": 7, "amount": -160856.81}])
+    assert _paid_early(stub) is True
+
+
+def test_unpaid_term_is_still_split():
+    stub = _Postings([{"voucherId": 8, "amount": -12500.0},
+                      {"voucherId": 9, "amount": 3000.0}])
+    assert _paid_early(stub) is False
+
+
+def test_unreadable_postings_assume_unpaid():
+    assert _paid_early(_Postings(fail=True)) is False
+
+
+def test_postings_are_only_asked_for_while_a_term_awaits_its_deadline():
+    stub = _Postings()
+    assert _paid_early(stub, today=date(2026, 10, 15)) is False   # deadline passed
+    assert stub.asked == []
+
+
+def test_a_term_ends_in_the_year_before_a_february_deadline():
+    assert commitments._term_end(12, date(2027, 2, 10)) == date(2026, 12, 31)
+    assert commitments._term_end(8, date(2026, 10, 10)) == date(2026, 8, 31)
+
+
+def test_the_payment_is_found_past_the_first_page():
+    # 250 invoice lines before the payment voucher, as in a busy month.
+    lines = [{"voucherId": 1000 + n, "amount": -1127.5} for n in range(250)]
+    stub = _Postings(lines + [{"voucherId": 7, "amount": 939143.19}])
+    assert _paid_early(stub) is True
+    assert [a["from"] for _, a in stub.asked] == [0, 100, 200]
+    assert all(a["count"] == 100 for _, a in stub.asked)
+
+
+def test_too_many_postings_to_read_assumes_unpaid():
+    lines = [{"voucherId": 7, "amount": 939143.19}] + [
+        {"voucherId": n, "amount": -1.0} for n in range(2100)]
+    assert _paid_early(_Postings(lines)) is False

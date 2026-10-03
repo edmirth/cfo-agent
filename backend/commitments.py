@@ -29,7 +29,7 @@ import asyncio
 import calendar
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import company
 import freshness
@@ -264,7 +264,7 @@ MVA_RUNNING = ((2700, 2739),)
 
 
 def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
-               today: date) -> None:
+               today: date, paid: bool = False) -> None:
     """Date a completed VAT term to its own deadline, not the next one.
 
     2700/2710 hold the term being accrued. They also hold the *previous* term
@@ -277,10 +277,14 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
     The split is read off the report rather than estimated: the balance as at
     the end of the last completed term is that term, because a term that was
     transferred out shows zero in its own month column.
+
+    `paid` is what the report cannot say: a term paid early, straight against
+    2700, still shows in its own month column until the deadline. Without it
+    this term's VAT was relabelled as the paid one and dated to its deadline.
     """
     running = next((i for i in items if i["id"] == "mva_lopende"), None)
     term = _completed_term(today)
-    if running is None or term is None:
+    if running is None or term is None or paid:
         return
     month, due = term
     at_end = _at_month(rows, MVA_RUNNING, columns, month)
@@ -310,6 +314,69 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
         "assumed_due": False})
     if remainder < 0.5:
         items.remove(running)
+
+
+PAID_TOLERANCE = 1.0      # kr; a VAT payment is the term's amount to the krone
+POSTING_PAGE = 100        # the most search_ledger_postings returns per call
+POSTING_PAGES = 20
+
+
+def _term_end(month: int, due: date) -> date:
+    """Last day of the term ending in `month` that settles on `due`."""
+    year = due.year if month <= due.month else due.year - 1
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
+async def _paid_early(rows: list[dict], columns: list[str], today: date) -> bool:
+    """Has the completed term already been paid, ahead of its deadline?
+
+    Only the postings can tell. A payment booked straight against 2700 leaves
+    the term's own month column unchanged, so the report reads the same paid
+    or unpaid. What gives it away is one voucher on 2700–2739 since the term
+    ended that nets to the term's amount in debit — a sales invoice nets to
+    its own VAT in credit, and does not land on that figure by accident.
+
+    Asked only in the days between a term ending and its deadline, when there
+    is a completed term to split at all. A failed call answers "not paid":
+    the money then shows on the earlier date, the safe direction to be wrong.
+    """
+    term = _completed_term(today)
+    if term is None:
+        return False
+    month, due = term
+    at_end = _at_month(rows, MVA_RUNNING, columns, month)
+    if at_end is None or -at_end < 0.5:
+        return False
+    owed = -at_end
+    start = _term_end(month, due) + timedelta(days=1)
+    postings: list[dict] = []
+    try:
+        # Every invoice puts a line on 2700, so a month runs to hundreds of
+        # rows and the API returns a hundred at a time, in voucher order.
+        for page in range(POSTING_PAGES):
+            result = await mcp.call("search_ledger_postings", {
+                "dateFrom": start.isoformat(),
+                # dateTo is exclusive; today's postings count.
+                "dateTo": (today + timedelta(days=1)).isoformat(),
+                "accountNumberFrom": MVA_RUNNING[0][0],
+                "accountNumberTo": MVA_RUNNING[0][1],
+                "count": POSTING_PAGE, "from": page * POSTING_PAGE})
+            postings += result.get("postings") or []
+            if not result.get("hasMore"):
+                break
+        else:
+            # A voucher half-read could net to anything; not knowing is "not paid".
+            log.warning("Commitments: mer enn %d mva-posteringer siden %s; "
+                        "antar ubetalt", POSTING_PAGES * POSTING_PAGE, start)
+            return False
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Commitments: mva-posteringene kunne ikke leses: %s", exc)
+        return False
+    by_voucher: dict = {}
+    for r in postings:
+        key = r.get("voucherId") or r.get("id")
+        by_voucher[key] = by_voucher.get(key, 0.0) + float(r.get("amount") or 0)
+    return any(abs(net - owed) <= PAID_TOLERANCE for net in by_voucher.values())
 
 
 def _assumed_due() -> set[str]:
@@ -462,7 +529,9 @@ async def build(today: date | None = None) -> dict:
                       "accounts": accounts, "estimated": False,
                       "assumed_due": g.id in assumed})
 
-    _split_vat(items, rows, columns, today)
+    paid = (any(i["id"] == "mva_lopende" for i in items)
+            and await _paid_early(rows, columns, today))
+    _split_vat(items, rows, columns, today, paid=paid)
 
     # Until 2026 withheld employee tax sat on a restricted account (1950) and
     # was settled on a bimonthly term, so the balance there had to be netted off
