@@ -29,7 +29,7 @@ import asyncio
 import calendar
 import logging
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
 import company
 import freshness
@@ -165,10 +165,15 @@ def _next_payroll(today: date) -> date:
     return run
 
 
-def _second_due(today: date, terms: list) -> date:
-    """The settlement after next — where a term is still accumulating."""
-    first = _next_due(today, terms)
-    return _next_due(first + timedelta(days=1), terms)
+def _running_due(today: date, terms: list) -> date:
+    """The deadline of the term today falls in — where a term is still accumulating.
+
+    Not "the settlement after next". That is the same date only while the
+    previous term is still unpaid; once its deadline passes, the next
+    settlement *is* this term's, and skipping one more put Sept–Oct VAT on
+    10 February, outside the thirteen weeks.
+    """
+    return term_due(today.year, today.month, terms)
 
 
 def _tax_due(today: date) -> date:
@@ -198,7 +203,7 @@ GROUPS = [
     Group("mva_lopende", "Merverdiavgift, inneværende termin", "moms du har "
           "krevd inn så langt i denne perioden og betaler ved neste forfall "
           "etter det", ((2700, 2739),), "holding",
-          lambda d: _second_due(d, MVA_TERMS)),
+          lambda d: _running_due(d, MVA_TERMS)),
     Group("forskuddstrekk", "Forskudds- og utleggstrekk", "skatt og trekk du "
           "har holdt tilbake fra lønnen til de ansatte og skal betale videre",
           ((2600, 2619),), "holding", lambda d: _next_due(d, SKATT_TERMS)),
@@ -358,7 +363,11 @@ def _completed_term(today: date) -> tuple[int, date] | None:
 
     Terms run two months and settle on the 10th of the month after — Jul-Aug on
     10 October. A term that ended is owed on a known date whether or not the
-    bookkeeper has moved it to the settlement account yet."""
+    bookkeeper has moved it to the settlement account yet.
+
+    Only until that date. Once the deadline has passed the term has been paid,
+    and the month-end balance that still shows it is history: reading it as
+    owed would date this term's VAT to a deadline already gone."""
     best = None
     for (m1, m2), (dm, dd) in MVA_TERMS:
         for year in (today.year - 1, today.year):
@@ -367,6 +376,8 @@ def _completed_term(today: date) -> tuple[int, date] | None:
             if end >= today:
                 continue
             due = date(year if dm > m2 else year + 1, dm, dd)
+            if _shift("mva_forrige_termin", due) < today:
+                continue
             if best is None or end > best[1]:
                 best = (m2, end, due)
     return (best[0], best[2]) if best else None

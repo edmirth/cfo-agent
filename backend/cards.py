@@ -42,6 +42,9 @@ log = logging.getLogger("cfo.cards")
 
 STORE = config.ROOT / "state" / "cards.json"
 MAX_CLOSED = 200
+# How long an approved card answers its check. "Send påminnelsen" is a promise
+# to act, not proof the customer paid; still late two weeks on, it comes back.
+FOLLOW_UP_DAYS = 14
 
 _lock = threading.Lock()
 
@@ -109,11 +112,44 @@ def _wake(cards: list[dict], today: date) -> bool:
     return changed
 
 
+def _due_for_follow_up(card: dict, today: date | None = None) -> bool:
+    try:
+        closed = date.fromisoformat(card.get("closed") or "")
+    except ValueError:
+        return False
+    return ((today or date.today()) - closed).days >= FOLLOW_UP_DAYS
+
+
+def _answered_before(cards: list[dict], key: str | None) -> dict | None:
+    """The approved card this one follows up, if the check outlived it."""
+    if not key:
+        return None
+    held = [c for c in cards if c.get("key") == key and c.get("status") == "done"
+            and c.get("source") == "auto" and not c.get("released")]
+    return max(held, key=lambda c: c.get("closed") or "") if held else None
+
+
+def _with_follow_up(card: dict, body: str) -> str:
+    """Say what was already done. A follow-up that reads like a first notice
+    asks the CEO to decide again what he decided two weeks ago."""
+    f = card.get("follow_up")
+    if not f:
+        return body
+    try:
+        ago = (date.today() - date.fromisoformat(f.get("closed") or "")).days
+        when = f"for {ago} dager siden"
+    except ValueError:
+        when = "tidligere"
+    return (f"Oppfølging: du valgte «{f.get('label') or 'å ta det'}» {when}, "
+            f"og det står fortsatt ved lag. " + body)
+
+
 def add(card: dict) -> dict | None:
     """Store a card unless its key is already live.
 
-    Returns the stored card, or None when an open or deferred card already
-    covers it — a deck that repeats itself is a deck nobody reads.
+    Returns the stored card, or None when an open, deferred, dismissed or
+    still-standing approved card already covers it — a deck that repeats itself
+    is a deck nobody reads.
     """
     with _lock:
         data = _load()
@@ -126,6 +162,21 @@ def add(card: dict) -> dict | None:
                 # Dismissed means "stop telling me this".
                 if existing.get("key") == key and existing.get("status") == "dismissed":
                     return None
+                # Approved means "I'm on it". The check keeps firing until the
+                # customer pays, so the card stays answered until it stops —
+                # `reconcile` releases the key then — or until FOLLOW_UP_DAYS
+                # have passed and it has not, when it comes back as a follow-up.
+                if (existing.get("key") == key and existing.get("status") == "done"
+                        and existing.get("source") == "auto"
+                        and not existing.get("released")
+                        and not _due_for_follow_up(existing)):
+                    return None
+            previous = _answered_before(data["cards"], key)
+            if previous is not None:
+                card = {**card, "follow_up": {
+                    "of": previous["id"], "closed": previous.get("closed"),
+                    "label": (previous.get("decided") or {}).get("label")}}
+                card["body"] = _with_follow_up(card, card.get("body", ""))
         data["counter"] += 1
         card = {**card, "id": f"K{data['counter']:03d}", "created": _now(),
                 "status": "open"}
@@ -411,14 +462,27 @@ def reconcile(candidates: list[dict], sources_ok: bool) -> None:
     a candidate then means "unknown", not "fixed".
     """
     by_key = {c["key"]: c for c in candidates if c.get("key")}
+    live = set(by_key)
     with _lock:
         data = _load()
         changed = False
         for card in data["cards"]:
-            if card.get("source") != "auto" or card.get("status") not in ("open", "snoozed"):
+            if card.get("source") != "auto":
+                continue
+            # An approved card holds its key while the condition persists. Once
+            # the check stops firing it lets go, so the next time the same
+            # customer is late is a new card, not a repeat of the old one.
+            if (card.get("status") == "done" and not card.get("released")
+                    and sources_ok and card.get("key") not in live):
+                card["released"] = _now()
+                changed = True
+                continue
+            if card.get("status") not in ("open", "snoozed"):
                 continue
             fresh = by_key.pop(card.get("key"), None)
             if fresh is not None:
+                if "body" in fresh:
+                    fresh = {**fresh, "body": _with_follow_up(card, fresh["body"])}
                 for field in ("title", "body", "amount", "urgency", "evidence",
                               "draft", "options"):
                     if field in fresh and fresh[field] != card.get(field):

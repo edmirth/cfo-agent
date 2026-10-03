@@ -71,3 +71,29 @@ def test_a_missing_month_column_changes_nothing():
     commitments._split_vat(items, _rows(-400, -500), ["Utgående saldo"],
                            date(2026, 9, 30))
     assert [i["id"] for i in items] == ["mva_lopende"]
+
+
+def test_the_running_term_is_due_on_its_own_deadline():
+    # Once Jul-Aug has been paid on 12 October, the next settlement is
+    # Sept-Oct's own, on 10 December — not the one after it in February.
+    def running(today):
+        return commitments._shift("mva_lopende",
+                                  commitments._running_due(today, commitments.MVA_TERMS))
+    assert running(date(2026, 10, 5)) == date(2026, 12, 10)
+    assert running(date(2026, 10, 15)) == date(2026, 12, 10)
+    assert running(date(2026, 12, 15)) == date(2027, 2, 10)
+    assert running(date(2026, 6, 15)) == date(2026, 8, 31)
+
+
+def test_a_term_past_its_deadline_is_not_split_off_again():
+    # 15 October: Jul-Aug was paid straight off 2700 on the 12th, so the August
+    # column still shows it, but all that is left is this term's VAT.
+    assert commitments._completed_term(date(2026, 10, 12)) == (8, date(2026, 10, 10))
+    assert commitments._completed_term(date(2026, 10, 15)) is None
+    cols = COLUMNS[:-1] + ["Okt", "Utgående saldo"]
+    rows = [{"path": "2700 Utgående merverdiavgift, høy sats",
+             "cells": [0] + [0] * 7 + [-939143.19, -1050000, -200000, -200000]}]
+    items = [_running(200000.0)]
+    commitments._split_vat(items, rows, cols, date(2026, 10, 15))
+    assert [i["id"] for i in items] == ["mva_lopende"]
+    assert items[0]["amount"] == 200000.0

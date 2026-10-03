@@ -267,13 +267,13 @@ main{max-width:940px;margin:0 auto;padding:0 28px 80px}
 .pack-val{font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600;
   font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 .pack.bad .pack-val{color:var(--crit)}
-.pack.warn .pack-val{color:var(--warn)}
+.pack.watch .pack-val{color:var(--warn)}
 .pack.good .pack-val{color:var(--good)}
 .pack-bar{position:relative;height:7px;background:var(--surface-2);border-radius:3px;
   margin:9px 0 7px}
 .pack-bar span{display:block;height:100%;border-radius:3px;background:var(--accent)}
 .pack.bad .pack-bar span{background:var(--crit)}
-.pack.warn .pack-bar span{background:var(--warn)}
+.pack.watch .pack-bar span{background:var(--warn)}
 .pack.good .pack-bar span{background:var(--good)}
 .pack-target{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
 .pack-plain{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}

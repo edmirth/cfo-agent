@@ -232,7 +232,7 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
   }
 
   for (const k of (dash?.kpis || []).filter(
-    (k) => k.value != null && (k.status === "bad" || k.status === "warn"),
+    (k) => k.value != null && (k.status === "bad" || k.status === "watch"),
   )) {
     const v = k.value as number
     const over = k.better === "low" ? v > k.alert : v < k.alert
@@ -678,15 +678,17 @@ export function Brief() {
                 ? "text-muted-foreground"
                 : k.status === "bad"
                   ? "text-destructive"
-                  : k.status === "warn"
-                    ? "text-amber-600 dark:text-amber-500"
-                    : "text-emerald-700 dark:text-emerald-500"
+                  : k.status === "good"
+                    ? "text-emerald-700 dark:text-emerald-500"
+                    : "text-amber-600 dark:text-amber-500"
+              // Grønt bare når backend sier «good». Alt annet er gult, så en
+              // status frontenden ikke kjenner aldri males som friskt.
               const bar =
                 k.status === "bad"
                   ? "bg-destructive"
-                  : k.status === "warn"
-                    ? "bg-amber-500"
-                    : "bg-emerald-600"
+                  : k.status === "good"
+                    ? "bg-emerald-600"
+                    : "bg-amber-500"
               return (
                 <div key={k.id}>
                   <div className="flex items-baseline justify-between gap-3">

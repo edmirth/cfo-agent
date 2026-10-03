@@ -117,7 +117,7 @@ function signals() {
     }
   }
 
-  for (const k of (dash?.kpis || []).filter((k) => k.status === "bad" || k.status === "warn")) {
+  for (const k of (dash?.kpis || []).filter((k) => k.status === "bad" || k.status === "watch")) {
     const over = k.better === "low" ? k.value > k.alert : k.value < k.alert;
     out.push({
       id: `kpi:${k.id}:${Math.round(k.value)}`,

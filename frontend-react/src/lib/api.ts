@@ -11,7 +11,7 @@ export type Kpi = {
   target: number
   alert: number
   why: string
-  status: "good" | "warn" | "bad" | "unknown"
+  status: "good" | "watch" | "bad" | "unknown"
   headline?: boolean
 }
 
