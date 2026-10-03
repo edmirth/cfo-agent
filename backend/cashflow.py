@@ -340,13 +340,26 @@ def _run_rates(rows: list, columns: list,
     # 4000-4999 and 5100-5999 were in none of them: varekjøp, underentreprise,
     # pensjon and yrkesskade simply did not exist in the forecast, about
     # 116 000 kr a month against a modelled opex of 156 000.
+    #
+    # And no krone that never leaves it. A cost booked against a balance sheet
+    # account rather than the bank is a P&L figure, not a payment: counting it
+    # took the depreciation on three cars — about 19 000 kr a month in Q1 —
+    # out of the account every month as if it were a bill.
     OPEX_RANGES = [(4000, 4999),      # varekjøp og underentreprise
-                   (5100, 5399),      # andre lønnsposter som ikke er kontant
+                   (5100, 5199),
+                   (5300, 5399),      # annen opplysningspliktig godtgjørelse
                    (5402, 5999),      # pensjon, yrkesskade, personalkostnad
-                   (6000, 7999)]      # ordinære driftskostnader
-    # 5400/5401 are the gap in that list: arbeidsgiveravgift is dated by
-    # commitments from its own balance, and taking it here as well would pay it
-    # twice.
+                   (6100, 7799),      # ordinære driftskostnader
+                   (7900, 7999)]
+    # The gaps in that list, each on purpose:
+    # - 5200-5299 fordel i arbeidsforhold: a benefit in kind, taxed through
+    #   payroll and booked against its own contra account. No money moves.
+    # - 5400/5401 arbeidsgiveravgift: dated by commitments from its own
+    #   balance; taking it here as well would pay it twice.
+    # - 6000-6099 avskrivning og nedskrivning: the cost of an asset already
+    #   paid for, spread over its life.
+    # - 7800-7899 tap på fordringer og ved avgang: money that did not come in,
+    #   or an asset written off. Neither is a payment.
     rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning"),
              # The full wage cost, accrual and all — what the P&L carries.
              "wages": rate([(5000, 5099)], 1, "Lønn"),
