@@ -61,9 +61,10 @@ def _read(rows, id_key="voucherId"):
     original = cashflow.mcp
     cashflow.mcp = stub
     try:
-        return asyncio.run(cashflow._open_invoices(
+        out, warnings, _ = asyncio.run(cashflow._open_invoices(
             date(2026, 10, 2), "search_supplier_invoices", "Leverandørfakturaer",
             id_key, "outstandingAmount", "supplierName"))
+        return out, warnings
     finally:
         cashflow.mcp = original
 

@@ -444,11 +444,34 @@ async def refresh(today: date | None = None) -> dict:
         # the deck and the forecast on the same figures.
         candidates += _collections(cf.get("ar_open") or [], today)
 
-    reconcile(candidates, sources_ok=bool(pf and cf))
+    reconcile(candidates, sources_ok=True, unknown=_unknown(pf, cf))
     return deck(today)
 
 
-def reconcile(candidates: list[dict], sources_ok: bool) -> None:
+# Which derived cards each check produces, by key prefix. A check that could
+# not run says nothing about whether its cards still hold.
+CHECK_KEYS = {"inbox": "vouchers:", "revenue_month": "invoicing:",
+              "ar_tie": "reconcile:ar_tie", "ap_tie": "reconcile:ap_tie",
+              "ap_posting": "reconcile:ap_posting"}
+
+
+def _unknown(pf: dict | None, cf: dict | None) -> set[str]:
+    """Key prefixes whose source did not answer this time."""
+    unknown: set[str] = set()
+    if not pf:
+        unknown |= set(CHECK_KEYS.values())
+    else:
+        unknown |= {CHECK_KEYS[c["id"]] for c in pf.get("checks", [])
+                    if c["status"] == "unavailable" and c["id"] in CHECK_KEYS}
+    if not cf:
+        unknown |= {"cash:", "collections:"}
+    elif not cf.get("ar_complete", True):
+        unknown.add("collections:")
+    return unknown
+
+
+def reconcile(candidates: list[dict], sources_ok: bool,
+              unknown: set[str] | tuple = ()) -> None:
     """Make the derived cards match what the checks say *now*.
 
     A card raised by a check is a claim about the present — "Skanska is 70
@@ -460,7 +483,9 @@ def reconcile(candidates: list[dict], sources_ok: bool) -> None:
     are not touched; only the agent knows whether those still hold.
 
     When a source could not be read at all, nothing is closed: the absence of
-    a candidate then means "unknown", not "fixed".
+    a candidate then means "unknown", not "fixed". `unknown` narrows that to
+    the cards whose own check did not run — key prefixes, from `_unknown` —
+    so one failed report does not freeze the whole deck.
     """
     by_key = {c["key"]: c for c in candidates if c.get("key")}
     live = set(by_key)
@@ -469,6 +494,9 @@ def reconcile(candidates: list[dict], sources_ok: bool) -> None:
         changed = False
         for card in data["cards"]:
             if card.get("source") != "auto":
+                continue
+            if any((card.get("key") or "").startswith(u) for u in unknown):
+                by_key.pop(card.get("key"), None)
                 continue
             # An approved card holds its key while the condition persists. Once
             # the check stops firing it lets go, so the next time the same

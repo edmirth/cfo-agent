@@ -137,8 +137,9 @@ def _kr(v) -> str:
 
 
 async def _open_invoices(today: date, tool: str, what: str, id_key: str,
-                         outstanding_key: str, name_key: str) -> tuple[list, list]:
-    """Open invoices with their due dates.
+                         outstanding_key: str, name_key: str) -> tuple[list, list, bool]:
+    """Open invoices with their due dates, the warnings, and whether every
+    window answered — an empty list from failed calls is not an empty book.
 
     The search caps at 100 rows per call and offers no paging, so the range is
     walked a month at a time. A month that comes back exactly full may have
@@ -160,6 +161,7 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     results = await asyncio.gather(*calls, return_exceptions=True)
 
     seen, out, warnings = set(), [], []
+    complete = not any(isinstance(r, Exception) for r in results)
     for back, r in enumerate(results):
         start, _ = _month_bounds(today, back)
         when = f"{MONTH_NAMES[start.month - 1]} {start.year}"
@@ -190,7 +192,7 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                         "number": row.get("invoiceNumber"),
                         "email": row.get("customerEmail") or "",
                         "url": row.get("url") or ""})
-    return out, warnings
+    return out, warnings, complete
 
 
 def _schedule_receipts(invoices: list, today: date) -> list:
@@ -499,9 +501,9 @@ async def build(today: date | None = None) -> dict:
     warnings: list[str] = []
     if isinstance(com, Exception):
         raise RuntimeError(f"Kunne ikke lese forpliktelsene: {com}")
-    ar_open, ar_warn = ([], ["Kundefakturaer kunne ikke hentes."]) \
+    ar_open, ar_warn, ar_complete = ([], ["Kundefakturaer kunne ikke hentes."], False) \
         if isinstance(ar, Exception) else ar
-    ap_open, ap_warn = ([], ["Leverandørfakturaer kunne ikke hentes."]) \
+    ap_open, ap_warn, _ = ([], ["Leverandørfakturaer kunne ikke hentes."], False) \
         if isinstance(ap, Exception) else ap
     warnings += ar_warn + ap_warn
 
@@ -660,6 +662,10 @@ async def build(today: date | None = None) -> dict:
                      rates, credit_days, warnings, ar_open, ap_open,
                      vat_share, vat_measured)
     data["ar_open"] = ar_open
+    # Whether that list is the whole book. An empty list from a failed call
+    # reads exactly like a book with nobody late, and cards.py closes every
+    # collections card on the strength of it unless told otherwise.
+    data["ar_complete"] = ar_complete
     return data
 
 

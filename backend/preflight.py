@@ -273,6 +273,14 @@ async def build(today: date | None = None) -> dict:
     inbox, approvals, balance, ar, ap = [
         (None if isinstance(x, Exception) else x)
         for x in (inbox, approvals, balance, ar, ap)]
+    # What Tripletex did not answer. A check that could not run is not a check
+    # that passed, and the condition has to say so rather than read "clean".
+    failed = [name for name, payload, field in (
+        ("bilagsinnboks", inbox, "count"), ("godkjenning", approvals, "invoices"),
+        ("saldobalanse", balance, "table"), ("kundereskontro", ar, "table"),
+        ("leverandørreskontro", ap, "table")) if not _answered(payload, field)]
+    have_balance = "saldobalanse" not in failed
+    NO_BALANCE = "Saldobalansen kunne ikke leses."
 
     rows = _rows(balance or {})
     columns = [c.get("name") for c in (balance or {}).get("table", {}).get("columns", [])]
@@ -307,7 +315,10 @@ async def build(today: date | None = None) -> dict:
 
     # 3. A payables account that has stopped moving, or sits on the wrong side.
     ap_row = next((r for r in rows if _account(r) == 2400), None)
-    if ap_row is None:
+    if not have_balance:
+        checks.append(_check("ap_posting", "Leverandørgjeld 2400", "unavailable",
+                             NO_BALANCE))
+    elif ap_row is None:
         checks.append(_check("ap_posting", "Leverandørgjeld 2400", "unavailable",
                              "Fant ikke konto 2400 i saldobalansen."))
     else:
@@ -356,8 +367,14 @@ async def build(today: date | None = None) -> dict:
                           "før differansen er funnet."))
 
     # 6 & 7. Has the month posted that should have been?
-    checks += _completeness(_monthly(rows, columns, 3000, 3999),
-                            _monthly(rows, columns, 5000, 5999), today)
+    if have_balance:
+        checks += _completeness(_monthly(rows, columns, 3000, 3999),
+                                _monthly(rows, columns, 5000, 5999), today)
+    else:
+        checks += [_check("revenue_month", "Omsetning forrige måned",
+                          "unavailable", NO_BALANCE),
+                   _check("payroll_month", "Lønn forrige måned",
+                          "unavailable", NO_BALANCE)]
 
     # 8. Accruals that have stopped moving. A year-end accrual that was never
     # reversed keeps being read as a current liability, and it is subtracted
@@ -376,7 +393,11 @@ async def build(today: date | None = None) -> dict:
         if frozen >= STALE_MONTHS:
             stale.append((r.get("path", "").strip(), owed, frozen))
     stale.sort(key=lambda t: -t[1])
-    if stale:
+    if not have_balance:
+        # No rows means no accounts to find frozen — not that none are.
+        checks.append(_check("stale_accrual", "Periodiseringer som står stille",
+                             "unavailable", NO_BALANCE))
+    elif stale:
         worst_name, worst_owed, worst_frozen = stale[0]
         rest = (f" Det samme gjelder {len(stale) - 1} konto til."
                 if len(stale) == 2 else
@@ -398,9 +419,11 @@ async def build(today: date | None = None) -> dict:
     worst = max((RANK.get(c["status"], 0) for c in checks), default=0)
     ties_broken = any(c["status"] == "warn" and c["id"].endswith("_tie") for c in checks)
     condition = ("broken" if ties_broken
+                 else "incomplete" if failed
                  else "provisional" if worst >= RANK["note"] else "clean")
 
-    return {"as_of": end, "condition": condition, "checks": checks}
+    return {"as_of": end, "condition": condition, "checks": checks,
+            "failed": failed}
 
 
 _flight = freshness.Cached(build, CACHE_SECONDS)
@@ -417,6 +440,10 @@ CONDITION_TEXT = {
     "provisional": ("Tallene er foreløpige.",
                     "Say so before any ratio that depends on an affected "
                     "figure, in one clause, not a paragraph."),
+    "incomplete": ("Ikke alt kunne kontrolleres.",
+                   "Tripletex did not answer every check. The ones listed as "
+                   "not checked are unknown, not clean: say so before quoting "
+                   "a figure they bear on, in one clause."),
     "broken": ("En avstemming stemmer ikke.",
                "Lead with it when the question touches an affected figure. A "
                "subledger that disagrees with its general ledger account means "

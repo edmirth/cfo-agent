@@ -97,3 +97,55 @@ def test_january_has_no_closed_month_to_judge():
     checks = _by_id(preflight._completeness([("Jan", 0)], [("Jan", 0)],
                                             date(2026, 1, 20)))
     assert checks["revenue_month"]["status"] == "unavailable"
+
+
+# ------------------------------------------- a failure is not a clean bill
+import asyncio
+
+
+class _Tripletex:
+    """Answers everything sensibly except what it is told to fail."""
+
+    def __init__(self, fail=()):
+        self.fail = set(fail)
+
+    async def call(self, tool, args=None):
+        name = (args or {}).get("report_name", tool)
+        if name in self.fail:
+            raise RuntimeError("503 fra Tripletex")
+        if tool == "get_voucher_inbox_count":
+            return {"count": 0}
+        if tool == "get_supplier_invoices_for_approval":
+            return {"invoices": []}
+        return {"table": {"rows": [], "columns": []}}
+
+
+def _build(fail=()):
+    original = preflight.mcp
+    preflight.mcp = _Tripletex(fail)
+    try:
+        return asyncio.run(preflight.build(date(2026, 10, 15)))
+    finally:
+        preflight.mcp = original
+
+
+def test_a_failed_trial_balance_is_not_clean_books():
+    pf = _build(fail={"Saldobalanse per måned"})
+    checks = {c["id"]: c for c in pf["checks"]}
+    assert pf["condition"] == "incomplete"
+    assert pf["failed"] == ["saldobalanse"]
+    # Previously "ok": no rows means no frozen accounts were found.
+    assert checks["stale_accrual"]["status"] == "unavailable"
+    for cid in ("ap_posting", "ar_tie", "ap_tie", "revenue_month", "payroll_month"):
+        assert checks[cid]["status"] == "unavailable", cid
+
+
+def test_one_failed_subledger_makes_the_books_incomplete():
+    pf = _build(fail={"Kundereskontro"})
+    assert pf["condition"] == "incomplete" and pf["failed"] == ["kundereskontro"]
+
+
+def test_the_agent_is_told_what_could_not_be_checked():
+    text = preflight.briefing(_build(fail={"Saldobalanse per måned"}))
+    assert "Ikke alt kunne kontrolleres." in text
+    assert "Periodiseringer som står stille" in text.split("Could not be checked")[1]
