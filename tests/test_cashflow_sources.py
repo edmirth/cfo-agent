@@ -266,3 +266,49 @@ def test_a_withheld_holiday_month_owes_no_employer_contribution():
         assert not june, f"June drew feriepenger, so it owes neither: {june}"
     finally:
         company.setting = original
+
+
+# ------------------------------------------------ the start of the year
+YEAR = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai", "Juni",
+        "Juli", "Aug", "Sept", "Okt", "Nov", "Des", "Utgående saldo"]
+
+
+def _last_year():
+    rows = [_row("3000 Salgsinntekt", [-200000] * 12),
+            _row("5000 Lønn", [80000] * 12),
+            _row("6300 Leie", [20000] * 12)]
+    return rows, YEAR
+
+
+def test_january_has_payroll_costs_and_revenue():
+    # 10 January: this year's only month is the one still being posted, so
+    # without last year every rate was 0 and the forecast had no payroll in it.
+    rows = [_row("3000 Salgsinntekt", [-30000]), _row("5000 Lønn", [0])]
+    cols = ["Inngående balanse", "Jan", "Utgående saldo"]
+    alone, notes = cashflow._run_rates(rows, cols)
+    assert alone["wages"] == 0 and any("kunne ikke beregnes" in n for n in notes)
+
+    p_rows, p_cols = _last_year()
+    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 3))
+    assert rates["revenue"] == 200000
+    assert rates["wages"] == 80000
+    assert rates["opex"] == 20000
+
+
+def test_february_does_not_rest_on_january_alone():
+    # January ran a 60k payroll after a quiet holiday month; on its own it
+    # would set the rate. With Nov and Dec it is one month of three.
+    rows = [_row("5000 Lønn", [60000, 10000])]
+    cols = ["Inngående balanse", "Jan", "Feb", "Utgående saldo"]
+    p_rows, p_cols = _last_year()
+    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 2))
+    assert rates["wages"] == (80000 + 80000 + 60000) / 3
+
+
+def test_last_years_months_are_named_with_their_year():
+    # A quiet December from last year must not be reported as this December.
+    rows = [_row("6300 Leie", [20000])]
+    cols = ["Inngående balanse", "Jan", "Utgående saldo"]
+    p_rows = [_row("6300 Leie", [20000] * 11 + [1000])]
+    _, notes = cashflow._run_rates(rows, cols, (p_rows, YEAR, 2025, 3))
+    assert any("Des 2025" in n for n in notes), notes

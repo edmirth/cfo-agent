@@ -51,6 +51,9 @@ PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
 # No TRAILING_MONTHS either: it said the run-rates used a trailing window, and
 # they never did — `_run_rates` takes a median over every closed month. A
 # constant that documents behaviour the code does not have is worse than none.
+# The fewest closed months a run-rate is allowed to rest on. Before April this
+# year has fewer, and the gap is made up from the end of last year.
+MIN_CLOSED_MONTHS = 3
 
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
@@ -237,7 +240,8 @@ def _schedule_payments(bills: list, today: date) -> list:
     return flows
 
 
-def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
+def _run_rates(rows: list, columns: list,
+               prior: tuple | None = None) -> tuple[dict, list[str]]:
     """Monthly run-rates that a posting backlog cannot poison.
 
     Costs in this ledger read 122k, 223k, 114k, then 48k, 14k, 13k. Nothing got
@@ -249,10 +253,16 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
     average those. A month that is a fraction of every other month is not a
     cheap month, it is an unposted one — and it is named, not silently dropped.
     The current month is excluded outright, being part-posted by definition.
+
+    `prior` is `(rows, columns, year, keep)`: last year's monthly report, of
+    which the final `keep` months are put in front of this year's. Early in the
+    year this year alone has too few closed months — none at all in January,
+    where every rate came out 0 and the forecast had no payroll, costs or
+    revenue in it.
     """
     notes: list[str] = []
 
-    def series_for(ranges) -> list:
+    def merged(rows: list, columns: list, ranges) -> list:
         """One monthly series across several account ranges.
 
         Summed before the outlier filter runs, never after. Filtering each
@@ -260,20 +270,40 @@ def _run_rates(rows: list, columns: list) -> tuple[dict, list[str]]:
         be judged against that range's own median, which is not the question —
         the question is what the whole cost base does in a month.
         """
-        merged: dict = {}
+        total: dict = {}
         order: list = []
         for low, high in ranges:
             for m, v in _monthly(rows, columns, low, high):
-                if m not in merged:
-                    merged[m] = 0.0
+                if m not in total:
+                    total[m] = 0.0
                     order.append(m)
-                merged[m] += v
-        return [(m, merged[m]) for m in order]
+                total[m] += v
+        return [(m, total[m]) for m in order]
+
+    def series_for(ranges) -> list:
+        """Last year's tail, if asked for, then this year's months."""
+        head = []
+        if prior:
+            p_rows, p_columns, year, keep = prior
+            # Named with the year: "Des" alone would read as this December.
+            head = [(f"{m} {year}", v)
+                    for m, v in merged(p_rows, p_columns, ranges)][-keep:]
+        return head + merged(rows, columns, ranges)
 
     def rate(ranges, flip, name):
-        series = [(m, v * flip) for m, v in series_for(ranges)][:-1]
+        full = series_for(ranges)
+        series = [(m, v * flip) for m, v in full][:-1]
         values = [v for _, v in series]
         if not values:
+            # No account in the range at all is a real zero: a company without
+            # staff has no payroll. Accounts with only the open month behind
+            # them is not, and a zero rate that drops payroll out of the
+            # forecast must not pass for a quiet month — so that one is said.
+            if not full:
+                return 0.0
+            notes.append(f"{name} kunne ikke beregnes — det finnes ingen "
+                         f"avsluttede måneder å regne snittet på, så den er "
+                         f"satt til 0 i prognosen.")
             return 0.0
         mid = statistics.median(values)
         if mid <= 0:
@@ -439,7 +469,19 @@ async def build(today: date | None = None) -> dict:
     horizon = week0 + timedelta(weeks=WEEKS)
     start_year = f"{today.year}-01-01"
 
-    balance, com, ar, ap = await asyncio.gather(
+    # The current month is not closed, so January has none of this year's.
+    keep = max(0, MIN_CLOSED_MONTHS - (today.month - 1))
+    last_year = today.year - 1
+
+    async def _prior():
+        if not keep:
+            return None
+        return await mcp.call("fetch_report", {
+            "report_name": "Saldobalanse per måned",
+            "period_start": f"{last_year}-01-01",
+            "period_end": f"{last_year}-12-31", "limit": 0})
+
+    balance, com, ar, ap, prior = await asyncio.gather(
         mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
                                   "period_start": start_year,
                                   "period_end": today.isoformat(), "limit": 0}),
@@ -449,6 +491,7 @@ async def build(today: date | None = None) -> dict:
         # Supplier rows are keyed by voucherId, not id.
         _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
                        "voucherId", "outstandingAmount", "supplierName"),
+        _prior(),
         return_exceptions=True,
     )
     if isinstance(balance, Exception):
@@ -464,7 +507,23 @@ async def build(today: date | None = None) -> dict:
 
     rows = _rows(balance)
     columns = [c.get("name") for c in balance.get("table", {}).get("columns", [])]
-    rates, rate_notes = _run_rates(rows, columns)
+    prior_months = None
+    if keep:
+        if isinstance(prior, dict) and "table" in prior:
+            prior_months = (_rows(prior),
+                            [c.get("name") for c in prior["table"].get("columns", [])],
+                            last_year, keep)
+            warnings.append(
+                f"Det er for tidlig på året til å regne løpende tall på "
+                f"{today.year} alene, så de siste {keep} månedene av "
+                f"{last_year} er tatt med i snittet.")
+        else:
+            log.warning("Cashflow: fjorårets saldobalanse feilet: %s", prior)
+            warnings.append(
+                f"Saldobalansen for {last_year} kunne ikke hentes, så de "
+                f"løpende tallene hviler på færre enn {MIN_CLOSED_MONTHS} "
+                f"måneder.")
+    rates, rate_notes = _run_rates(rows, columns, prior_months)
     warnings += rate_notes
     opening = com["bank"]
 
