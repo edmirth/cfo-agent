@@ -11,10 +11,18 @@ kanban-plugin: board
 - [ ] Move chat sessions from an in-process dict into a shared store @either #platform
 - [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
 - [ ] Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them.
+- [ ] Page through a truncated invoice month instead of warning about it @edmir #liquidity
+- [ ] Convert foreign-currency supplier invoices instead of taking them as kroner @edmir #liquidity
 - [ ] Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
 - [ ] How could we design the ai agent to look at the numbers and then also the company and then understand their industry, and know then what type of CFO work it needs and how they operate in the sense of financials.
 - [ ] Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work.
 - [ ] We need to make a database for the platform here, and also design the architecture of the database here so the agent can actually use it and also how to store the database here. We need to make a good database for the platform and also structure it.
+- [ ] Could autoresearch of ai agent be something that could help here for future fetaure so it could find stuff for the company and give it benefits or find something based on the data.
+- [ ] Could the frontpage use any AI, and if so, what type of work would that be?
+- [ ] On the backend there is a seperate file that does the summary, isnt it better to just let the ai agent make it? so it also has the memory, and also writes the summary as well.
+- [ ] Based on the commintements.py, it uses the bankbalance and then subtracts everything owed. But we need to make sure that the bank balance that is used is actually correct, because we need the right answer/amount.
+- [ ] Should we assign the ai agent to do the 13 week cash brief? could it be better at calculating it, and what tools would it need, should we give it coding tools so it could calculate it for us.
+- [ ] give the project agent tool to use the web as well to get information. It could be for indusrey or other stuff.
 
 
 ## Next

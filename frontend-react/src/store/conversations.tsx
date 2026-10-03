@@ -11,7 +11,9 @@ import { runTurn } from "@/lib/stream"
  * ny tegning én gang per animasjonsramme. */
 type Ctx = {
   convs: Conversation[]
-  ask: (message: string, shownAs?: string, fresh?: boolean) => void
+  /** false når spørsmålet ikke ble tatt imot — tomt, eller samtalen svarer
+   *  fortsatt — slik at den som kaller beholder det brukeren skrev. */
+  ask: (message: string, shownAs?: string, fresh?: boolean) => boolean
   remove: (id: string) => void
   busy: (id: string | null) => boolean
 }
@@ -59,12 +61,12 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
   )
 
   const ask = useCallback(
-    (message: string, shownAs?: string, fresh = false) => {
-      if (!message.trim()) return
+    (message: string, shownAs?: string, fresh = false): boolean => {
+      if (!message.trim()) return false
       const hash = window.location.hash
       const activeId = hash.startsWith("#c/") ? hash.slice(3) : null
       let c = !fresh && activeId ? convs.current.find((x) => x.id === activeId) : undefined
-      if (c?.busy) return
+      if (c?.busy) return false
 
       const now = Date.now()
       if (!c) {
@@ -152,6 +154,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
           save(convs.current)
           paint()
         })
+      return true
     },
     [paint],
   )

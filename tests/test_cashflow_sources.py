@@ -61,9 +61,10 @@ def _read(rows, id_key="voucherId"):
     original = cashflow.mcp
     cashflow.mcp = stub
     try:
-        return asyncio.run(cashflow._open_invoices(
+        out, warnings, _ = asyncio.run(cashflow._open_invoices(
             date(2026, 10, 2), "search_supplier_invoices", "Leverandørfakturaer",
             id_key, "outstandingAmount", "supplierName"))
+        return out, warnings
     finally:
         cashflow.mcp = original
 
@@ -123,7 +124,7 @@ def test_a_month_outside_the_window_does_not_crash_the_forecast():
     """Credit notes below half the median and heavy months above double it can
     leave nothing in the keep window. The note quoted the average before it was
     computed, divided by zero, and took the whole forecast down with it."""
-    rows = [_row("6000 Driftskostnader", [-10.0, -5.0, 30.0, 40.0, 0.0])]
+    rows = [_row("6300 Leie lokale", [-10.0, -5.0, 30.0, 40.0, 0.0])]
     rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 12.5, "falls back to the median, and survives"
     assert notes, "and says which months it set aside"
@@ -132,7 +133,7 @@ def test_a_month_outside_the_window_does_not_crash_the_forecast():
 def test_a_month_far_above_the_median_is_named_too():
     """Only the low months were named. A high month was dropped in silence,
     pulling the cost rate down — the dangerous direction."""
-    rows = [_row("6000 Driftskostnader", [100.0, 100.0, 100.0, 900.0, 0.0])]
+    rows = [_row("6300 Leie lokale", [100.0, 100.0, 100.0, 900.0, 0.0])]
     rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 100.0
     assert any("over de andre" in n for n in notes), notes
@@ -312,3 +313,17 @@ def test_last_years_months_are_named_with_their_year():
     p_rows = [_row("6300 Leie", [20000] * 11 + [1000])]
     _, notes = cashflow._run_rates(rows, cols, (p_rows, YEAR, 2025, 3))
     assert any("Des 2025" in n for n in notes), notes
+
+
+def test_costs_that_move_no_money_stay_out_of_the_forecast():
+    """Depreciation on three cars was leaving the account every month in the
+    forecast — about 19 000 kr a month against the live ledger in Q1."""
+    rows = [_flat("6010 Avskriving på transportmidler", 19066.66),
+            _flat("6050 Nedskrivning", 5000.0),
+            _flat("5210 Fri telefon", 400.0),
+            _flat("7830 Tap på fordringer", 3000.0),
+            _flat("5330 Godtgjørelse til styre", 2500.0),
+            _flat("6300 Leie lokale", 23000.0),
+            _flat("7770 Bank- og kortgebyrer", 300.0)]
+    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    assert rates["opex"] == 23000.0 + 2500.0 + 300.0

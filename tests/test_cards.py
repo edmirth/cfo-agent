@@ -131,3 +131,58 @@ def test_approving_the_follow_up_starts_a_new_fortnight():
     cards.decide(back["id"], "ok")
     cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
     assert cards.deck()["open"] == []
+
+
+# ------------------------------------- a check that did not run closes nothing
+def test_a_failed_check_does_not_close_its_cards():
+    _tmp.store(cards); _tmp.store(memory)
+    cards.add({**_card("reconcile:ar_tie", "Kundefordringer stemmer ikke"), "source": "auto"})
+    cards.add({**_card("vouchers:2026-10", "12 bilag ubokført"), "source": "auto"})
+    # Kundereskontro failed, the inbox answered and is now empty.
+    pf = {"checks": [{"id": "ar_tie", "status": "unavailable"},
+                     {"id": "inbox", "status": "ok"}]}
+    cards.reconcile([], sources_ok=True, unknown=cards._unknown(pf, {"ar_complete": True}))
+    d = cards.deck()
+    assert [c["key"] for c in d["open"]] == ["reconcile:ar_tie"]    # unknown: kept
+    assert [c["key"] for c in d["recent"]] == ["vouchers:2026-10"]  # answered: closed
+
+
+def test_an_unread_invoice_list_does_not_mark_customers_as_paid():
+    _tmp.store(cards); _tmp.store(memory)
+    cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    unknown = cards._unknown({"checks": []}, {"ar_complete": False})
+    cards.reconcile([], sources_ok=True, unknown=unknown)
+    assert [c["key"] for c in cards.deck()["open"]] == ["collections:Skanska"]
+
+
+def test_an_approved_card_is_not_released_while_its_check_is_unknown():
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    cards.decide(c["id"], "ok")
+    cards.reconcile([], sources_ok=True, unknown={"collections:"})
+    cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
+    assert cards.deck()["open"] == []
+
+
+def test_refresh_keeps_cards_when_tripletex_fails():
+    import asyncio
+    _tmp.store(cards); _tmp.store(memory)
+    cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    cards.add({**_card("reconcile:ap_tie", "Leverandørgjeld stemmer ikke"), "source": "auto"})
+
+    async def pf():
+        return {"as_of": "2026-10-15", "condition": "incomplete",
+                "checks": [{"id": "ap_tie", "status": "unavailable"}]}
+
+    async def cf():
+        return {"ar_open": [], "ar_complete": False, "low_committed": {}}
+
+    originals = cards.preflight.cached, cards.cashflow.cached
+    cards.preflight.cached, cards.cashflow.cached = pf, cf
+    try:
+        d = asyncio.run(cards.refresh())
+    finally:
+        cards.preflight.cached, cards.cashflow.cached = originals
+    assert sorted(c["key"] for c in d["open"]) == ["collections:Skanska",
+                                                   "reconcile:ap_tie"]
+    assert not any(c.get("status") == "resolved" for c in d["recent"])

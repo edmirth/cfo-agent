@@ -397,6 +397,32 @@ async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
             del messages[start:]
 
 
+# Stop reasons that end the answer before the model meant to. Without these
+# the turn went straight to "done", and the CEO read half an answer as a whole.
+CUT_OFF = {
+    "max_tokens": ("Svaret ble kuttet fordi det ble for langt, og er ikke "
+                   "fullstendig. Be om resten, eller still et smalere spørsmål."),
+    "model_context_window_exceeded": (
+        "Samtalen er blitt så lang at svaret ikke fikk plass, og det er ikke "
+        "fullstendig. Start en ny samtale for å fortsette."),
+}
+
+
+def _answered_only(content: list) -> list:
+    """The assistant turn without tool calls that never got a result.
+
+    A turn cut off mid-call stores a tool_use with nothing answering it, and
+    the API rejects every later request on the session until it is gone.
+    Server-side calls carry their result in the same message; a client-side
+    tool_use never does, so on a cut-off turn it is always dropped.
+    """
+    answered = {getattr(b, "tool_use_id", None) for b in content}
+    kept = [b for b in content
+            if getattr(b, "type", None) not in TOOL_BLOCK_TYPES
+            or getattr(b, "id", None) in answered]
+    return kept or [{"type": "text", "text": "(Svaret ble avbrutt.)"}]
+
+
 async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict]:
     global _fallbacks_enabled
     system_seen = False
@@ -456,7 +482,10 @@ async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict
             yield {"type": "error", "message": "Tomt svar fra modellen."}
             return
 
-        messages.append({"role": "assistant", "content": final.content})
+        cut = CUT_OFF.get(final.stop_reason)
+        messages.append({"role": "assistant",
+                         "content": _answered_only(final.content) if cut
+                         else final.content})
         # Tool results are the evidence: what Tripletex actually returned, and
         # each one keeps the name of the call that produced it.
         for where, text in verify.sources(final.content, tool_names):
@@ -497,6 +526,11 @@ async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict
             log.info("spor: %s ← %s", verify.fmt(t["value"]),
                      ", ".join(t["from"]))
         yield {"type": "check", **check}
+        if cut:
+            # After the text, so it reads as a note on the answer, not instead
+            # of it. Both frontends show an error below what was written.
+            log.warning("Svaret stoppet på %s", final.stop_reason)
+            yield {"type": "error", "message": cut}
 
         u = final.usage
         yield {"type": "done", "usage": {
