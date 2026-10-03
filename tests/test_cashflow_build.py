@@ -176,3 +176,51 @@ def test_last_months_invoices_do_not_reduce_this_month():
     issued = [_invoice(500_000.0, "2026-09-30", "2026-10-30")]
     left = _october_sales(_forecast([REVENUE], ar=issued))
     assert left and round(left[0]["amount"]) == 500_000
+
+
+# --------------------------------------- a half-read forecast expires early
+class _Broken(_Tripletex):
+    """Answers the reports and drops one register, the way a 503 does."""
+
+    def __init__(self, rows, fail="search_supplier_invoices"):
+        super().__init__(rows)
+        self.failing = fail
+
+    async def call(self, tool, args=None):
+        if tool == self.failing:
+            raise RuntimeError("503 fra Tripletex")
+        return await super().call(tool, args)
+
+
+def _forecast_with(stub):
+    old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
+    old_setting = company.setting
+
+    async def cached():
+        return {"bank": 1_000_000.0, "items": []}
+
+    cashflow.mcp = stub
+    cashflow.commitments.cached = cached
+    company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
+    try:
+        return asyncio.run(cashflow.build(TODAY))
+    finally:
+        cashflow.mcp, cashflow.commitments.cached = old_mcp, old_cached
+        company.setting = old_setting
+
+
+def test_a_whole_forecast_is_not_marked_partial():
+    assert _forecast([REVENUE])["partial"] is False
+
+
+def test_a_dropped_register_marks_the_forecast_partial():
+    """So that `Cached` expires it in 45 seconds instead of ten minutes. An
+    empty supplier book reads exactly like a company that owes nobody."""
+    data = _forecast_with(_Broken([REVENUE]))
+    assert data["partial"] is True
+    assert cashflow._flight._ttl(data) == cashflow._flight._degraded_seconds
+
+
+def test_a_whole_forecast_keeps_the_full_cache_life():
+    data = _forecast([REVENUE])
+    assert cashflow._flight._ttl(data) == cashflow.CACHE_SECONDS

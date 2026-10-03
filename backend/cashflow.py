@@ -528,7 +528,7 @@ async def build(today: date | None = None) -> dict:
         raise RuntimeError(f"Kunne ikke lese forpliktelsene: {com}")
     ar_open, ar_warn, ar_complete = ([], ["Kundefakturaer kunne ikke hentes."], False) \
         if isinstance(ar, Exception) else ar
-    ap_open, ap_warn, _ = ([], ["Leverandørfakturaer kunne ikke hentes."], False) \
+    ap_open, ap_warn, ap_complete = ([], ["Leverandørfakturaer kunne ikke hentes."], False) \
         if isinstance(ap, Exception) else ap
     warnings += ar_warn + ap_warn
 
@@ -728,6 +728,11 @@ async def build(today: date | None = None) -> dict:
     # reads exactly like a book with nobody late, and cards.py closes every
     # collections card on the strength of it unless told otherwise.
     data["ar_complete"] = ar_complete
+    # A forecast missing a register is not a forecast, and holding one for the
+    # full ten minutes is how a two-second Tripletex blip becomes ten minutes
+    # of a company being told it has no receivables. `Cached` keeps a degraded
+    # build only long enough to stop a stampede, then goes and asks again.
+    data["partial"] = not (ar_complete and ap_complete)
     return data
 
 
@@ -862,7 +867,8 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
     }
 
 
-_flight = freshness.Cached(build, CACHE_SECONDS)
+_flight = freshness.Cached(build, CACHE_SECONDS,
+                           degraded=lambda d: bool(d.get("partial")))
 
 
 async def cached() -> dict:
