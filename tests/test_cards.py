@@ -62,3 +62,25 @@ def test_propose_drops_invalid_effects():
     c = cards.propose("t", "b", options=[{"label": "Send", "effect": "launch_missiles"},
                                          {"label": "Ok", "effect": "approve"}])
     assert [o["effect"] for o in c["options"]] == ["approve"]
+
+
+def test_approved_card_does_not_come_straight_back():
+    # "Send påminnelsen", then the page reloads the deck: the customer is still
+    # late, but the CEO has already acted. No new card.
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    cards.decide(c["id"], "ok")
+    cards.reconcile([_card("collections:Skanska", "Skanska 70 d")], sources_ok=True)
+    assert cards.deck()["open"] == []
+
+
+def test_approved_card_returns_once_the_condition_cleared_and_recurs():
+    _tmp.store(cards); _tmp.store(memory)
+    c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
+    cards.decide(c["id"], "ok")
+    cards.reconcile([], sources_ok=False)                  # unknown: still held
+    cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
+    assert cards.deck()["open"] == []
+    cards.reconcile([], sources_ok=True)                   # paid: key released
+    cards.reconcile([_card("collections:Skanska", "Skanska 20 d")], sources_ok=True)
+    assert [x["title"] for x in cards.deck()["open"]] == ["Skanska 20 d"]

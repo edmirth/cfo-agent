@@ -112,8 +112,9 @@ def _wake(cards: list[dict], today: date) -> bool:
 def add(card: dict) -> dict | None:
     """Store a card unless its key is already live.
 
-    Returns the stored card, or None when an open or deferred card already
-    covers it — a deck that repeats itself is a deck nobody reads.
+    Returns the stored card, or None when an open, deferred, dismissed or
+    still-standing approved card already covers it — a deck that repeats itself
+    is a deck nobody reads.
     """
     with _lock:
         data = _load()
@@ -125,6 +126,13 @@ def add(card: dict) -> dict | None:
                     return None
                 # Dismissed means "stop telling me this".
                 if existing.get("key") == key and existing.get("status") == "dismissed":
+                    return None
+                # Approved means "I'm on it". The check keeps firing until the
+                # customer pays, so the card stays answered until it stops —
+                # `reconcile` releases the key then.
+                if (existing.get("key") == key and existing.get("status") == "done"
+                        and existing.get("source") == "auto"
+                        and not existing.get("released")):
                     return None
         data["counter"] += 1
         card = {**card, "id": f"K{data['counter']:03d}", "created": _now(),
@@ -411,11 +419,22 @@ def reconcile(candidates: list[dict], sources_ok: bool) -> None:
     a candidate then means "unknown", not "fixed".
     """
     by_key = {c["key"]: c for c in candidates if c.get("key")}
+    live = set(by_key)
     with _lock:
         data = _load()
         changed = False
         for card in data["cards"]:
-            if card.get("source") != "auto" or card.get("status") not in ("open", "snoozed"):
+            if card.get("source") != "auto":
+                continue
+            # An approved card holds its key while the condition persists. Once
+            # the check stops firing it lets go, so the next time the same
+            # customer is late is a new card, not a repeat of the old one.
+            if (card.get("status") == "done" and not card.get("released")
+                    and sources_ok and card.get("key") not in live):
+                card["released"] = _now()
+                changed = True
+                continue
+            if card.get("status") not in ("open", "snoozed"):
                 continue
             fresh = by_key.pop(card.get("key"), None)
             if fresh is not None:
