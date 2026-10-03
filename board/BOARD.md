@@ -11,6 +11,8 @@ kanban-plugin: board
 - [ ] Move chat sessions from an in-process dict into a shared store @either #platform
 - [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
 - [ ] Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them.
+- [ ] Page through a truncated invoice month instead of warning about it @edmir #liquidity
+- [ ] Convert foreign-currency supplier invoices instead of taking them as kroner @edmir #liquidity
 - [ ] Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
 - [ ] How could we design the ai agent to look at the numbers and then also the company and then understand their industry, and know then what type of CFO work it needs and how they operate in the sense of financials.
 - [ ] Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work.

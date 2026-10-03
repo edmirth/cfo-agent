@@ -224,3 +224,34 @@ def test_a_dropped_register_marks_the_forecast_partial():
 def test_a_whole_forecast_keeps_the_full_cache_life():
     data = _forecast([REVENUE])
     assert cashflow._flight._ttl(data) == cashflow.CACHE_SECONDS
+
+
+# --------------------------------------------- what the register itself says
+def test_a_partly_read_register_is_not_a_whole_one():
+    """search_supplier_invoices answers partially rather than failing when one
+    of its two registers is unreadable, and says so in `complete`. Only an
+    exception counted as incomplete, so a half-read book passed for a whole
+    one — and a half-empty supplier book reads like a company that owes less
+    than it does."""
+    class _Partial(_Tripletex):
+        async def call(self, tool, args=None):
+            out = await super().call(tool, args)
+            if tool == "search_supplier_invoices":
+                out["complete"] = False
+                out["degradedNote"] = "det nye fakturaflytregisteret svarte ikke"
+            return out
+
+    data = _forecast_with(_Partial([REVENUE]))
+    assert data["partial"] is True
+    assert any("delvis lest" in w for w in data["warnings"])
+
+
+def test_a_foreign_currency_invoice_is_declared_not_silently_taken_as_kroner():
+    """outstandingAmount is in the invoice's own currency. There is no rate
+    here, so the money stays in the forecast and the error is said out loud."""
+    ap = [{"voucherId": 9, "supplierName": "Cleaning Supplies GmbH",
+           "outstandingAmount": 10_000.0, "currency": "EUR",
+           "dueDate": "2026-10-20", "invoiceDate": "2026-09-20"}]
+    data = _forecast([REVENUE], ap=ap)
+    assert any("EUR" in w and "ikke kroner" in w for w in data["warnings"])
+    assert _kinds(data, "ap"), "the money must not be dropped either"

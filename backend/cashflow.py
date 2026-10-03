@@ -141,9 +141,11 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     """Open invoices with their due dates, the warnings, and whether every
     window answered — an empty list from failed calls is not an empty book.
 
-    The search caps at 100 rows per call and offers no paging, so the range is
-    walked a month at a time. A month that comes back exactly full may have
-    been truncated, and that is reported rather than quietly under-counting.
+    The search caps at 100 rows per call, so the range is walked a month at a
+    time. A month that comes back exactly full may have been truncated, and
+    that is reported rather than quietly under-counting. It does take a `from`
+    offset — so the truncation could be paged through instead of warned about,
+    which is a card of its own and not done here.
 
     Both registers answer under `rows`. They did not always appear to: the
     supplier call read `invoices`, a key the response has never carried, so
@@ -169,6 +171,16 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             warnings.append(f"{what} for {when} kunne ikke hentes ({r}). "
                             f"Tallene under er ufullstendige.")
             continue
+        # The search answers partially rather than failing when one of the two
+        # registers is unreadable, and says so in `complete` with a note about
+        # what is missing. Only an exception was being counted as incomplete,
+        # so a half-read register passed for a whole one — and an empty half
+        # reads exactly like a company that owes nobody.
+        if r.get("complete") is False:
+            complete = False
+            note = r.get("degradedNote") or "en av registrene svarte ikke"
+            warnings.append(f"{what} for {when} ble bare delvis lest "
+                            f"({note}). Tallene under er ufullstendige.")
         rows = r.get("rows") or []
         if len(rows) >= 100:
             warnings.append(f"Det er minst 100 {what.lower()} i {when}; lista "
@@ -184,6 +196,18 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             amount = row.get(outstanding_key) or 0
             if not amount or not row.get("dueDate"):
                 continue
+            # outstandingAmount is in the *invoice's* currency, not NOK. There
+            # is no rate here and inventing one is not this module's job, so
+            # the money stays in the forecast at face value — dropping it
+            # would understate what leaves — and the shortfall is declared
+            # instead of quietly standing in for kroner.
+            currency = (row.get("currency") or "NOK").upper()
+            if currency != "NOK":
+                warnings.append(
+                    f"{row.get(name_key) or 'En faktura'} står i {currency}, "
+                    f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
+                    f"er lagt inn som om det var kroner, så prognosen er feil "
+                    f"på denne posten med hele valutakursen.")
             out.append({"id": key, "name": row.get(name_key) or "",
                         "due": row["dueDate"], "invoiced": row.get("invoiceDate"),
                         "amount": float(amount),
