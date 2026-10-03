@@ -388,6 +388,18 @@ def _closing_range(rows: list, low: int, high: int) -> float:
     return total
 
 
+def _closing_or_none(rows: list, low: int, high: int) -> float | None:
+    """`_closing_range`, but None when the range is not in the ledger at all.
+
+    The distinction decides whether a reconciliation runs. A company that
+    keeps no 2400 is not a company that owes nothing, and a warning built on
+    an invented zero sends someone looking for a gap that is not there.
+    """
+    if not any((n := _account(r)) is not None and low <= n <= high for r in rows):
+        return None
+    return _closing_range(rows, low, high)
+
+
 def _vat_input_share(rows: list) -> tuple[float, bool]:
     """How much of the output VAT the input VAT cancels, per this company.
 
@@ -544,11 +556,17 @@ async def build(today: date | None = None) -> dict:
 
     # The open ledger should agree with the invoice list. Where it does not,
     # the forecast is built on the invoices and the gap is declared.
-    gl_ar = next((r["cells"][-1] for r in rows if _account(r) == 1500
-                  and isinstance((r.get("cells") or [None])[-1], (int, float))), None)
+    # Read with the same carry-forward the rest of the module uses. Requiring
+    # the *last* cell to be numeric switched this whole reconciliation off in
+    # any month where the account had not moved — a blank cell means unchanged,
+    # not zero, as `_monthly` says in as many words — and a silent skip here
+    # drops the residual from the forecast and the warning from the answer.
+    # The range, not 1500 alone: receivables posted to 1501 and up belong to
+    # the same reconciliation, and `commitments` already treats them as one.
+    gl_ar = _closing_or_none(rows, 1500, 1509)
     ar_total = sum(i["amount"] for i in ar_open)
     ar_residual = 0.0
-    if gl_ar and gl_ar - ar_total > 1000:
+    if gl_ar is not None and gl_ar - ar_total > 1000:
         # The invoice list is short of the ledger, and the ledger is the figure
         # that ties to the general ledger. Dropping the difference would
         # forecast money in that never arrives; keeping it undated would put it
@@ -579,10 +597,10 @@ async def build(today: date | None = None) -> dict:
     # short on payables hides money going out, and that is the side nobody
     # noticed was empty for as long as the supplier search read the wrong key.
     # A liability is a credit balance, so what is owed is the balance negated.
-    gl_ap = next((-r["cells"][-1] for r in rows if _account(r) == 2400
-                  and isinstance((r.get("cells") or [None])[-1], (int, float))), None)
+    gl_ap_raw = _closing_or_none(rows, 2400, 2409)
+    gl_ap = None if gl_ap_raw is None else -gl_ap_raw
     ap_total = sum(b["amount"] for b in ap_open)
-    if gl_ap and gl_ap - ap_total > 1000:
+    if gl_ap is not None and gl_ap - ap_total > 1000:
         residual = gl_ap - ap_total
         # Dated to this week, not spread like the receivables. An undated bill
         # is already late more often than it is early, and the overdue book
