@@ -170,17 +170,23 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
 
   if (cash) {
     const floor = cash.assumptions?.monthly_wages || 0
-    if (cash.goes_negative) {
-      const week = cash.weeks.find((w) => w.start === cash.goes_negative?.start)
+    // The committed line, not the expected one: this card's own words are
+    // "det som allerede er fakturert inn og ut", and its amount reads
+    // committed_close. It used to key off goes_negative, which the backend
+    // measured on the expected line, so the card stayed silent exactly when
+    // the floor went dry while the forecast still looked healthy.
+    const negative = cash.goes_negative_committed
+    if (negative) {
+      const week = cash.weeks.find((w) => w.start === negative.start)
       out.push({
         id: "cash_negative",
         sev: "crit",
         tag: "Kontanter",
-        title: `Kontoen går i minus i ${cash.goes_negative.label.toLowerCase()}`,
-        body: `Med det som allerede er fakturert inn og ut, er kontoen tom i uka fra ${dateNo(cash.goes_negative.start)}.`,
+        title: `Kontoen går i minus i ${negative.label.toLowerCase()}`,
+        body: `Med det som allerede er fakturert inn og ut, er kontoen tom i uka fra ${dateNo(negative.start)}.`,
         ask: "Gå gjennom kontantstrømmen uke for uke fram til uka vi går i minus. Hva er de største utbetalingene, og hva kan flyttes?",
         amount: week ? Math.abs(week.committed_close) : undefined,
-        due: cash.goes_negative.start,
+        due: negative.start,
       })
     } else {
       const dip = cash.weeks.find((w) => w.committed_close < floor)
@@ -286,8 +292,10 @@ function headline({ cash, ov }: Data, list: Signal[]) {
     const floor = cash.assumptions?.monthly_wages || 0
     const dip = cash.weeks.findIndex((w) => w.committed_close < floor)
     const debtor = ov?.top_debtor?.name
-    if (cash.goes_negative) {
-      return `Kontoen er tom i ${cash.goes_negative.label.toLowerCase()} hvis ingenting endres.`
+    // "hvis ingenting endres" is the committed line by definition — nothing
+    // new invoiced, nothing new collected.
+    if (cash.goes_negative_committed) {
+      return `Kontoen er tom i ${cash.goes_negative_committed.label.toLowerCase()} hvis ingenting endres.`
     }
     if (dip > 0 && floor) {
       const safe = cash.weeks[dip - 1]
@@ -611,9 +619,11 @@ export function Brief() {
                     {d.cash.low_committed.label.toLowerCase()}
                   </b>
                   : {kr(d.cash.low_committed.amount)} kr bundet
-                  {d.cash.goes_negative
-                    ? `, og den forventede linjen går i minus i ${d.cash.goes_negative.label.toLowerCase()}.`
-                    : ". Kontoen går ikke i minus i perioden."}{" "}
+                  {d.cash.goes_negative_committed
+                    ? `, og den bundne linjen går i minus i ${d.cash.goes_negative_committed.label.toLowerCase()}.`
+                    : d.cash.goes_negative
+                      ? `, og den forventede linjen går i minus i ${d.cash.goes_negative.label.toLowerCase()}.`
+                      : ". Ingen av linjene går i minus i perioden."}{" "}
                   Bundet er bare det som alt er fakturert inn og ut, lønn og
                   skattedatoer. Forventet legger vanlig drift på toppen, og er
                   et anslag.

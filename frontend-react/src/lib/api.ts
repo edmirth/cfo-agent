@@ -35,6 +35,7 @@ export type Cashflow = {
   low_committed: { label: string; start: string; amount: number }
   low_expected: { label: string; start: string; amount: number }
   goes_negative: { label: string; start: string } | null
+  goes_negative_committed: { label: string; start: string } | null
   open_invoices: { receivable: number; receivable_total: number }
   // Mixed by design: the figures are numbers, the stated-or-assumed notes are
   // prose, and feriepenger_maned_oppgitt is a flag.

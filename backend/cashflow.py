@@ -735,7 +735,14 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
 
     low_c = min(weeks, key=lambda w: w["committed_close"])
     low_e = min(weeks, key=lambda w: w["expected_close"])
+    # Both lines, because they do not fail together and the floor fails first.
+    # Reading only the expected line told the owner "kontoen går ikke i minus"
+    # with the committed line 800 000 kr under water — the one sentence this
+    # module cannot afford to get wrong, since it is the answer to "will I
+    # make it". The committed line going dry is a fact about money already
+    # agreed; the expected line going dry is that plus a forecast failing too.
     first_negative = next((w for w in weeks if w["expected_close"] < 0), None)
+    first_negative_c = next((w for w in weeks if w["committed_close"] < 0), None)
 
     return {
         "as_of": today.isoformat(),
@@ -748,6 +755,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
         "goes_negative": ({"label": first_negative["label"],
                            "start": first_negative["start"]}
                           if first_negative else None),
+        "goes_negative_committed": ({"label": first_negative_c["label"],
+                                     "start": first_negative_c["start"]}
+                                    if first_negative_c else None),
         "open_invoices": {"receivable": len(ar_open), "payable": len(ap_open),
                           "receivable_total": round(sum(i["amount"] for i in ar_open), 2),
                           "payable_total": round(sum(i["amount"] for i in ap_open), 2)},
@@ -824,15 +834,37 @@ def briefing(data: dict | None) -> str:
            f"**{_kr(low_e['amount'])} kr** i {low_e['label']} "
            f"({low_e['start']}).\n"]
 
-    if data.get("goes_negative"):
-        g = data["goes_negative"]
-        out.append(f"**Kontoen går i minus i {g['label']} ({g['start']}).** That "
-                   f"is the finding. Lead with it, say what it would take to "
-                   f"avoid it, and do not bury it in the table.\n")
+    # Said per line, never as one verdict. The floor and the forecast go dry
+    # in different weeks and for different reasons, and "kontoen går i minus"
+    # without saying which line means nothing he can act on.
+    neg_e, neg_c = data.get("goes_negative"), data.get("goes_negative_committed")
+    if neg_c and neg_e:
+        out.append(f"**Kontoen går i minus i begge linjene.** Den bundne i "
+                   f"{neg_c['label']} ({neg_c['start']}), den forventede i "
+                   f"{neg_e['label']} ({neg_e['start']}). That is the finding. "
+                   f"Lead with the bundne week — it is the one that needs no "
+                   f"forecast to happen — say what it would take to avoid it, "
+                   f"and do not bury either in the table.\n")
+    elif neg_c:
+        out.append(f"**Den bundne linjen går i minus i {neg_c['label']} "
+                   f"({neg_c['start']}).** What is already invoiced in and out, "
+                   f"plus wages and the tax dates, does not keep the account "
+                   f"above zero. The forventede line stays positive, but only "
+                   f"if the invoicing actually goes out and gets paid. That is "
+                   f"the finding: lead with the week, name the invoicing the "
+                   f"comfort depends on, and never say the account stays "
+                   f"positive without that condition attached.\n")
+    elif neg_e:
+        out.append(f"**Den forventede linjen går i minus i {neg_e['label']} "
+                   f"({neg_e['start']}),** selv om den bundne holder seg over "
+                   f"null. Ordinary trading is what takes it under — the VAT "
+                   f"and the running costs on invoicing not yet sent. Lead "
+                   f"with it, and say it is a forecast failing, not a bill "
+                   f"already agreed.\n")
     else:
-        out.append("Kontoen går ikke i minus i perioden. Say that plainly when "
-                   "asked; do not manufacture alarm from a low point that is "
-                   "still comfortably positive.\n")
+        out.append("Ingen av de to linjene går i minus i perioden. Say that "
+                   "plainly when asked; do not manufacture alarm from a low "
+                   "point that is still comfortably positive.\n")
 
     out.append("| Uke | Fra | Inn | Ut | Bundet saldo | Forventet saldo |")
     out.append("|---|---|---:|---:|---:|---:|")
