@@ -177,11 +177,24 @@ def _running_due(today: date, terms: list) -> date:
 
 
 def _tax_due(today: date) -> date:
-    """Forskuddsskatt for an AS falls in two instalments after year end."""
+    """Forskuddsskatt for an AS falls in two instalments after year end.
+
+    For tax already *booked* — last year's, sitting on 2500 — so in January to
+    April its instalments are this year's. Tax on this year's profit is a year
+    further out: see `_this_years_tax_due`."""
     for year, month in ((today.year, 2), (today.year, 4), (today.year + 1, 2)):
         due = date(year, month, 15)
         if due >= today:
             return due
+    return date(today.year + 1, 2, 15)
+
+
+def _this_years_tax_due(today: date) -> date:
+    """Tax on this year's profit is due after this year ends — never in it.
+
+    Sharing `_tax_due` dated it to this year's 15 February or 15 April from
+    January to mid-April, which are last year's instalments: this year's tax
+    was pulled a whole year forward and into the thirteen-week forecast."""
     return date(today.year + 1, 2, 15)
 
 
@@ -558,7 +571,7 @@ async def build(today: date | None = None) -> dict:
     pre_tax = _cell(p, "Ordinært resultat før skattekostnad")
     booked_tax = _cell(p, "Skattekostnad på ordinært resultat")
     if pre_tax and pre_tax > 0 and not booked_tax:
-        due = _shift("arets_skatt", _tax_due(today))
+        due = _shift("arets_skatt", _this_years_tax_due(today))
         items.append({
             "id": "arets_skatt", "label": "Skatt på årets overskudd",
             "plain": "selskapsskatt på overskuddet så langt i år, som ennå "

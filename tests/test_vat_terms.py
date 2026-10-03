@@ -186,3 +186,35 @@ def test_too_many_postings_to_read_assumes_unpaid():
     lines = [{"voucherId": 7, "amount": 939143.19}] + [
         {"voucherId": n, "amount": -1.0} for n in range(2100)]
     assert _paid_early(_Postings(lines)) is False
+
+
+# ------------------------------------------------------- corporation tax
+def test_this_years_tax_is_due_next_year_all_year_round():
+    for today in (date(2027, 1, 10), date(2027, 3, 1), date(2027, 4, 20),
+                  date(2027, 10, 4), date(2027, 12, 31)):
+        assert commitments._this_years_tax_due(today) == date(2028, 2, 15), today
+
+
+def test_booked_tax_keeps_this_years_instalments():
+    # Last year's tax on 2500 is still due in this February and April.
+    assert commitments._tax_due(date(2027, 1, 10)) == date(2027, 2, 15)
+    assert commitments._tax_due(date(2027, 3, 1)) == date(2027, 4, 15)
+
+
+def test_unbooked_profit_tax_is_not_in_the_forecast_in_january():
+    class _Reports:
+        async def call(self, tool, args):
+            if args["report_name"] == "Resultatrapport":
+                return {"table": {"rows": [
+                    {"path": "Ordinært resultat før skattekostnad", "cells": [500000]}]}}
+            return {"table": {"rows": [{"path": "1920 Bank", "cells": [2000000]}],
+                              "columns": [{"name": "Utgående saldo"}]}}
+    original = commitments.mcp
+    commitments.mcp = _Reports()
+    try:
+        out = asyncio.run(commitments.build(date(2027, 1, 10)))
+    finally:
+        commitments.mcp = original
+    tax = next(i for i in out["items"] if i["id"] == "arets_skatt")
+    assert tax["due"] == "2028-02-15" and tax["amount"] == 110000.0
+    assert out["totals"]["within_90"] == 0 and out["totals"]["later"] == 110000.0
