@@ -255,3 +255,36 @@ def test_a_foreign_currency_invoice_is_declared_not_silently_taken_as_kroner():
     data = _forecast([REVENUE], ap=ap)
     assert any("EUR" in w and "ikke kroner" in w for w in data["warnings"])
     assert _kinds(data, "ap"), "the money must not be dropped either"
+
+
+# ------------------------------- the employer's contribution, exactly once
+def test_a_payroll_already_on_2770_owes_no_forecast_contribution():
+    """2770 is credited when the payroll is journalised, not when the
+    a-melding is filed. A month already journalised is already on the balance
+    commitments dates, so forecasting it again pays it twice. Against this
+    ledger the pay-day test happened to agree, because the run is posted on
+    the day it is paid — the ledger is the thing that actually decides it."""
+    wages = _cum("5000 Lønn til ansatte", [800_000.0] * 10)
+    aga = _cum("5400 Arbeidsgiveravgift", [112_000.0] * 10)
+    # October's own AGA has reached the liability account.
+    posted = _cum("2770 Skyldig arbeidsgiveravgift", [0.0] * 9 + [-112_000.0])
+    october = [i for i in _kinds(_forecast([wages, aga, posted]), "aga_future")
+               if "oktober" in i["label"]]
+    assert not october, october
+
+    unposted = _cum("2770 Skyldig arbeidsgiveravgift", [0.0] * 10)
+    still = [i for i in _kinds(_forecast([wages, aga, unposted]), "aga_future")
+             if "oktober" in i["label"]]
+    assert still, "a run not yet journalised still owes its contribution"
+
+
+def test_the_withholding_is_not_paid_on_pay_day_and_again_at_the_term():
+    """From 2026 the trekk leaves with the salary, and `_payroll_runs` pays
+    the gross. Scheduling the 2600-2619 balance as well paid it twice. 2600
+    has stood at 0 all year, so this was latent — and stays that way."""
+    assert "forskuddstrekk" not in cashflow.STATUTORY_FROM_COMMITMENTS
+    items = [{"id": "forskuddstrekk", "label": "Forskuddstrekk",
+              "amount": 434_347.0, "due": "2026-11-16", "kind": "holding"}]
+    data = _forecast([REVENUE], items=items)
+    assert not [i for i in _kinds(data, "statutory")
+                if "rskuddstrekk" in i["label"]]

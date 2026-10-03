@@ -103,9 +103,17 @@ VAT_RATIO_MIN = 50_000
 # raise an alarm the ledger does not support. Named so the gap is a decision.
 STATUTORY_FROM_COMMITMENTS = {
     "mva_oppgjor", "mva_lopende", "mva_forrige_termin", "aga", "aga_ferie",
-    "feriepenger", "betalbar_skatt", "arets_skatt", "forskuddstrekk",
+    "feriepenger", "betalbar_skatt", "arets_skatt",
     "annen_gjeld",
 }
+# `forskuddstrekk` is deliberately NOT here, and that is a change of mind.
+# Until 2026 the trekk sat on a restricted account and was settled on its own
+# term, so scheduling the 2600-2619 balance was right. From 2026 it leaves
+# with the salary, and `_payroll_runs` pays the gross — so taking the balance
+# as well paid the same krone twice, once on pay day and once at the term.
+# Latent rather than live: 2600 has stood at 0 every month of 2026 and 1950
+# was closed, which is the regime change showing up in the ledger. Left out so
+# it cannot come back the day someone posts to 2600 again.
 
 
 def _monday(d: date) -> date:
@@ -463,7 +471,7 @@ def _ferie_withheld() -> tuple[float, int, bool]:
 
 
 def _payroll_runs(today: date, horizon: date, payroll_cash: float,
-                  aga_monthly: float = 0.0) -> list[dict]:
+                  aga_monthly: float = 0.0, aga_booked: float = 0.0) -> list[dict]:
     """Every pay day between now and the horizon, and what leaves on it.
 
     Gross, not net: from 2026 the trekk goes to Skatteetaten the same day as
@@ -493,15 +501,21 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                 flows.append({"date": pay_day, "amount": -amount,
                               "kind": "wages", "label": label})
             # Arbeidsgiveravgift on that run, due on the term covering the
-            # month it is paid in. The 2770 balance commitments already dates
-            # covers a-meldinger filed up to today; a run still ahead of us has
-            # not been reported yet, so this adds to that balance rather than
-            # repeating it. Scaled with the wage, so a withheld holiday month
+            # month it is paid in, and added to the 2770 balance commitments
+            # already dates rather than repeating it. What keeps the two apart
+            # is the ledger, not the pay day: 2770 is credited when the payroll
+            # is *journalised*, which is not the same event as the a-melding
+            # being filed, and a month already journalised is already on that
+            # balance. So a month whose own AGA has reached 2770 is skipped
+            # here. The pay-day position alone got the right answer only
+            # because this bookkeeper posts the run on the day it is paid. Scaled with the wage, so a withheld holiday month
             # carries no employer's contribution either — the feriepenger's own
             # AGA sits on 2785 and commitments dates it to the payout.
             share = (amount / payroll_cash) if payroll_cash else 0.0
             aga = aga_monthly * share
-            if round(aga) > 0:
+            already = (aga_booked > 0.5
+                       and (month.year, month.month) == (today.year, today.month))
+            if round(aga) > 0 and not already:
                 due = workdays.forward(commitments.term_due(
                     month.year, month.month, commitments.SKATT_TERMS))
                 if today <= due < horizon:
@@ -663,8 +677,12 @@ async def build(today: date | None = None) -> dict:
         committed.append({"date": max(due, today), "amount": -item["amount"],
                           "kind": "statutory", "label": item["label"]})
 
+    # What this month's payroll has already put on 2770, if it has been run
+    # and posted. A liability is a credit balance, so an accrual is negative.
+    aga_series = _monthly(rows, columns, 2770, 2779)
+    aga_booked = max(0.0, -aga_series[-1][1]) if aga_series else 0.0
     committed += _payroll_runs(today, horizon, rates["wages_cash"],
-                               rates["aga"])
+                               rates["aga"], aga_booked)
 
     # Trading that has not happened yet: invoicing goes out at month end and is
     # collected on the terms this company's customers actually take. Running
