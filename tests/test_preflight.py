@@ -40,3 +40,60 @@ def test_an_account_that_opens_mid_year_starts_from_zero():
     rows = [{"path": "5000 Lønn", "cells": [None, 40000, 80000]}]
     assert preflight._monthly(rows, cols, 5000, 5999) == [
         ("Jan", 0.0), ("Feb", 40000.0), ("Mars", 40000.0)]
+
+
+# ------------------------------------------- is the month that matters posted
+from datetime import date
+
+
+def _series(months, values):
+    return list(zip(months, values))
+
+
+MONTHS_TO_OCT = ["Juni", "Juli", "Aug", "Sept", "Okt"]
+# A month-end invoicer: 300k invoiced on the last day of each month, 200k payroll.
+REVENUE = _series(MONTHS_TO_OCT, [-300000, -300000, -300000, -300000, 0])
+PAYROLL = _series(MONTHS_TO_OCT, [200000, 200000, 200000, 200000, 0])
+
+
+def _by_id(checks):
+    return {c["id"]: c for c in checks}
+
+
+def test_a_month_end_invoicer_is_not_warned_mid_month():
+    # 15 October, nothing invoiced yet and payroll not yet run: business as usual.
+    checks = _by_id(preflight._completeness(REVENUE, PAYROLL, date(2026, 10, 15)))
+    assert checks["revenue_month"]["status"] == "ok"        # September was full
+    assert "open_month" not in checks
+    assert all(c["status"] in ("ok", "unavailable") for c in checks.values())
+
+
+def test_payroll_in_and_revenue_out_is_a_note_not_a_card():
+    payroll = PAYROLL[:-1] + [("Okt", 200000)]
+    checks = _by_id(preflight._completeness(REVENUE, payroll, date(2026, 10, 22)))
+    assert checks["open_month"]["status"] == "note"
+    assert checks["revenue_month"]["status"] == "ok"        # no invoicing card
+
+
+def test_a_steady_invoicer_halfway_through_is_fine():
+    revenue = REVENUE[:-1] + [("Okt", -140000)]             # 47 % on the 15th
+    payroll = PAYROLL[:-1] + [("Okt", 200000)]
+    checks = _by_id(preflight._completeness(revenue, payroll, date(2026, 10, 15)))
+    assert "open_month" not in checks
+
+
+def test_a_closed_month_without_its_invoicing_warns_after_the_grace():
+    revenue = _series(MONTHS_TO_OCT, [-300000, -300000, -300000, -20000, 0])
+    # 2 October 2026 is the 2nd working day: too early to judge September.
+    early = _by_id(preflight._completeness(revenue, PAYROLL, date(2026, 10, 2)))
+    assert early["revenue_month"]["status"] == "ok"
+    # 8 October is the 6th working day.
+    late = _by_id(preflight._completeness(revenue, PAYROLL, date(2026, 10, 8)))
+    assert late["revenue_month"]["status"] == "warn"
+    assert late["revenue_month"]["headline"].startswith("Sept:")
+
+
+def test_january_has_no_closed_month_to_judge():
+    checks = _by_id(preflight._completeness([("Jan", 0)], [("Jan", 0)],
+                                            date(2026, 1, 20)))
+    assert checks["revenue_month"]["status"] == "unavailable"

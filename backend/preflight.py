@@ -23,10 +23,12 @@ Everything here is computed from three report calls. No model, so it is cheap
 enough to run before every conversation.
 """
 import asyncio
+import calendar
 import logging
 from datetime import date
 
 import freshness
+import workdays
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.preflight")
@@ -50,6 +52,9 @@ STALE_MONTHS = 4
 STALE_MIN_KR = 50_000
 COMPLETE_WARN = 0.50      # month below half the trailing average: not posted
 COMPLETE_NOTE = 0.80
+# Invoices for a month are often registered in the first days of the next and
+# dated back, so a closed month is not judged until this many working days in.
+INVOICE_GRACE_WORKDAYS = 5
 
 MONTHS = ["Jan", "Feb", "Mars", "April", "Mai", "Juni",
           "Juli", "Aug", "Sept", "Okt", "Nov", "Des"]
@@ -105,6 +110,86 @@ def _monthly(rows: list[dict], columns: list[str], low: int, high: int) -> list[
         cum = sum(carried)
         out.append((col, cum - prev))
         prev = cum
+    return out
+
+
+def _workdays_into(today: date) -> int:
+    """Working days elapsed this month, today included."""
+    return sum(1 for d in range(1, today.day + 1)
+               if workdays.is_working_day(date(today.year, today.month, d)))
+
+
+def _completeness(revenue: list, payroll: list, today: date) -> list[dict]:
+    """Is the month that should be posted actually posted?
+
+    Two questions, kept apart because they have different owners.
+
+    **The month that just closed** — September, asked in October. Its
+    invoicing either went out or it did not, and if it did not that is money
+    the CEO can go and fetch: a warning and a card. Judged only after
+    INVOICE_GRACE_WORKDAYS, because invoices registered on the 2nd and dated
+    the 30th land in September's column a few days late.
+
+    **The month still open.** Comparing it with full months warned from the
+    1st for every company that invoices at month end, put a high-urgency card
+    on the deck most of every month, and called the books provisional. What
+    is actually worth saying about an open month is narrower: payroll is in,
+    revenue is not — the shape that makes every ratio on the month wrong. That
+    is a note for the agent, never a card, and revenue is held to the share of
+    the month that has passed, so steady invoicers mid-month are not flagged.
+    """
+    out: list[dict] = []
+    grace = _workdays_into(today) > INVOICE_GRACE_WORKDAYS
+
+    for cid, label_, series, flip in (
+            ("revenue_month", "Omsetning forrige måned", revenue, -1),
+            ("payroll_month", "Lønn forrige måned", payroll, 1)):
+        if len(series) < 2:
+            out.append(_check(cid, label_, "unavailable",
+                              "Ingen avsluttet måned å vurdere ennå i år."))
+            continue
+        name, closed = series[-2][0], series[-2][1] * flip
+        prior = [v * flip for _, v in series[-5:-2]]
+        average = sum(prior) / len(prior) if prior else 0.0
+        if average <= 0:
+            out.append(_check(cid, label_, "unavailable",
+                              "Ingen sammenlignbare måneder."))
+            continue
+        share = closed / average
+        if not grace:
+            out.append(_check(
+                cid, label_, "ok",
+                f"{name}: {_kr(closed)} kr bokført så langt. Vurderes etter "
+                f"{INVOICE_GRACE_WORKDAYS} arbeidsdager inn i ny måned, når "
+                f"etterregistrerte bilag har kommet inn."))
+            continue
+        status = ("warn" if share < COMPLETE_WARN
+                  else "note" if share < COMPLETE_NOTE else "ok")
+        out.append(_check(
+            cid, label_, status,
+            f"{name}: {_kr(closed)} kr bokført mot {_kr(average)} kr i snitt "
+            f"for de tre foregående månedene ({share * 100:.0f} %).",
+            "Måneden er over og ikke ferdig bokført; forholdstall som bygger "
+            "på den blir feil." if status == "warn" else ""))
+
+    # The open month: only the payroll-in, revenue-out shape.
+    if len(revenue) >= 2 and len(payroll) >= 2:
+        def avg(series, flip):
+            prior = [v * flip for _, v in series[-4:-1]]
+            return sum(prior) / len(prior) if prior else 0.0
+        rev_avg, pay_avg = avg(revenue, -1), avg(payroll, 1)
+        rev_now, pay_now = revenue[-1][1] * -1, payroll[-1][1]
+        elapsed = today.day / calendar.monthrange(today.year, today.month)[1]
+        expected = rev_avg * elapsed
+        if (rev_avg > 0 and pay_avg > 0 and pay_now >= COMPLETE_NOTE * pay_avg
+                and rev_now < COMPLETE_WARN * expected):
+            out.append(_check(
+                "open_month", "Inneværende måned", "note",
+                f"{revenue[-1][0]}: lønnen er bokført ({_kr(pay_now)} kr), men "
+                f"bare {_kr(rev_now)} kr i omsetning mot rundt "
+                f"{_kr(expected)} kr så langt i en vanlig måned.",
+                "Ikke regn forholdstall på denne måneden før faktureringen "
+                "er inne."))
     return out
 
 
@@ -270,34 +355,9 @@ async def build(today: date | None = None) -> dict:
             "" if ok else "Én av de to er feil. Ingen av tallene kan siteres "
                           "før differansen er funnet."))
 
-    # 6 & 7. Is this month actually posted? Payroll in and invoicing not run is
-    # the trap that makes every ratio built on the month meaningless.
-    for cid, label_, low, high, flip in (
-            ("revenue_month", "Omsetning inneværende måned", 3000, 3999, -1),
-            ("payroll_month", "Lønn inneværende måned", 5000, 5999, 1)):
-        series = _monthly(rows, columns, low, high)
-        if len(series) < 2:
-            checks.append(_check(cid, label_, "unavailable",
-                                 "Ikke nok måneder til å vurdere fullstendighet."))
-            continue
-        name, current = series[-1][0], series[-1][1] * flip
-        prior = [v * flip for _, v in series[-4:-1]]
-        average = sum(prior) / len(prior) if prior else 0.0
-        if average <= 0:
-            checks.append(_check(cid, label_, "unavailable",
-                                 "Ingen sammenlignbare måneder."))
-            continue
-        share = current / average
-        status = ("warn" if share < COMPLETE_WARN
-                  else "note" if share < COMPLETE_NOTE else "ok")
-        checks.append(_check(
-            cid, label_, status,
-            f"{name}: {_kr(current)} kr bokført mot {_kr(average)} kr i snitt "
-            f"for de tre foregående månedene ({share * 100:.0f} %).",
-            f"Dag {today.day} i måneden." + (
-                " Måneden er ikke ferdig bokført; forholdstall som blander den "
-                "med en fullt bokført kostnadsside blir feil." if status == "warn"
-                else "")))
+    # 6 & 7. Has the month posted that should have been?
+    checks += _completeness(_monthly(rows, columns, 3000, 3999),
+                            _monthly(rows, columns, 5000, 5999), today)
 
     # 8. Accruals that have stopped moving. A year-end accrual that was never
     # reversed keeps being read as a current liability, and it is subtracted

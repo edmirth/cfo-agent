@@ -338,10 +338,11 @@ def _from_preflight(pf: dict) -> list[dict]:
         cards.append({
             "key": f"invoicing:{pf.get('as_of', '')[:7]}",
             "kind": "invoicing", "urgency": "high", "amount": None,
-            "title": "Månedens fakturering har ikke gått ut",
-            "body": (revenue["headline"] + " Arbeidet er utført og lønnen er "
-                     "bokført, men pengene er ikke bedt om ennå. Dette er den "
-                     "enkleste kronen du henter inn denne uka."),
+            # The check judges the month that just closed, never the open one.
+            "title": "Forrige måneds fakturering har ikke gått ut",
+            "body": (revenue["headline"] + " Måneden er over, arbeidet er "
+                     "utført og lønnen er betalt, men pengene er ikke bedt om "
+                     "ennå. Dette er den enkleste kronen du henter inn denne uka."),
             "evidence": [{"label": "Kontroll", "value": revenue["headline"]}],
             "options": [
                 {"id": "done", "label": "Fakturaene er sendt", "effect": "approve"},
