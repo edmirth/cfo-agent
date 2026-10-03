@@ -662,13 +662,29 @@ async def build(today: date | None = None) -> dict:
     vat_series = _monthly(rows, columns, 2700, 2739)
     if vat_series:
         booked_vat = max(0.0, -vat_series[-1][1])
+    # The same overlap on the way in. Invoicing already issued this month sits
+    # in ar_open with a real due date of its own; forecasting a full month on
+    # top of it collects the same krone twice. The opex leg three lines down
+    # has always guarded this ("this month's bills are already in the payables
+    # above") — the revenue leg never did. Gross against gross: amounts here
+    # are what the customer owes, and so is revenue × (1 + MVA_RATE).
+    invoiced_this_month = 0.0
+    for i in ar_open:
+        try:
+            issued = date.fromisoformat(i["invoiced"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        if (issued.year, issued.month) == (today.year, today.month):
+            invoiced_this_month += i["amount"]
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
         landing = month_end + timedelta(days=credit_days + PAY_LAG_DAYS)
-        if today <= landing < horizon:
-            expected.append({"date": landing,
-                             "amount": rates["revenue"] * (1 + MVA_RATE),
+        gross = rates["revenue"] * (1 + MVA_RATE)
+        if (month.year, month.month) == (today.year, today.month):
+            gross = max(0.0, gross - invoiced_this_month)
+        if today <= landing < horizon and round(gross) > 0:
+            expected.append({"date": landing, "amount": gross,
                              "kind": "new_sales",
                              "label": f"Fakturering {MONTH_NAMES[month.month - 1]}"
                                       f", betalt"})
@@ -705,7 +721,8 @@ async def build(today: date | None = None) -> dict:
 
     data = _assemble(today, week0, opening, committed, expected,
                      rates, credit_days, warnings, ar_open, ap_open,
-                     vat_share, vat_measured, booked_vat)
+                     vat_share, vat_measured, booked_vat,
+                     invoiced_this_month)
     data["ar_open"] = ar_open
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
@@ -716,7 +733,7 @@ async def build(today: date | None = None) -> dict:
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open, vat_share=0.0,
-              vat_measured=False, booked_vat=0.0) -> dict:
+              vat_measured=False, booked_vat=0.0, invoiced=0.0) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
     ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
 
@@ -837,6 +854,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             # Netted off this month's figure rather than charged on top of it:
             # commitments already dates this to the same deadline.
             "mva_bokfort_denne_maneden": round(booked_vat, 2),
+            # Likewise netted off, not added to: these invoices are already in
+            # the committed line with due dates of their own.
+            "fakturert_denne_maneden": round(invoiced, 2),
         },
         "warnings": warnings,
     }

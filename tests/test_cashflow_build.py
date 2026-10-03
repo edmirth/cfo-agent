@@ -140,3 +140,39 @@ def test_later_months_keep_their_whole_vat():
     data = _forecast([REVENUE, accrued])
     nov = [i for i in _kinds(data, "vat_future") if "november" in i["label"]]
     assert not nov or round(nov[0]["amount"]) == -100_000
+
+
+def _october_sales(data):
+    return [i for i in _kinds(data, "new_sales") if "oktober" in i["label"]]
+
+
+def _invoice(amount, invoiced, due, ident=1):
+    return {"id": ident, "customerName": "Kunde", "amountOutstanding": amount,
+            "invoiceDate": invoiced, "dueDate": due, "invoiceNumber": str(ident)}
+
+
+def test_invoicing_already_issued_this_month_is_not_forecast_again():
+    """The opex leg has always guarded the current month — "this month's bills
+    are already in the payables above". The revenue leg never did, so an
+    invoice already out, with a due date of its own in the committed line, was
+    collected a second time as "Fakturering oktober, betalt"."""
+    full = _october_sales(_forecast([REVENUE]))
+    assert full and round(full[0]["amount"]) == 500_000, "400 000 kr plus mva"
+
+    issued = [_invoice(500_000.0, "2026-10-01", "2026-10-31")]
+    assert not _october_sales(_forecast([REVENUE], ar=issued)), \
+        "the whole month was already invoiced, so nothing is left to forecast"
+
+
+def test_a_part_invoiced_month_forecasts_only_the_remainder():
+    issued = [_invoice(200_000.0, "2026-10-01", "2026-10-31")]
+    left = _october_sales(_forecast([REVENUE], ar=issued))
+    assert left and round(left[0]["amount"]) == 300_000
+
+
+def test_last_months_invoices_do_not_reduce_this_month():
+    """September's invoicing is collected in the committed line and says
+    nothing about what October will bill."""
+    issued = [_invoice(500_000.0, "2026-09-30", "2026-10-30")]
+    left = _october_sales(_forecast([REVENUE], ar=issued))
+    assert left and round(left[0]["amount"]) == 500_000
