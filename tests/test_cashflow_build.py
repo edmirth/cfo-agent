@@ -20,6 +20,15 @@ def _row(path, cells):
     return {"path": path, "cells": cells}
 
 
+def _cum(path, monthly):
+    """Saldobalanse rows are cumulative; `_monthly` differences them back."""
+    cells, running = [0], 0.0
+    for v in monthly:
+        running += v
+        cells.append(running)
+    return _row(path, cells + [running])
+
+
 class _Tripletex:
     def __init__(self, rows, ar=(), ap=()):
         self.rows, self.ar, self.ap = rows, list(ar), list(ap)
@@ -92,3 +101,42 @@ def test_an_absent_payables_account_raises_no_warning():
            "invoiceDate": "2026-09-20"}]
     data = _forecast([], ap=ap)
     assert not any("2400" in w for w in data["warnings"])
+
+
+# ------------------------- what commitments already dates, and this re-dates
+REVENUE = _cum("3000 Salgsinntekt", [-400_000.0] * 10)
+
+
+def _october_vat(data):
+    return [i for i in _kinds(data, "vat_future") if "oktober" in i["label"]]
+
+
+def test_vat_already_accrued_this_month_is_not_scheduled_twice():
+    """commitments dates the 2700-2739 balance to the running term's deadline.
+
+    The expected loop then added a full month's VAT for the current month on
+    that same date, so everything already booked went out twice — a margin
+    that grows through the month to nearly a whole month's VAT. Only the part
+    still to be invoiced belongs to the forecast.
+    """
+    accrued = _cum("2700 Utgående mva", [0.0] * 9 + [-100_000.0])
+    full = _october_vat(_forecast([REVENUE]))
+    assert full, "a month with nothing booked still owes its own VAT"
+    assert round(full[0]["amount"]) == -100_000
+
+    netted = _october_vat(_forecast([REVENUE, accrued]))
+    assert not netted, "the whole month was already booked, so nothing is left"
+
+
+def test_a_part_booked_month_schedules_only_the_remainder():
+    accrued = _cum("2700 Utgående mva", [0.0] * 9 + [-60_000.0])
+    left = _october_vat(_forecast([REVENUE, accrued]))
+    assert left and round(left[0]["amount"]) == -40_000
+
+
+def test_later_months_keep_their_whole_vat():
+    """Only the current month overlaps the running balance."""
+    accrued = _cum("2700 Utgående mva", [0.0] * 9 + [-100_000.0])
+    data = _forecast([REVENUE, accrued])
+    nov = [i for i in _kinds(data, "vat_future") if "november" in i["label"]]
+    assert not nov or round(nov[0]["amount"]) == -100_000

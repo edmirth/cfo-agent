@@ -650,6 +650,18 @@ async def build(today: date | None = None) -> dict:
              for i in ar_open if i.get("invoiced") and i.get("due")]
     credit_days = int(statistics.median(terms)) if terms else 30
     vat_share, vat_measured = _vat_input_share(rows)
+    # What this month has already accrued. commitments dates the whole
+    # 2700-2739 balance to the running term's deadline, and the loop below
+    # adds a full month's VAT for the current month on that very same date —
+    # so everything already booked was being paid twice, by a margin that
+    # grows through the month to nearly a full month's VAT by the end of it.
+    # Only the part still to be invoiced belongs here. A liability is a credit
+    # balance, so an accrual shows up as a negative movement; `commitments`
+    # negates the same way when it turns a balance into an amount owed.
+    booked_vat = 0.0
+    vat_series = _monthly(rows, columns, 2700, 2739)
+    if vat_series:
+        booked_vat = max(0.0, -vat_series[-1][1])
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
@@ -665,6 +677,8 @@ async def build(today: date | None = None) -> dict:
         # the receipt itself falls outside the window, because that is the case
         # that hurts: the liability inside, the cash outside.
         net_vat = rates["revenue"] * MVA_RATE * (1 - vat_share)
+        if (month.year, month.month) == (today.year, today.month):
+            net_vat = max(0.0, net_vat - booked_vat)
         vat_due = workdays.forward(
             commitments.term_due(month.year, month.month, commitments.MVA_TERMS))
         if today <= vat_due < horizon and round(net_vat) > 0:
@@ -691,7 +705,7 @@ async def build(today: date | None = None) -> dict:
 
     data = _assemble(today, week0, opening, committed, expected,
                      rates, credit_days, warnings, ar_open, ap_open,
-                     vat_share, vat_measured)
+                     vat_share, vat_measured, booked_vat)
     data["ar_open"] = ar_open
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
@@ -702,7 +716,7 @@ async def build(today: date | None = None) -> dict:
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open, vat_share=0.0,
-              vat_measured=False) -> dict:
+              vat_measured=False, booked_vat=0.0) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
     ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
 
@@ -820,6 +834,9 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             "mva_sats": MVA_RATE,
             "mva_fradrag_andel": round(vat_share, 3),
             "mva_fradrag_malt": vat_measured,
+            # Netted off this month's figure rather than charged on top of it:
+            # commitments already dates this to the same deadline.
+            "mva_bokfort_denne_maneden": round(booked_vat, 2),
         },
         "warnings": warnings,
     }
@@ -911,6 +928,10 @@ def briefing(data: dict | None) -> str:
            if a.get("mva_fradrag_malt") else
            "ingen fradrag for inngående moms, fordi forholdet ikke lot seg "
            "måle — det er for strengt, ikke for snilt.")
+        + (f" Av denne månedens moms er {_kr(a['mva_bokfort_denne_maneden'])} "
+           f"kr alt bokført og ligger i forpliktelsene, så bare resten er lagt "
+           f"inn her — ellers ville den samme kronen gått ut to ganger."
+           if a.get("mva_bokfort_denne_maneden") else "")
         + f" Arbeidsgiveravgift på lønn som ennå ikke er kjørt ligger på samme "
           f"måte på sitt eget terminforfall, {_kr(a['monthly_aga'])} kr i "
           f"måneden. Begge deler er anslag som følger av omsetnings- og "
