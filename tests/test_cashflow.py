@@ -98,3 +98,30 @@ def test_both_lines_going_dry_leads_with_the_committed_week():
     said = cashflow.briefing(data)
     assert "begge linjene" in said
     assert data["goes_negative_committed"]["label"] in said
+
+
+# ------------------------------------------- what the owner is told about rates
+def test_a_rate_with_outliers_both_ways_is_stated_once():
+    """`said` was prefixed to each direction's note, so a range with both a
+    quiet month and a loud one told the owner the same figure twice."""
+    rows = [{"path": "6300 Leie", "cells": [0, 20_000, 40_000, 45_000,
+                                            200_000, 220_000, 240_000]}]
+    cols = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai",
+            "Utgående saldo"]
+    _, notes = cashflow._run_rates(rows, cols)
+    stated = [n for n in notes if "er lagt inn med" in n]
+    assert len(stated) == 1, notes
+    assert "holdt utenfor" in stated[0]
+
+
+def test_the_two_wage_rates_are_not_both_called_lonn():
+    """One is the P&L's full wage cost, the other what leaves on pay day.
+    Two different figures under one name is a note the owner cannot act on."""
+    rows = [{"path": "5000 Lønn", "cells": [0, 100_000, 200_000, 1_000_000,
+                                            1_100_000]},
+            {"path": "5020 Feriepenger", "cells": [0, 12_000, 24_000, 36_000,
+                                                   48_000]}]
+    cols = ["Inngående balanse", "Jan", "Feb", "Mars", "Utgående saldo"]
+    _, notes = cashflow._run_rates(rows, cols)
+    named = [n for n in notes if n.startswith("Lønn er lagt inn")]
+    assert len(named) <= 1, named

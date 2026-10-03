@@ -352,20 +352,26 @@ def _run_rates(rows: list, columns: list,
         average = (sum(kept) / len(kept)) if kept else mid
         # Format the number on its own: the sentence has commas of its own.
         said = f"{name} er lagt inn med {_kr(average)} kr i måneden."
+        # One note per rate, not one per direction. A range with both a quiet
+        # month and a loud one used to produce two notes opening on the same
+        # sentence, which reads like the figure was stated twice.
+        why = []
         if low_months:
-            notes.append(
-                f"{said} {', '.join(low_months)} er holdt utenfor — de ligger "
-                f"langt under de andre månedene, og det betyr nesten alltid at "
-                f"bilag ikke er bokført, ikke at kostnaden forsvant.")
+            why.append(
+                f"{', '.join(low_months)} er holdt utenfor — de ligger langt "
+                f"under de andre månedene, og det betyr nesten alltid at bilag "
+                f"ikke er bokført, ikke at kostnaden forsvant.")
         if high_months:
             # Said for the same reason the low ones are. A month at several
             # times the median pulls the rate down when it is dropped, and a
             # rate quietly lowered is the dangerous direction to be wrong in.
-            notes.append(
-                f"{said} {', '.join(high_months)} er holdt utenfor — de ligger "
-                f"langt over de andre månedene. Det er som regel etterslep som "
-                f"ble bokført på én gang, eller noe som bare skjedde denne ene "
+            why.append(
+                f"{', '.join(high_months)} er holdt utenfor — de ligger langt "
+                f"over de andre månedene. Det er som regel etterslep som ble "
+                f"bokført på én gang, eller noe som bare skjedde denne ene "
                 f"gangen, men sjekk det før du stoler på snittet.")
+        if why:
+            notes.append(" ".join([said] + why))
         return average
 
     # Every krone that leaves the account has to be in exactly one of these.
@@ -398,7 +404,8 @@ def _run_rates(rows: list, columns: list,
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
-             "wages_cash": rate([(5000, 5019), (5030, 5099)], 1, "Lønn"),
+             "wages_cash": rate([(5000, 5019), (5030, 5099)], 1,
+                                "Lønn som går ut på lønningsdagen"),
              # Not part of opex, and not double counted: commitments dates the
              # 2770 balance for payrolls already reported, this rates the ones
              # still to come. 5401 stays out, being the feriepenger's own.
@@ -470,6 +477,29 @@ def _ferie_withheld() -> tuple[float, int, bool]:
     return min(1.0, weeks * 6 / VIRKEDAGER), weeks, bool(ok)
 
 
+def _pay_days(today: date, horizon: date) -> list[tuple[int, int, date]]:
+    """Every pay day in the window, with the month it pays for.
+
+    Public to the module rather than inlined in `_payroll_runs`, because the
+    briefing needs the same answer: its notes about December and the holiday
+    month describe what the payroll run does, so they have to be gated on the
+    run being in the window — not on the month merely being touched by it,
+    which is a different question at both edges of thirteen weeks.
+    """
+    out, month = [], today
+    while True:
+        # The same pay day commitments uses — imported, not reimplemented. Two
+        # implementations disagreed and the forecast lost a December payroll.
+        pay_day = workdays.backward(commitments.payday(month.year, month.month))
+        if pay_day >= horizon:
+            break
+        if pay_day >= today:
+            out.append((month.year, month.month, pay_day))
+        month = (date(month.year + 1, 1, 1) if month.month == 12
+                 else date(month.year, month.month + 1, 1))
+    return out
+
+
 def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                   aga_monthly: float = 0.0, aga_booked: float = 0.0) -> list[dict]:
     """Every pay day between now and the horizon, and what leaves on it.
@@ -481,50 +511,45 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
     """
     ferie_month = commitments.ferie_month()
     withheld, _, _ = _ferie_withheld()
-    flows, month = [], today
-    while True:
-        # The same pay day commitments uses — imported, not reimplemented. Two
-        # implementations disagreed and the forecast lost a December payroll.
-        pay_day = workdays.backward(commitments.payday(month.year, month.month))
-        if pay_day >= horizon:
-            break
-        if pay_day >= today:
-            amount, label = payroll_cash, "Lønn og skattetrekk"
-            if month.month == ferie_month and withheld:
-                amount = payroll_cash * (1 - withheld)
-                label = (f"Lønn, {round(withheld * 100)} % holdt igjen mot "
-                         f"feriepengene")
-            # A fully withheld month is left off the table rather than shown as
-            # a zero: the feriepenger line from commitments is the payment that
-            # month, and a 0 kr wage line beside it reads like an error.
-            if round(amount) > 0:
-                flows.append({"date": pay_day, "amount": -amount,
-                              "kind": "wages", "label": label})
-            # Arbeidsgiveravgift on that run, due on the term covering the
-            # month it is paid in, and added to the 2770 balance commitments
-            # already dates rather than repeating it. What keeps the two apart
-            # is the ledger, not the pay day: 2770 is credited when the payroll
-            # is *journalised*, which is not the same event as the a-melding
-            # being filed, and a month already journalised is already on that
-            # balance. So a month whose own AGA has reached 2770 is skipped
-            # here. The pay-day position alone got the right answer only
-            # because this bookkeeper posts the run on the day it is paid. Scaled with the wage, so a withheld holiday month
-            # carries no employer's contribution either — the feriepenger's own
-            # AGA sits on 2785 and commitments dates it to the payout.
-            share = (amount / payroll_cash) if payroll_cash else 0.0
-            aga = aga_monthly * share
-            already = (aga_booked > 0.5
-                       and (month.year, month.month) == (today.year, today.month))
-            if round(aga) > 0 and not already:
-                due = workdays.forward(commitments.term_due(
-                    month.year, month.month, commitments.SKATT_TERMS))
-                if today <= due < horizon:
-                    flows.append({
-                        "date": due, "amount": -aga, "kind": "aga_future",
-                        "label": f"Arbeidsgiveravgift på lønn "
-                                 f"{MONTH_NAMES[month.month - 1]}"})
-        month = (date(month.year + 1, 1, 1) if month.month == 12
-                 else date(month.year, month.month + 1, 1))
+    flows = []
+    for year, month_no, pay_day in _pay_days(today, horizon):
+        month = date(year, month_no, 1)
+        amount, label = payroll_cash, "Lønn og skattetrekk"
+        if month.month == ferie_month and withheld:
+            amount = payroll_cash * (1 - withheld)
+            label = (f"Lønn, {round(withheld * 100)} % holdt igjen mot "
+                     f"feriepengene")
+        # A fully withheld month is left off the table rather than shown as a
+        # zero: the feriepenger line from commitments is the payment that
+        # month, and a 0 kr wage line beside it reads like an error.
+        if round(amount) > 0:
+            flows.append({"date": pay_day, "amount": -amount,
+                          "kind": "wages", "label": label})
+
+        # Arbeidsgiveravgift on that run, due on the term covering the month it
+        # is paid in, and added to the 2770 balance commitments already dates
+        # rather than repeating it. What keeps the two apart is the ledger, not
+        # the pay day: 2770 is credited when the payroll is *journalised*,
+        # which is not the same event as the a-melding being filed, so a month
+        # already journalised is already on that balance and is skipped here.
+        # The pay-day position alone got the right answer only because this
+        # bookkeeper posts the run on the day it is paid.
+        #
+        # Scaled with the wage, so a withheld holiday month carries no
+        # employer's contribution either — the feriepenger's own AGA sits on
+        # 2785 and commitments dates it to the payout.
+        share = (amount / payroll_cash) if payroll_cash else 0.0
+        aga = aga_monthly * share
+        already = (aga_booked > 0.5
+                   and (month.year, month.month) == (today.year, today.month))
+        if round(aga) > 0 and not already:
+            due = workdays.forward(commitments.term_due(
+                month.year, month.month, commitments.SKATT_TERMS))
+            if today <= due < horizon:
+                flows.append({
+                    "date": due, "amount": -aga, "kind": "aga_future",
+                    "label": f"Arbeidsgiveravgift på lønn "
+                             f"{MONTH_NAMES[month.month - 1]}"})
     return flows
 
 
@@ -683,6 +708,7 @@ async def build(today: date | None = None) -> dict:
     aga_booked = max(0.0, -aga_series[-1][1]) if aga_series else 0.0
     committed += _payroll_runs(today, horizon, rates["wages_cash"],
                                rates["aga"], aga_booked)
+    payroll_months = [m for _, m, _ in _pay_days(today, horizon)]
 
     # Trading that has not happened yet: invoicing goes out at month end and is
     # collected on the terms this company's customers actually take. Running
@@ -764,7 +790,7 @@ async def build(today: date | None = None) -> dict:
     data = _assemble(today, week0, opening, committed, expected,
                      rates, credit_days, warnings, ar_open, ap_open,
                      vat_share, vat_measured, booked_vat,
-                     invoiced_this_month)
+                     invoiced_this_month, payroll_months)
     data["ar_open"] = ar_open
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
@@ -780,7 +806,8 @@ async def build(today: date | None = None) -> dict:
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open, vat_share=0.0,
-              vat_measured=False, booked_vat=0.0, invoiced=0.0) -> dict:
+              vat_measured=False, booked_vat=0.0, invoiced=0.0,
+              payroll_months=()) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
     ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
 
@@ -904,6 +931,13 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
             # Likewise netted off, not added to: these invoices are already in
             # the committed line with due dates of their own.
             "fakturert_denne_maneden": round(invoiced, 2),
+            # Which payroll runs are actually inside the window. The notes
+            # about December and the holiday month describe what a *run* does,
+            # so they are gated on the run, not on the months the thirteen
+            # weeks happen to touch — those differ at both edges, and a note
+            # describing a withheld salary the table does not contain is worse
+            # than no note.
+            "lonnskjoringer": list(payroll_months),
         },
         "warnings": warnings,
     }
@@ -1008,8 +1042,7 @@ def briefing(data: dict | None) -> str:
     # The two months that do not behave like the other ten. Only said when one
     # of them is actually inside the window: a note about December in February
     # is noise, and noise is what gets the real notes skimmed past.
-    months = {int(w["start"][5:7]) for w in data["weeks"]}
-    months |= {int(w["end"][5:7]) for w in data["weeks"]}
+    months = set(a.get("lonnskjoringer") or ())
     ferie = a.get("feriepenger_maned", "")
     ferie_month = next((i + 1 for i, n in enumerate(MONTH_NAMES) if n == ferie),
                        None)
