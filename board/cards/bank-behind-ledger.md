@@ -65,3 +65,10 @@ one named per call.
   is by normalised counterparty name, which misses a payer who pays under
   another name (factoring: "Factor AS", "Riverty").
 
+- 2026-10-04 (edmir/agent): owner read the actual bank balance (saldo, not
+  disponibelt): **3 037 547,13 kr**, against the forecast's 3 002 802,97 — a
+  gap of 34 744,16 kr. The Tripletex feed has nothing after Thu 1 Oct, so
+  Friday 2 Oct is in the bank and not in the figure; the method is taken as
+  confirmed up to the feed. Not yet tied to the øre: that needs the balance at
+  the end of 1 Oct, or Friday's lines summing to +34 744,16. The forecast now
+  says when the feed stops before the last working day.
