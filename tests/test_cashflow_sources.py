@@ -61,9 +61,10 @@ def _read(rows, id_key="voucherId"):
     original = cashflow.mcp
     cashflow.mcp = stub
     try:
-        return asyncio.run(cashflow._open_invoices(
+        out, warnings, _ = asyncio.run(cashflow._open_invoices(
             date(2026, 10, 2), "search_supplier_invoices", "Leverandørfakturaer",
             id_key, "outstandingAmount", "supplierName"))
+        return out, warnings
     finally:
         cashflow.mcp = original
 
@@ -123,7 +124,7 @@ def test_a_month_outside_the_window_does_not_crash_the_forecast():
     """Credit notes below half the median and heavy months above double it can
     leave nothing in the keep window. The note quoted the average before it was
     computed, divided by zero, and took the whole forecast down with it."""
-    rows = [_row("6000 Driftskostnader", [-10.0, -5.0, 30.0, 40.0, 0.0])]
+    rows = [_row("6300 Leie lokale", [-10.0, -5.0, 30.0, 40.0, 0.0])]
     rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 12.5, "falls back to the median, and survives"
     assert notes, "and says which months it set aside"
@@ -132,7 +133,7 @@ def test_a_month_outside_the_window_does_not_crash_the_forecast():
 def test_a_month_far_above_the_median_is_named_too():
     """Only the low months were named. A high month was dropped in silence,
     pulling the cost rate down — the dangerous direction."""
-    rows = [_row("6000 Driftskostnader", [100.0, 100.0, 100.0, 900.0, 0.0])]
+    rows = [_row("6300 Leie lokale", [100.0, 100.0, 100.0, 900.0, 0.0])]
     rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 100.0
     assert any("over de andre" in n for n in notes), notes
@@ -266,3 +267,63 @@ def test_a_withheld_holiday_month_owes_no_employer_contribution():
         assert not june, f"June drew feriepenger, so it owes neither: {june}"
     finally:
         company.setting = original
+
+
+# ------------------------------------------------ the start of the year
+YEAR = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai", "Juni",
+        "Juli", "Aug", "Sept", "Okt", "Nov", "Des", "Utgående saldo"]
+
+
+def _last_year():
+    rows = [_row("3000 Salgsinntekt", [-200000] * 12),
+            _row("5000 Lønn", [80000] * 12),
+            _row("6300 Leie", [20000] * 12)]
+    return rows, YEAR
+
+
+def test_january_has_payroll_costs_and_revenue():
+    # 10 January: this year's only month is the one still being posted, so
+    # without last year every rate was 0 and the forecast had no payroll in it.
+    rows = [_row("3000 Salgsinntekt", [-30000]), _row("5000 Lønn", [0])]
+    cols = ["Inngående balanse", "Jan", "Utgående saldo"]
+    alone, notes = cashflow._run_rates(rows, cols)
+    assert alone["wages"] == 0 and any("kunne ikke beregnes" in n for n in notes)
+
+    p_rows, p_cols = _last_year()
+    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 3))
+    assert rates["revenue"] == 200000
+    assert rates["wages"] == 80000
+    assert rates["opex"] == 20000
+
+
+def test_february_does_not_rest_on_january_alone():
+    # January ran a 60k payroll after a quiet holiday month; on its own it
+    # would set the rate. With Nov and Dec it is one month of three.
+    rows = [_row("5000 Lønn", [60000, 10000])]
+    cols = ["Inngående balanse", "Jan", "Feb", "Utgående saldo"]
+    p_rows, p_cols = _last_year()
+    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 2))
+    assert rates["wages"] == (80000 + 80000 + 60000) / 3
+
+
+def test_last_years_months_are_named_with_their_year():
+    # A quiet December from last year must not be reported as this December.
+    rows = [_row("6300 Leie", [20000])]
+    cols = ["Inngående balanse", "Jan", "Utgående saldo"]
+    p_rows = [_row("6300 Leie", [20000] * 11 + [1000])]
+    _, notes = cashflow._run_rates(rows, cols, (p_rows, YEAR, 2025, 3))
+    assert any("Des 2025" in n for n in notes), notes
+
+
+def test_costs_that_move_no_money_stay_out_of_the_forecast():
+    """Depreciation on three cars was leaving the account every month in the
+    forecast — about 19 000 kr a month against the live ledger in Q1."""
+    rows = [_flat("6010 Avskriving på transportmidler", 19066.66),
+            _flat("6050 Nedskrivning", 5000.0),
+            _flat("5210 Fri telefon", 400.0),
+            _flat("7830 Tap på fordringer", 3000.0),
+            _flat("5330 Godtgjørelse til styre", 2500.0),
+            _flat("6300 Leie lokale", 23000.0),
+            _flat("7770 Bank- og kortgebyrer", 300.0)]
+    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    assert rates["opex"] == 23000.0 + 2500.0 + 300.0

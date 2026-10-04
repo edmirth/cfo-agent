@@ -42,6 +42,9 @@ log = logging.getLogger("cfo.cards")
 
 STORE = config.ROOT / "state" / "cards.json"
 MAX_CLOSED = 200
+# How long an approved card answers its check. "Send påminnelsen" is a promise
+# to act, not proof the customer paid; still late two weeks on, it comes back.
+FOLLOW_UP_DAYS = 14
 
 _lock = threading.Lock()
 
@@ -109,11 +112,44 @@ def _wake(cards: list[dict], today: date) -> bool:
     return changed
 
 
+def _due_for_follow_up(card: dict, today: date | None = None) -> bool:
+    try:
+        closed = date.fromisoformat(card.get("closed") or "")
+    except ValueError:
+        return False
+    return ((today or date.today()) - closed).days >= FOLLOW_UP_DAYS
+
+
+def _answered_before(cards: list[dict], key: str | None) -> dict | None:
+    """The approved card this one follows up, if the check outlived it."""
+    if not key:
+        return None
+    held = [c for c in cards if c.get("key") == key and c.get("status") == "done"
+            and c.get("source") == "auto" and not c.get("released")]
+    return max(held, key=lambda c: c.get("closed") or "") if held else None
+
+
+def _with_follow_up(card: dict, body: str) -> str:
+    """Say what was already done. A follow-up that reads like a first notice
+    asks the CEO to decide again what he decided two weeks ago."""
+    f = card.get("follow_up")
+    if not f:
+        return body
+    try:
+        ago = (date.today() - date.fromisoformat(f.get("closed") or "")).days
+        when = f"for {ago} dager siden"
+    except ValueError:
+        when = "tidligere"
+    return (f"Oppfølging: du valgte «{f.get('label') or 'å ta det'}» {when}, "
+            f"og det står fortsatt ved lag. " + body)
+
+
 def add(card: dict) -> dict | None:
     """Store a card unless its key is already live.
 
-    Returns the stored card, or None when an open or deferred card already
-    covers it — a deck that repeats itself is a deck nobody reads.
+    Returns the stored card, or None when an open, deferred, dismissed or
+    still-standing approved card already covers it — a deck that repeats itself
+    is a deck nobody reads.
     """
     with _lock:
         data = _load()
@@ -126,6 +162,21 @@ def add(card: dict) -> dict | None:
                 # Dismissed means "stop telling me this".
                 if existing.get("key") == key and existing.get("status") == "dismissed":
                     return None
+                # Approved means "I'm on it". The check keeps firing until the
+                # customer pays, so the card stays answered until it stops —
+                # `reconcile` releases the key then — or until FOLLOW_UP_DAYS
+                # have passed and it has not, when it comes back as a follow-up.
+                if (existing.get("key") == key and existing.get("status") == "done"
+                        and existing.get("source") == "auto"
+                        and not existing.get("released")
+                        and not _due_for_follow_up(existing)):
+                    return None
+            previous = _answered_before(data["cards"], key)
+            if previous is not None:
+                card = {**card, "follow_up": {
+                    "of": previous["id"], "closed": previous.get("closed"),
+                    "label": (previous.get("decided") or {}).get("label")}}
+                card["body"] = _with_follow_up(card, card.get("body", ""))
         data["counter"] += 1
         card = {**card, "id": f"K{data['counter']:03d}", "created": _now(),
                 "status": "open"}
@@ -287,10 +338,11 @@ def _from_preflight(pf: dict) -> list[dict]:
         cards.append({
             "key": f"invoicing:{pf.get('as_of', '')[:7]}",
             "kind": "invoicing", "urgency": "high", "amount": None,
-            "title": "Månedens fakturering har ikke gått ut",
-            "body": (revenue["headline"] + " Arbeidet er utført og lønnen er "
-                     "bokført, men pengene er ikke bedt om ennå. Dette er den "
-                     "enkleste kronen du henter inn denne uka."),
+            # The check judges the month that just closed, never the open one.
+            "title": "Forrige måneds fakturering har ikke gått ut",
+            "body": (revenue["headline"] + " Måneden er over, arbeidet er "
+                     "utført og lønnen er betalt, men pengene er ikke bedt om "
+                     "ennå. Dette er den enkleste kronen du henter inn denne uka."),
             "evidence": [{"label": "Kontroll", "value": revenue["headline"]}],
             "options": [
                 {"id": "done", "label": "Fakturaene er sendt", "effect": "approve"},
@@ -392,11 +444,34 @@ async def refresh(today: date | None = None) -> dict:
         # the deck and the forecast on the same figures.
         candidates += _collections(cf.get("ar_open") or [], today)
 
-    reconcile(candidates, sources_ok=bool(pf and cf))
+    reconcile(candidates, sources_ok=True, unknown=_unknown(pf, cf))
     return deck(today)
 
 
-def reconcile(candidates: list[dict], sources_ok: bool) -> None:
+# Which derived cards each check produces, by key prefix. A check that could
+# not run says nothing about whether its cards still hold.
+CHECK_KEYS = {"inbox": "vouchers:", "revenue_month": "invoicing:",
+              "ar_tie": "reconcile:ar_tie", "ap_tie": "reconcile:ap_tie",
+              "ap_posting": "reconcile:ap_posting"}
+
+
+def _unknown(pf: dict | None, cf: dict | None) -> set[str]:
+    """Key prefixes whose source did not answer this time."""
+    unknown: set[str] = set()
+    if not pf:
+        unknown |= set(CHECK_KEYS.values())
+    else:
+        unknown |= {CHECK_KEYS[c["id"]] for c in pf.get("checks", [])
+                    if c["status"] == "unavailable" and c["id"] in CHECK_KEYS}
+    if not cf:
+        unknown |= {"cash:", "collections:"}
+    elif not cf.get("ar_complete", True):
+        unknown.add("collections:")
+    return unknown
+
+
+def reconcile(candidates: list[dict], sources_ok: bool,
+              unknown: set[str] | tuple = ()) -> None:
     """Make the derived cards match what the checks say *now*.
 
     A card raised by a check is a claim about the present — "Skanska is 70
@@ -408,17 +483,35 @@ def reconcile(candidates: list[dict], sources_ok: bool) -> None:
     are not touched; only the agent knows whether those still hold.
 
     When a source could not be read at all, nothing is closed: the absence of
-    a candidate then means "unknown", not "fixed".
+    a candidate then means "unknown", not "fixed". `unknown` narrows that to
+    the cards whose own check did not run — key prefixes, from `_unknown` —
+    so one failed report does not freeze the whole deck.
     """
     by_key = {c["key"]: c for c in candidates if c.get("key")}
+    live = set(by_key)
     with _lock:
         data = _load()
         changed = False
         for card in data["cards"]:
-            if card.get("source") != "auto" or card.get("status") not in ("open", "snoozed"):
+            if card.get("source") != "auto":
+                continue
+            if any((card.get("key") or "").startswith(u) for u in unknown):
+                by_key.pop(card.get("key"), None)
+                continue
+            # An approved card holds its key while the condition persists. Once
+            # the check stops firing it lets go, so the next time the same
+            # customer is late is a new card, not a repeat of the old one.
+            if (card.get("status") == "done" and not card.get("released")
+                    and sources_ok and card.get("key") not in live):
+                card["released"] = _now()
+                changed = True
+                continue
+            if card.get("status") not in ("open", "snoozed"):
                 continue
             fresh = by_key.pop(card.get("key"), None)
             if fresh is not None:
+                if "body" in fresh:
+                    fresh = {**fresh, "body": _with_follow_up(card, fresh["body"])}
                 for field in ("title", "body", "amount", "urgency", "evidence",
                               "draft", "options"):
                     if field in fresh and fresh[field] != card.get(field):

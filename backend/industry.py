@@ -481,14 +481,22 @@ def _status(value, target, alert, better: str) -> str:
     return "watch"
 
 
-async def dashboard(today: date | None = None) -> dict:
+async def dashboard(today: date | None = None, refresh: bool = False) -> dict:
+    """The tiles, built on the saved profile — or on a new one with `refresh`.
+
+    A refresh re-decides the industry *here*, on the evidence the tiles are
+    built from, and skips the tile cache. Doing it beside this call instead
+    paid for a new classification and then served tiles cached for up to ten
+    minutes on the old one, after fetching the same evidence twice.
+    """
     today = today or date.today()
     now = time.time()
-    if _values_cache.get("data") and now - _values_cache.get("at", 0) < VALUES_CACHE_SECONDS:
+    if (not refresh and _values_cache.get("data")
+            and now - _values_cache.get("at", 0) < VALUES_CACHE_SECONDS):
         return _values_cache["data"]
 
     gathered = await _gather(today)
-    prof = await profile(today=today, gathered=gathered)
+    prof = await profile(refresh=refresh, today=today, gathered=gathered)
     ctx = gathered[0]
 
     tiles = []

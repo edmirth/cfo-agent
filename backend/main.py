@@ -24,7 +24,7 @@ import toolset
 import trace
 from cashflow import cached as cashflow_cached
 from commitments import cached as commitments_cached
-from industry import dashboard as industry_dashboard, profile as industry_profile
+from industry import dashboard as industry_dashboard
 from preflight import cached as preflight_cached
 from summary import cached as summary_cached
 
@@ -293,9 +293,7 @@ async def dashboard(refresh: bool = False) -> dict:
     Bransjen bestemmes én gang og leses deretter fra disk; refresh=true tvinger
     en ny vurdering."""
     try:
-        if refresh:
-            await industry_profile(refresh=True)
-        return await industry_dashboard()
+        return await industry_dashboard(refresh=refresh)
     except Exception as exc:  # noqa: BLE001
         log.exception("Dashboard failed")
         return _panel(exc, "Bransjetallene")

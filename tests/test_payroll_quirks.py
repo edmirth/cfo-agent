@@ -26,6 +26,18 @@ def _runs(today, weeks=13, wages=WAGES):
     return cashflow._payroll_runs(today, today + timedelta(weeks=weeks), wages)
 
 
+def _run_months(today, weeks=13):
+    """The months whose pay day falls in the window — what gates the notes.
+
+    A note about the holiday month describes what the payroll *run* does, so
+    it follows the run, not the months the thirteen weeks happen to touch.
+    The fully withheld month is exactly why this cannot be read back off the
+    flows: that month produces no flow at all.
+    """
+    horizon = today + timedelta(weeks=weeks)
+    return [m for _, m, _ in cashflow._pay_days(today, horizon)]
+
+
 def _by_month(flows):
     return {f["date"].month: f for f in flows}
 
@@ -122,7 +134,7 @@ def test_both_quirks_are_declared_to_the_owner():
             _runs(today), [],
             {"revenue": 2_000_000.0, "wages": 1_004_000.0,
              "wages_cash": WAGES, "opex": 300_000.0},
-            30, [], [], [])
+            30, [], [], [], payroll_months=_run_months(today))
         a = data["assumptions"]
         assert a["feriepenger_maned"].startswith("juni")
         assert a["feriepenger_maned_oppgitt"] is False, "an assumption says so"
@@ -146,7 +158,7 @@ def test_december_is_explained_only_when_it_is_in_the_window():
             _runs(today), [],
             {"revenue": 2_000_000.0, "wages": 1_004_000.0,
              "wages_cash": WAGES, "opex": 300_000.0},
-            30, [], [], [])
+            30, [], [], [], payroll_months=_run_months(today))
         text = cashflow.briefing(data)
         assert "Halv skatt i desember" in text
         assert "Feriemåneden" not in text, "June is outside this window"
@@ -184,5 +196,31 @@ def test_a_payout_already_run_is_dated_to_next_year():
     try:
         assert commitments._next_ferie(date(2026, 6, 5)) == date(2026, 6, 10)
         assert commitments._next_ferie(date(2026, 6, 25)) == date(2027, 6, 10)
+    finally:
+        company.setting = original
+
+
+def test_a_window_that_only_clips_december_gets_no_december_note():
+    """The note describes what December's payroll run does. A window that
+    reaches into December without reaching its pay day contains no such run,
+    and a note about a run that is not in the table is noise — which is what
+    gets the real notes skimmed past.
+    """
+    original = _with_settings(lonn_utbetalingsdag=10, ferie_uker=5)
+    try:
+        today = date(2026, 9, 10)
+        week0 = today - timedelta(days=today.weekday())
+        horizon = week0 + timedelta(weeks=13)
+        months = [m for _, m, _ in cashflow._pay_days(today, horizon)]
+        assert 12 not in months, "December's pay day is past the horizon"
+
+        data = cashflow._assemble(
+            today, week0, 1_000_000.0, _runs(today), [],
+            {"revenue": 2_000_000.0, "wages": 1_004_000.0,
+             "wages_cash": WAGES, "opex": 300_000.0},
+            30, [], [], [], payroll_months=months)
+        # The thirteen weeks do touch December — the last one ends 6 December.
+        assert any(w["end"].startswith("2026-12") for w in data["weeks"])
+        assert "Halv skatt i desember" not in cashflow.briefing(data)
     finally:
         company.setting = original
