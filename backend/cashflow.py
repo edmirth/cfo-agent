@@ -27,6 +27,7 @@ import statistics
 from calendar import monthrange
 from datetime import date, timedelta
 
+import bankgap
 import commitments
 import company
 import freshness
@@ -615,7 +616,47 @@ async def build(today: date | None = None) -> dict:
                 f"måneder.")
     rates, rate_notes = _run_rates(rows, columns, prior_months)
     warnings += rate_notes
-    opening = com["bank"]
+
+    # Open on the money in the bank, not on the booked balance. The bank feed
+    # runs days ahead of the bookkeeping, and every week of the forecast, the
+    # low point with it, was shifted down by whatever had landed unposted.
+    booked = com["bank"]
+    moves = bankgap.ledger_moves(rows, columns, today.year)
+    if prior_months:
+        moves.update(bankgap.ledger_moves(prior_months[0], prior_months[1],
+                                          last_year))
+    try:
+        gap = await bankgap.build(today, moves, bankgap.ledger_balances(rows),
+                                  client=mcp)
+    except Exception as e:  # noqa: BLE001 — a failed read is declared, not fatal
+        log.warning("Cashflow: bankavstemmingen feilet: %s", e)
+        gap = None
+        warnings.append(
+            "Bankavstemmingen i Tripletex kunne ikke leses, så prognosen "
+            "starter på den bokførte banksaldoen. Har det kommet inn eller gått "
+            "ut penger som ikke er bokført ennå, er startpunktet feil med så "
+            "mye — og det er ukjent hvor mye.")
+    opening = booked + (gap["adjustment"] if gap else 0.0)
+    if gap:
+        warnings += gap["unknown"]
+        if gap["approximate"]:
+            warnings.append(
+                "For noen måneder i bankavstemmingen fantes ingen bokført "
+                "månedsbevegelse å måle mot, så forskjellen mellom bank og bøker "
+                "der er regnet ut fra de umatchede listene alene. De utelater "
+                "lønnsposteringer brukeren ikke har innsyn i.")
+
+    # A payment the bank has and the ledger has not is still an open invoice
+    # in the register. With the opening lifted by that payment, scheduling the
+    # invoice as well collects the same krone twice — so what the unbooked
+    # lines have paid comes off the lists the schedules are built from. The
+    # full lists stay for the reconciliations against 1500 and 2400 below,
+    # which compare the register with the ledger and must see what the
+    # ledger sees, and for this month's invoicing, which is invoicing whether
+    # or not it has been paid.
+    unbooked = gap["unbooked"] if gap else []
+    ar_due, ar_paid = bankgap.settle(ar_open, unbooked, +1)
+    ap_due, ap_paid = bankgap.settle(ap_open, unbooked, -1)
 
     # The open ledger should agree with the invoice list. Where it does not,
     # the forecast is built on the invoices and the gap is declared.
@@ -646,14 +687,14 @@ async def build(today: date | None = None) -> dict:
     committed: list[dict] = []
     expected: list[dict] = []
 
-    committed += _schedule_receipts(ar_open, today)
+    committed += _schedule_receipts(ar_due, today)
     if ar_residual:
         per = ar_residual / LATE_SPREAD_WEEKS
         for w in range(LATE_SPREAD_WEEKS):
             committed.append({"date": today + timedelta(days=7 * (w + 1)),
                               "amount": per, "kind": "ar_unmatched",
                               "label": "Kundefordringer uten kjent faktura"})
-    committed += _schedule_payments(ap_open, today)
+    committed += _schedule_payments(ap_due, today)
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
     # was backwards. Being short on receivables flatters the forecast; being
@@ -788,10 +829,13 @@ async def build(today: date | None = None) -> dict:
             "for snilt, men det er verdt å vite.")
 
     data = _assemble(today, week0, opening, committed, expected,
-                     rates, credit_days, warnings, ar_open, ap_open,
+                     rates, credit_days, warnings, ar_due, ap_due,
                      vat_share, vat_measured, booked_vat,
                      invoiced_this_month, payroll_months)
-    data["ar_open"] = ar_open
+    data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
+    # What is still owed after the bank's unbooked receipts: a customer who
+    # has paid must not be sent a reminder because the books are behind.
+    data["ar_open"] = ar_due
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
     # collections card on the strength of it unless told otherwise.
@@ -802,6 +846,28 @@ async def build(today: date | None = None) -> dict:
     # build only long enough to stop a stampede, then goes and asks again.
     data["partial"] = not (ar_complete and ap_complete)
     return data
+
+
+def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
+                  ap_paid: list) -> dict:
+    """How the opening balance was arrived at, for the declaration."""
+    if not gap:
+        return {"booked": round(booked, 2), "adjustment": None, "known": False}
+    return {
+        "booked": round(booked, 2),
+        "adjustment": gap["adjustment"],
+        "known": not gap["unknown"],
+        "lines": gap["lines"], "in": gap["in"], "out": gap["out"],
+        "postings": gap["postings"], "postings_sum": gap["postings_sum"],
+        "latest": gap["latest"],
+        "accounts": gap["accounts"],
+        "unknown": gap["unknown"],
+        "approximate": gap["approximate"],
+        "settled_ar": round(sum(p["amount"] for p in ar_paid), 2),
+        "settled_ar_count": len({(p["name"], p["number"]) for p in ar_paid}),
+        "settled_ap": round(sum(p["amount"] for p in ap_paid), 2),
+        "settled_ap_count": len({(p["name"], p["number"]) for p in ap_paid}),
+    }
 
 
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
@@ -951,6 +1017,52 @@ async def cached() -> dict:
     return await _flight.get()
 
 
+def _opening_note(bank: dict | None) -> str:
+    """Where the opening figure comes from, said every time.
+
+    The adjustment is the point of the opening balance being right, and an
+    adjustment nobody is told about is a number that disagrees with the books
+    for no stated reason. Said with the count and the date, so the owner can
+    find the lines in Bankavstemming himself.
+    """
+    if not bank:
+        return ""
+    booked = _kr(bank["booked"])
+    if bank.get("adjustment") is None:
+        return (f"  — det er den **bokførte** saldoen. Bankavstemmingen kunne "
+                f"ikke leses, så om banken står høyere eller lavere er ukjent.")
+    adj = bank["adjustment"]
+    if abs(adj) < 1:
+        note = (f"  — banken og bøkene er like, {booked} kr. Ingen banklinjer "
+                f"venter på å bli bokført.")
+    else:
+        latest = f", siste {bank['latest']}" if bank.get("latest") else ""
+        note = (f"  — det er **pengene i banken**, ikke den bokførte saldoen på "
+                f"{booked} kr. Banken har {bank['lines']} transaksjoner som "
+                f"ikke er bokført ennå ({_kr(bank['in'])} kr inn, "
+                f"{_kr(-bank['out'])} kr ut{latest})")
+        if bank.get("postings"):
+            note += (f", og bøkene har {bank['postings']} posteringer på "
+                     f"{_kr(bank['postings_sum'])} kr som ikke finnes i banken")
+        note += (f". Til sammen står banken {_kr(abs(adj))} kr "
+                 f"{'høyere' if adj > 0 else 'lavere'} enn bøkene.")
+        if bank.get("settled_ar_count"):
+            note += (f" {bank['settled_ar_count']} kundefakturaer på "
+                     f"{_kr(bank['settled_ar'])} kr er betalt i banken og er "
+                     f"derfor tatt ut av innbetalingene, så de ikke telles to "
+                     f"ganger.")
+        if bank.get("settled_ap_count"):
+            note += (f" {bank['settled_ap_count']} leverandørfakturaer på "
+                     f"{_kr(bank['settled_ap'])} kr er betalt og tatt ut av "
+                     f"utbetalingene.")
+        note += (" Say this when you quote the opening balance: the books will "
+                 "show the lower figure until the bookkeeper catches up.")
+    if not bank.get("known"):
+        note += (" Deler av bankavstemmingen er ukjent — se det som svekker "
+                 "prognosen under.")
+    return note
+
+
 def briefing(data: dict | None) -> str:
     """The forecast block injected into the system prompt."""
     if not data or not data.get("weeks"):
@@ -964,6 +1076,7 @@ def briefing(data: dict | None) -> str:
            f"arithmetic, but the second line is a forecast and must always be "
            f"presented as one.\n",
            f"- Starter på **{_kr(data['opening'])} kr**",
+           _opening_note(data.get("bank")),
            f"- **Bundet linje** — bare det som allerede er fakturert inn og ut, "
            f"lønn og skattedatoer: lavest **{_kr(low_c['amount'])} kr** i "
            f"{low_c['label']} ({low_c['start']}).",

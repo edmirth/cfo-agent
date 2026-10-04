@@ -35,7 +35,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 1. Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
 - [ ] 2. Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook
 - [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
 - [ ] 4. Store forecasts, cards, memory and job runs in a database @either #platform
@@ -55,6 +54,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 1. Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
 
 
 ## Done

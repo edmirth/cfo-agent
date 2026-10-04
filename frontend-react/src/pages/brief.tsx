@@ -596,7 +596,12 @@ export function Brief() {
           <h2 className="text-[17px] font-semibold">De neste 13 ukene</h2>
           {d.cash && (
             <span className="text-muted-foreground font-mono text-xs">
-              {kr(d.cash.opening)} kr nå · tynnest{" "}
+              {kr(d.cash.opening)} kr nå
+              {d.cash.bank?.adjustment == null
+                ? d.cash.bank && " (bokført, banken ikke lest)"
+                : Math.abs(d.cash.bank.adjustment) >= 1 &&
+                  ` i banken (bokført ${kr(d.cash.bank.booked)})`}
+              {" "}· tynnest{" "}
               {d.cash.low_committed.label.toLowerCase()} fra{" "}
               {dateNo(d.cash.low_committed.start)}
             </span>
