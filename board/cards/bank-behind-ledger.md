@@ -72,3 +72,11 @@ one named per call.
   confirmed up to the feed. Not yet tied to the øre: that needs the balance at
   the end of 1 Oct, or Friday's lines summing to +34 744,16. The forecast now
   says when the feed stops before the last working day.
+- 2026-10-04 (edmir/agent): decided — `commitments` opens on the bank too, and
+  factoring payers (Factor AS, Riverty) stay unmatched for now. The gap is
+  measured once in `commitments` and carried to the forecast, so both open on
+  3 002 803 kr; free-after-everything moves from −904 502 to −527 598 kr
+  (verdict still negative). Unbooked outflows (328 280 kr) cannot be tied to
+  the bill they paid without the register, so the risk of a liability being
+  subtracted twice is stated in the briefing with its size. 195 tests pass.
+  Done.

@@ -9,6 +9,7 @@ from datetime import date
 
 import bankgap
 import cashflow
+import commitments
 import company
 from tests.test_cashflow_build import COLUMNS, TODAY, _Tripletex, _cum, _kinds, _row
 
@@ -179,24 +180,14 @@ def test_outgoing_lines_settle_supplier_bills_not_customer_invoices():
 
 
 # ---------------------------------------------------------- through the forecast
-class _WithBank(_Tripletex):
-    def __init__(self, rows, ar=(), periods=None, answers=None):
-        super().__init__(rows, ar)
-        self.periods, self.answers = periods or {}, answers or {}
-
-    async def call(self, tool, args=None):
-        if tool == "get_bank_reconciliation_periods":
-            return self.periods
-        if tool == "get_unmatched_bank_transactions":
-            return self.answers[(args["accountNumber"], args["date"])]
-        return await super().call(tool, args)
-
-
-def _build(stub, bank):
+def _build(rows, ar, bank, gap):
+    """The forecast with commitments stubbed as having measured `gap`."""
+    stub = _Tripletex(rows, ar)
     old_mcp, old_cached, old_setting = cashflow.mcp, cashflow.commitments.cached, company.setting
 
     async def cached():
-        return {"bank": bank, "items": []}
+        return {"bank": bank + (gap["adjustment"] if gap else 0.0),
+                "bank_booked": bank, "bank_gap": gap, "items": []}
 
     cashflow.mcp, cashflow.commitments.cached = stub, cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
@@ -206,6 +197,15 @@ def _build(stub, bank):
         cashflow.mcp, cashflow.commitments.cached, company.setting = old_mcp, old_cached, old_setting
 
 
+OCTOBER_RECEIPT = bankgap.measure(
+    {"accounts": [{"number": "1920", "name": "Bedriftskonto"}],
+     "periods": [_period("1920", "2026-10-01")]},
+    {("1920", "2026-10-01"): _answer(
+        unmatched=48813.0, lines=[{"postedDate": "2026-10-01", "amountCurrency": 48813.0,
+                                   "description": "AS BÆKKELAGSHALLEN"}])},
+    {("1920", 2026, 10): 0.0}, {"1920": 1_000_000.0})
+
+
 def test_the_forecast_opens_on_the_bank_and_does_not_collect_a_paid_invoice_twice():
     rows = [_cum("1920 Bedriftskonto", [0] * 10),
             _cum("1500 Kundefordringer", [0] * 8 + [48813, 0]),
@@ -213,12 +213,7 @@ def test_the_forecast_opens_on_the_bank_and_does_not_collect_a_paid_invoice_twic
     ar = [{"id": 1, "customerName": "As Bækkelagshallen", "invoiceNumber": 6623,
            "dueDate": "2026-09-30", "invoiceDate": "2026-09-01",
            "amountOutstanding": 48813.0}]
-    periods = {"accounts": [{"number": "1920", "name": "Bedriftskonto"}],
-               "periods": [_period("1920", "2026-10-01")]}
-    answers = {("1920", "2026-10-01"): _answer(
-        unmatched=48813.0, lines=[{"postedDate": "2026-10-01", "amountCurrency": 48813.0,
-                                   "description": "AS BÆKKELAGSHALLEN"}])}
-    data = _build(_WithBank(rows, ar, periods, answers), bank=1_000_000.0)
+    data = _build(rows, ar, 1_000_000.0, OCTOBER_RECEIPT)
 
     assert data["opening"] == 1_048_813.0
     assert data["bank"]["booked"] == 1_000_000.0
@@ -233,29 +228,79 @@ def test_the_forecast_opens_on_the_bank_and_does_not_collect_a_paid_invoice_twic
 
 
 def test_an_unreadable_reconciliation_opens_on_the_books_and_says_so():
-    class _Broken(_Tripletex):
-        async def call(self, tool, args=None):
-            if tool == "get_bank_reconciliation_periods":
-                raise RuntimeError("503")
-            return await super().call(tool, args)
-
     rows = [_cum("1920 Bedriftskonto", [0] * 10)]
-    data = _build(_Broken(rows), bank=500_000.0)
+    data = _build(rows, [], 500_000.0, None)
     assert data["opening"] == 500_000.0
     assert data["bank"]["adjustment"] is None
     assert any("Bankavstemmingen" in w for w in data["warnings"])
     assert "ukjent" in cashflow._opening_note(data["bank"])
 
 
+# ------------------------------------------------------- the free-money figure
+class _Ledger:
+    """Saldobalanse, Resultatrapport and the reconciliation, for commitments."""
+    def __init__(self, periods, answers):
+        self.periods, self.answers = periods, answers
+
+    async def call(self, tool, args=None):
+        if tool == "fetch_report":
+            if args["report_name"] == "Resultatrapport":
+                return {"table": {"rows": []}}
+            return {"table": {"columns": [{"name": c} for c in COLUMNS], "rows": [
+                _cum("1920 Bedriftskonto", [1_000_000] + [0] * 9),
+                _cum("2400 Leverandørgjeld", [-30_000] + [0] * 9)]}}
+        if tool == "get_bank_reconciliation_periods":
+            return self.periods
+        if tool == "get_unmatched_bank_transactions":
+            return self.answers[(args["accountNumber"], args["date"])]
+        return {}
+
+
+def _commitments(stub):
+    old = commitments.mcp
+    commitments.mcp = stub
+    try:
+        return asyncio.run(commitments.build(TODAY))
+    finally:
+        commitments.mcp = old
+
+
+def test_free_money_opens_on_the_bank_and_says_what_went_out_unbooked():
+    periods = {"accounts": [], "periods": [_period("1920", "2026-10-01")]}
+    answers = {("1920", "2026-10-01"): _answer(
+        unmatched=40_000.0, inflow=50_000.0, outflow=-10_000.0, lines=[
+            {"postedDate": "2026-10-01", "amountCurrency": 50_000.0, "description": "SEBY AS"},
+            {"postedDate": "2026-10-01", "amountCurrency": -10_000.0, "description": "Varekjøp"}])}
+    out = _commitments(_Ledger(periods, answers))
+    assert out["bank_booked"] == 1_000_000.0
+    assert out["bank"] == 1_040_000.0
+    assert out["free_all"] == 1_010_000.0
+    text = commitments.briefing(out)
+    assert "1 040 000" in text and "bokført 1 000 000" in text
+    assert "10 000 kr av det ubokførte gikk ut" in text
+
+
+def test_free_money_falls_back_to_the_books_when_the_bank_cannot_be_read():
+    class _Broken(_Ledger):
+        async def call(self, tool, args=None):
+            if tool == "get_bank_reconciliation_periods":
+                raise RuntimeError("503")
+            return await super().call(tool, args)
+
+    out = _commitments(_Broken({}, {}))
+    assert out["bank"] == out["bank_booked"] == 1_000_000.0 and out["bank_gap"] is None
+    assert "bokførte" in commitments.briefing(out)
+
+
 # ------------------------------------------------------------ feed freshness
 def test_a_feed_that_stops_before_the_last_working_day_is_said_to():
     """Sunday 4 October: Friday's lines were in the bank, not in Tripletex."""
     sunday = date(2026, 10, 4)
-    assert cashflow._feed_is_stale("2026-10-01", sunday)
-    assert not cashflow._feed_is_stale("2026-10-02", sunday)
+    assert bankgap.feed_is_stale("2026-10-01", sunday)
+    assert not bankgap.feed_is_stale("2026-10-02", sunday)
     # Monday morning with Friday in hand is current.
-    assert not cashflow._feed_is_stale("2026-10-02", date(2026, 10, 5))
-    assert not cashflow._feed_is_stale(None, sunday)
+    assert not bankgap.feed_is_stale("2026-10-02", date(2026, 10, 5))
+    assert not bankgap.feed_is_stale(None, sunday)
 
 
 def test_the_opening_note_names_the_day_the_feed_stops():

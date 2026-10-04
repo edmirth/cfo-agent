@@ -620,31 +620,22 @@ async def build(today: date | None = None) -> dict:
     # Open on the money in the bank, not on the booked balance. The bank feed
     # runs days ahead of the bookkeeping, and every week of the forecast, the
     # low point with it, was shifted down by whatever had landed unposted.
-    booked = com["bank"]
-    moves = bankgap.ledger_moves(rows, columns, today.year)
-    if prior_months:
-        moves.update(bankgap.ledger_moves(prior_months[0], prior_months[1],
-                                          last_year))
-    try:
-        gap = await bankgap.build(today, moves, bankgap.ledger_balances(rows),
-                                  client=mcp)
-    except Exception as e:  # noqa: BLE001 — a failed read is declared, not fatal
-        log.warning("Cashflow: bankavstemmingen feilet: %s", e)
-        gap = None
+    # Measured in commitments, so the forecast and "how much of this is mine"
+    # open on the same figure.
+    gap = com.get("bank_gap")
+    booked = com.get("bank_booked", com["bank"])
+    opening = com["bank"]
+    if gap is None:
         warnings.append(
             "Bankavstemmingen i Tripletex kunne ikke leses, så prognosen "
             "starter på den bokførte banksaldoen. Har det kommet inn eller gått "
             "ut penger som ikke er bokført ennå, er startpunktet feil med så "
             "mye — og det er ukjent hvor mye.")
-    opening = booked + (gap["adjustment"] if gap else 0.0)
-    if gap:
+    else:
         warnings += gap["unknown"]
-        # The feed is only as fresh as its last import. On 4 October 2026 the
-        # bank held 34 744 kr more than this figure: Friday's lines had not
-        # reached Tripletex yet. The figure is right as of the last line, so
-        # that date is said whenever the feed is behind the last working day.
-        gap["stale"] = _feed_is_stale(gap.get("latest"), today)
-        if gap["stale"]:
+        # The figure is right as of the last imported line, so that date is
+        # said whenever the feed is behind the last working day.
+        if gap.get("stale"):
             warnings.append(
                 f"Bankfeeden i Tripletex har ingenting etter {gap['latest']}, "
                 f"så startsaldoen er pengene i banken per den dagen. Det som "
@@ -856,21 +847,6 @@ async def build(today: date | None = None) -> dict:
     # build only long enough to stop a stampede, then goes and asks again.
     data["partial"] = not (ar_complete and ap_complete)
     return data
-
-
-def _feed_is_stale(latest: str | None, today: date) -> bool:
-    """Whether the bank feed stops before the last working day.
-
-    Lines arrive the working day after they clear, so a feed that has the
-    last working day before today is current. With no lines at all there is
-    nothing to date the feed by, and nothing is claimed."""
-    if not latest:
-        return False
-    try:
-        last = date.fromisoformat(latest)
-    except ValueError:
-        return False
-    return last < workdays.backward(today - timedelta(days=1))
 
 
 def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
