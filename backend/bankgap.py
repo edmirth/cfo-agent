@@ -34,8 +34,9 @@ matched to the counterparty's open invoices and takes them off the schedule.
 import asyncio
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 
+import workdays
 from mcp_client import mcp
 from preflight import _account, MONTHS
 
@@ -233,6 +234,38 @@ async def build(today: date, moves: dict, balances: dict, client=None) -> dict:
         if isinstance(a, Exception):
             log.warning("Bankgap: %s %s feilet: %s", n, s, a)
     return measure(periods, dict(zip(keys, answers)), moves, balances)
+
+
+def feed_is_stale(latest: str | None, today: date) -> bool:
+    """Whether the bank feed stops before the last working day.
+
+    Lines arrive the working day after they clear, so a feed that has the
+    last working day before today is current. With no lines at all there is
+    nothing to date the feed by, and nothing is claimed. On 4 October 2026
+    the bank held 34 744 kr more than the measured figure: Friday's lines had
+    not reached Tripletex yet."""
+    if not latest:
+        return False
+    try:
+        last = date.fromisoformat(latest)
+    except ValueError:
+        return False
+    return last < workdays.backward(today - timedelta(days=1))
+
+
+async def measured(today: date, rows: list, columns: list, client=None) -> dict | None:
+    """The gap for this year's saldobalanse, or None when it cannot be read.
+
+    None is not zero: the caller opens on the books and says the bank is
+    unknown."""
+    try:
+        gap = await build(today, ledger_moves(rows, columns, today.year),
+                          ledger_balances(rows), client=client)
+    except Exception as e:  # noqa: BLE001 — a failed read is declared, not fatal
+        log.warning("Bankgap: bankavstemmingen feilet: %s", e)
+        return None
+    gap["stale"] = feed_is_stale(gap.get("latest"), today)
+    return gap
 
 
 # ------------------------------------------------- what the bank has settled

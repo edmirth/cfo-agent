@@ -31,6 +31,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import bankgap
 import company
 import freshness
 import workdays
@@ -518,6 +519,15 @@ async def build(today: date | None = None) -> dict:
     # obligation: counting it would hand the owner cash he does not have.
     bank_free, bank_accounts = _sum_range(rows, (BANK,))
     restricted, _ = _sum_range(rows, (RESTRICTED,))
+
+    # The money in the bank, not the booked balance: the feed runs days ahead
+    # of the bookkeeping, and "how much of this is mine" asked of a figure
+    # 377 000 kr short answers the wrong question. Measured once here and
+    # carried to the forecast, so the two screens open on the same krone.
+    bank_booked = bank_free
+    gap = await bankgap.measured(today, rows, columns, client=mcp)
+    if gap:
+        bank_free = bank_booked + gap["adjustment"]
     loans_balance, loan_accounts = _sum_range(rows, (LOANS,))
 
     items, anomalies = [], []
@@ -595,6 +605,8 @@ async def build(today: date | None = None) -> dict:
     return {
         "as_of": end,
         "bank": round(bank_free, 2),
+        "bank_booked": round(bank_booked, 2),
+        "bank_gap": gap,
         "bank_accounts": bank_accounts,
         "restricted": round(restricted, 2),
         "restricted_covers": round(covered, 2),
@@ -631,6 +643,35 @@ VERDICT_TEXT = {
 }
 
 
+def _bank_note(data: dict) -> str:
+    """Where the bank figure comes from, and the one way it can mislead.
+
+    Lifting the balance to the bank's is right for money that came in. For
+    money that went out unbooked it is right too — unless that money paid a
+    bill still listed below, which is then taken off twice. Nothing here can
+    tell which bill a bank line paid, so the size of the risk is said instead.
+    """
+    gap = data.get("bank_gap")
+    booked = data.get("bank_booked", data.get("bank"))
+    if gap is None:
+        return (f" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
+                f"leses, så om banken står høyere eller lavere er ukjent.")
+    if abs(gap["adjustment"]) < 1:
+        return ""
+    note = (f" i banken (bokført {_kr(booked)} kr; banken har {gap['lines']} "
+            f"transaksjoner som ikke er bokført ennå"
+            + (f", siste {gap['latest']}" if gap.get("latest") else "") + ")")
+    if gap.get("stale"):
+        note += (f". Bankfeeden stopper {gap['latest']}, så dette er saldoen "
+                 f"per den dagen, ikke i dag")
+    if gap.get("out"):
+        note += (f". {_kr(-gap['out'])} kr av det ubokførte gikk ut; betalte "
+                 f"noe av det en regning eller skatt som står i lista under, er "
+                 f"den trukket fra to ganger, og det frie beløpet er "
+                 f"tilsvarende for lavt")
+    return note + "."
+
+
 def briefing(data: dict | None) -> str:
     """The block injected into the system prompt.
 
@@ -645,7 +686,7 @@ def briefing(data: dict | None) -> str:
     out = ["## Hvor mye av pengene på konto som faktisk er selskapets\n",
            f"Computed {data.get('as_of')} from the ledger, no model involved. "
            f"**{headline}** {instruction}\n",
-           f"- På konto: **{_kr(data['bank'])} kr**",
+           f"- På konto: **{_kr(data['bank'])} kr**{_bank_note(data)}",
            f"- Allerede lovet bort: **{_kr(data['totals']['committed'])} kr**",
            f"- Skal ut innen 30 dager: **{_kr(data['totals']['within_30'])} kr** "
            f"— da står det igjen **{_kr(data['free_now'])} kr**",
