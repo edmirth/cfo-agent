@@ -30,6 +30,7 @@ kanban-plugin: board
 - [ ] Sync Tripletex and bank data into the database on a schedule @edmir #platform
 - [ ] Isolate each customer's data and keep a full audit log @edmir #platform
 - [ ] Push urgent alerts to the CEO's phone @edmir #delivery
+- [ ] We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 
 
 ## Next
