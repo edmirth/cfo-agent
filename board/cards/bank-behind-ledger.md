@@ -36,3 +36,4 @@ one named per call.
   app's figure ties to the ledger to the øre, so the lag is the books, not the
   cache. See [[receivables-gap]] for the same shape of problem on account 1500,
   where the ledger is the authority and the invoice list the one that lags.
+- 2026-10-04 (agent): part of the playbook MVP ("real cash comes from the bank, not the ledger"). Interim step before [[psd2-bank]]. Moved to Next.

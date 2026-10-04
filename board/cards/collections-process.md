@@ -16,3 +16,4 @@ created: 2026-09-29
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md
+- 2026-10-04 (agent): Phase 2 in the AI CFO Strategy Playbook (CFO tier receivables follow-up). Added to Backlog.

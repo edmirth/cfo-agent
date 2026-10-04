@@ -14,3 +14,4 @@ KPI targets come from industry norms rather than from the company's own budget. 
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md
+- 2026-10-04 (agent): Phase 2 in the AI CFO Strategy Playbook (KPI engine, CFO tier). Added to Backlog.

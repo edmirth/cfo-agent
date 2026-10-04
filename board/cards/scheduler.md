@@ -16,3 +16,4 @@ Nothing is early, because nothing runs unasked. Everything in the early-warning 
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md
+- 2026-10-04 (agent): scope set by the AI CFO Strategy Playbook: the brief is weekly, not daily. Monday 07:00 runs figures → save forecast → [[watch-job]] → [[weekly-brief]] → [[email-delivery]]; weekday mornings run [[watch-job]]. Moved to Next.
