@@ -639,6 +639,16 @@ async def build(today: date | None = None) -> dict:
     opening = booked + (gap["adjustment"] if gap else 0.0)
     if gap:
         warnings += gap["unknown"]
+        # The feed is only as fresh as its last import. On 4 October 2026 the
+        # bank held 34 744 kr more than this figure: Friday's lines had not
+        # reached Tripletex yet. The figure is right as of the last line, so
+        # that date is said whenever the feed is behind the last working day.
+        gap["stale"] = _feed_is_stale(gap.get("latest"), today)
+        if gap["stale"]:
+            warnings.append(
+                f"Bankfeeden i Tripletex har ingenting etter {gap['latest']}, "
+                f"så startsaldoen er pengene i banken per den dagen. Det som "
+                f"har kommet inn eller gått ut siden, er ikke med.")
         if gap["approximate"]:
             warnings.append(
                 "For noen måneder i bankavstemmingen fantes ingen bokført "
@@ -848,6 +858,21 @@ async def build(today: date | None = None) -> dict:
     return data
 
 
+def _feed_is_stale(latest: str | None, today: date) -> bool:
+    """Whether the bank feed stops before the last working day.
+
+    Lines arrive the working day after they clear, so a feed that has the
+    last working day before today is current. With no lines at all there is
+    nothing to date the feed by, and nothing is claimed."""
+    if not latest:
+        return False
+    try:
+        last = date.fromisoformat(latest)
+    except ValueError:
+        return False
+    return last < workdays.backward(today - timedelta(days=1))
+
+
 def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
                   ap_paid: list) -> dict:
     """How the opening balance was arrived at, for the declaration."""
@@ -860,6 +885,7 @@ def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
         "lines": gap["lines"], "in": gap["in"], "out": gap["out"],
         "postings": gap["postings"], "postings_sum": gap["postings_sum"],
         "latest": gap["latest"],
+        "stale": gap.get("stale", False),
         "accounts": gap["accounts"],
         "unknown": gap["unknown"],
         "approximate": gap["approximate"],
@@ -1055,6 +1081,9 @@ def _opening_note(bank: dict | None) -> str:
             note += (f" {bank['settled_ap_count']} leverandørfakturaer på "
                      f"{_kr(bank['settled_ap'])} kr er betalt og tatt ut av "
                      f"utbetalingene.")
+        if bank.get("stale"):
+            note += (f" Bankfeeden stopper {bank['latest']}, så dette er "
+                     f"saldoen per den dagen, ikke i dag.")
         note += (" Say this when you quote the opening balance: the books will "
                  "show the lower figure until the bookkeeper catches up.")
     if not bank.get("known"):

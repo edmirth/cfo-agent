@@ -245,3 +245,21 @@ def test_an_unreadable_reconciliation_opens_on_the_books_and_says_so():
     assert data["bank"]["adjustment"] is None
     assert any("Bankavstemmingen" in w for w in data["warnings"])
     assert "ukjent" in cashflow._opening_note(data["bank"])
+
+
+# ------------------------------------------------------------ feed freshness
+def test_a_feed_that_stops_before_the_last_working_day_is_said_to():
+    """Sunday 4 October: Friday's lines were in the bank, not in Tripletex."""
+    sunday = date(2026, 10, 4)
+    assert cashflow._feed_is_stale("2026-10-01", sunday)
+    assert not cashflow._feed_is_stale("2026-10-02", sunday)
+    # Monday morning with Friday in hand is current.
+    assert not cashflow._feed_is_stale("2026-10-02", date(2026, 10, 5))
+    assert not cashflow._feed_is_stale(None, sunday)
+
+
+def test_the_opening_note_names_the_day_the_feed_stops():
+    bank = {"booked": 2625898.93, "adjustment": 376904.04, "known": True,
+            "lines": 129, "in": 746662.72, "out": -328279.68, "postings": 0,
+            "postings_sum": 0.0, "latest": "2026-10-01", "stale": True}
+    assert "stopper 2026-10-01" in cashflow._opening_note(bank)
