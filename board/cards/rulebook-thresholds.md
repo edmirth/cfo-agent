@@ -3,6 +3,7 @@ title: Move the cash floor, reminder days and alert minimum into the company rul
 owner: @agent
 milestone: #rulebook
 created: 2026-10-04
+priority: 2
 ---
 ## Goal
 `cards.py` hard-codes `CASH_FLOOR = 500_000`, `LATE_DAYS = 14` and `LATE_AMOUNT = 10_000`. The playbook says these are the company's own rules ("2 MNOK floor", "reminders only after 14 days", "no alerts under 20k", "75% payroll target") and that "rules that change numbers must be structured settings the engine reads, never just a sentence the AI might misread". The watch job and the Monday brief both depend on them.
@@ -15,3 +16,4 @@ created: 2026-10-04
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 2 in Next: small, and the brief's traffic light and every alert are measured against these rules.

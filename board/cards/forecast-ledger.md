@@ -3,6 +3,7 @@ title: Save every weekly forecast and score it against the real balance
 owner: @agent
 milestone: #forecast
 created: 2026-10-04
+priority: 5
 ---
 ## Goal
 The playbook's trust mechanism for the first deliverable is "after 6–8 weeks the CEO can see the forecast held up", and its graduation criterion is "4-week-ahead cash forecast within about ±10% for 8 weeks in a row". Today no forecast is saved, so nobody can tell whether the forecast is right, or whether the precision work on it has made it better. Depends on [[state-database]].
@@ -16,3 +17,4 @@ The playbook's trust mechanism for the first deliverable is "after 6–8 weeks t
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 5 in Next: start early: the playbook's trust proof needs 6–8 weeks of saved forecasts before it says anything.

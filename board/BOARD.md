@@ -34,22 +34,22 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] Extract the shared agent core so every AI job runs on it @agent #agent
-- [ ] Store forecasts, cards, memory and job runs in a database @either #platform
-- [ ] Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook
-- [ ] Save every weekly forecast and score it against the real balance @agent #forecast
-- [ ] Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
-- [ ] Add a scheduler so the daily brief and checks run unprompted @either #ops
-- [ ] Run a morning watch that raises and closes findings and cards unasked @agent #agent
-- [ ] Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent
-- [ ] Send the Monday brief by email @either #delivery
-- [ ] Add login and authentication in front of every API route @either #platform
-- [ ] Open and approve a card with one tap from the email @agent #delivery
-- [ ] Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding
-- [ ] Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings
-- [ ] Hold the agent's output for human review while a customer is new @either #review
-- [ ] Measure what the playbook says matters @agent #metrics
-- [ ] Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
+- [ ] 1. Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity
+- [ ] 2. Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook
+- [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
+- [ ] 4. Store forecasts, cards, memory and job runs in a database @either #platform
+- [ ] 5. Save every weekly forecast and score it against the real balance @agent #forecast
+- [ ] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops
+- [ ] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent
+- [ ] 8. Add login and authentication in front of every API route @either #platform
+- [ ] 9. Send the Monday brief by email @either #delivery
+- [ ] 10. Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
+- [ ] 11. Open and approve a card with one tap from the email @agent #delivery
+- [ ] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent
+- [ ] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding
+- [ ] 14. Measure what the playbook says matters @agent #metrics
+- [ ] 15. Hold the agent's output for human review while a customer is new @either #review
+- [ ] 16. Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings
 
 
 ## Doing

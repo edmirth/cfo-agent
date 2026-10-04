@@ -3,6 +3,7 @@ title: Write the Monday cash brief: traffic light, low point against the floor, 
 owner: @agent
 milestone: #agent
 created: 2026-10-04
+priority: 7
 ---
 ## Goal
 The weekly 13-week cash brief is the playbook's first deliverable: one phone screen, 1–2 minutes of the CEO's time. Today `summary.py` writes a daily text when the first person opens the page. The playbook's example:
@@ -14,7 +15,7 @@ What changed: Payroll ratio rose to 79% (target 75%) ...
 Needs you (2): Approve reminder to Customer X · Decide on overtime policy
 ```
 
-The brief is an agent job on the shared core, written only from the engine's numbers. Depends on [[agent-core]], [[scheduler]], [[rulebook-thresholds]] and [[watch-job]].
+The brief is an agent job on the shared core, written only from the engine's numbers. Depends on [[agent-core]], [[scheduler]] and [[rulebook-thresholds]]. Until [[watch-job]] exists, the decisions come from the cards `cards.py` already derives.
 
 ## Done when
 - [ ] Written every Monday by the scheduler, from the engine's numbers only
@@ -28,3 +29,4 @@ The brief is an agent job on the shared core, written only from the engine's num
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 7 in Next: the playbook's first deliverable.

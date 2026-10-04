@@ -3,6 +3,7 @@ title: Extract the shared agent core so every AI job runs on it
 owner: @agent
 milestone: #agent
 created: 2026-10-04
+priority: 3
 ---
 ## Goal
 `agent.py` holds two things at once: the CFO agent's machinery (Claude client, read-only toolset, tool loop, local tools, `verify`, rollback, prompt cache) and the chat job. `summary.py` and `industry.py` call Claude their own way, without `verify` or the read-only toolset.
@@ -18,3 +19,4 @@ Every MVP job the playbook asks for (the morning watch, the Monday brief, the he
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 3 in Next: every agent job (brief, watch, health check) runs on it.

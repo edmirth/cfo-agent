@@ -3,6 +3,7 @@ title: Open the forecast on the money that is in the bank, not on the booked bal
 owner: @edmir
 milestone: #liquidity
 created: 2026-10-02
+priority: 1
 ---
 ## Goal
 The 13-week forecast opens on the closing balance of accounts 1900-1949 in
@@ -37,3 +38,4 @@ one named per call.
   cache. See [[receivables-gap]] for the same shape of problem on account 1500,
   where the ledger is the authority and the invoice list the one that lags.
 - 2026-10-04 (agent): part of the playbook MVP ("real cash comes from the bank, not the ledger"). Interim step before [[psd2-bank]]. Moved to Next.
+- 2026-10-04 (agent): priority 1 in Next: the Monday brief is only trusted if its opening balance is right; it was 134 375 kr too low and the owner noticed first.

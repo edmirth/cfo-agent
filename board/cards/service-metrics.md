@@ -3,6 +3,7 @@ title: Measure what the playbook says matters
 owner: @agent
 milestone: #metrics
 created: 2026-10-04
+priority: 14
 ---
 ## Goal
 "What to measure (not daily active users): CEO time per week (target under 10 minutes), share of prepared actions approved without edits, problems caught early, e.g. cash dips flagged weeks ahead, whether the CEO forwards the monthly pack." None of it is measured today. Agent cost per company matters for the margins the human-layer section worries about.
@@ -17,3 +18,4 @@ created: 2026-10-04
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 14 in Next: needed to know whether it works, and for human-review graduation.
