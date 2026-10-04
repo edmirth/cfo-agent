@@ -37,6 +37,15 @@ export type Cashflow = {
   goes_negative: { label: string; start: string } | null
   goes_negative_committed: { label: string; start: string } | null
   open_invoices: { receivable: number; receivable_total: number }
+  // How the opening was reached: the booked balance, and how far the bank is
+  // ahead of it. adjustment is null when the reconciliation could not be read.
+  bank?: {
+    booked: number
+    adjustment: number | null
+    known: boolean
+    lines?: number
+    latest?: string | null
+  }
   // Mixed by design: the figures are numbers, the stated-or-assumed notes are
   // prose, and feriepenger_maned_oppgitt is a flag.
   assumptions: { monthly_wages: number; [k: string]: number | string | boolean }
