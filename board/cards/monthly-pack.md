@@ -17,3 +17,4 @@ Not built. The agent can write a brief when asked; there is no pack. It needs de
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md
+- 2026-10-04 (agent): Phase 2 in the AI CFO Strategy Playbook (CFO tier, pack by day 5–8). Added to Backlog.

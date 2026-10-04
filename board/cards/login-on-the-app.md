@@ -16,3 +16,4 @@ There is none. Anyone who reaches the port gets the CFO and the company's comple
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md and the README's customer-readiness list
+- 2026-10-04 (agent): needed by [[magic-links]], which the playbook makes the way the CEO approves from email. Moved to Next.

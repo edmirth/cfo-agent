@@ -16,3 +16,4 @@ created: 2026-09-29
 
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md and the README's customer-readiness list
+- 2026-10-04 (agent): covered by [[state-database]], which stores chat sessions along with forecasts, cards and memory.
