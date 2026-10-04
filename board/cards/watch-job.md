@@ -3,6 +3,7 @@ title: Run a morning watch that raises and closes findings and cards unasked
 owner: @agent
 milestone: #agent
 created: 2026-10-04
+priority: 12
 ---
 ## Goal
 The playbook's service is push, not pull: "Act, don't just answer", alerts "only when a threshold is crossed; always with a suggested action", and "quiet when things are fine". Today the derived cards are rebuilt by fixed rules only when someone opens Saker, and nothing compares today with what was flagged before.
@@ -19,3 +20,4 @@ The playbook's service is push, not pull: "Act, don't just answer", alerts "only
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 12 in Next: early warnings that are actually early; builds on the brief, scheduler and rulebook.

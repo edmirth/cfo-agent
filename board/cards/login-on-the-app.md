@@ -3,6 +3,7 @@ title: Add login and authentication in front of every API route
 owner: @either
 milestone: #platform
 created: 2026-09-29
+priority: 8
 ---
 ## Goal
 There is none. Anyone who reaches the port gets the CFO and the company's complete ledger — bank balance, every customer, every invoice. On a laptop that is a nuisance; anywhere else it is the blocker.
@@ -17,3 +18,4 @@ There is none. Anyone who reaches the port gets the CFO and the company's comple
 ## Log
 - 2026-09-29 (agent): created, transferred from TODO.md and the README's customer-readiness list
 - 2026-10-04 (agent): needed by [[magic-links]], which the playbook makes the way the CEO approves from email. Moved to Next.
+- 2026-10-04 (agent): priority 8 in Next: must exist before the brief and its links leave the building.

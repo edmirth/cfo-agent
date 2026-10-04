@@ -3,6 +3,7 @@ title: Open and approve a card with one tap from the email
 owner: @agent
 milestone: #delivery
 created: 2026-10-04
+priority: 11
 ---
 ## Goal
 The playbook's decision queue is reached by "app cards, magic links from email" with "no-friction access: magic links, no password to approve a reminder". Depends on [[login-on-the-app]] and [[email-delivery]].
@@ -15,3 +16,4 @@ The playbook's decision queue is reached by "app cards, magic links from email" 
 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
+- 2026-10-04 (agent): priority 11 in Next: turns the brief's decisions into one-tap approvals.
