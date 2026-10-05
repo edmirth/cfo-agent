@@ -35,7 +35,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
 - [ ] 4. Store forecasts, cards, memory and job runs in a database @either #platform
 - [ ] 5. Save every weekly forecast and score it against the real balance @agent #forecast
 - [ ] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops
@@ -53,6 +52,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
 
 
 ## Done
