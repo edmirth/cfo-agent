@@ -35,7 +35,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 2. Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook
 - [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
 - [ ] 4. Store forecasts, cards, memory and job runs in a database @either #platform
 - [ ] 5. Save every weekly forecast and score it against the real balance @agent #forecast
@@ -54,6 +53,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 2. Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook
 
 
 ## Done

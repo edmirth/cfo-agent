@@ -17,3 +17,4 @@ priority: 2
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
 - 2026-10-04 (agent): priority 2 in Next: small, and the brief's traffic light and every alert are measured against these rules.
+- 2026-10-05 (agent): claimed. Plan: four settings in `company.KNOWN` (`likviditetsgulv_kr`, `purring_etter_dager`, `varsel_minimum_kr`, `lonnsandel_mal_pct`) resolved by one `company.rules()`; cards, the forecast briefing, the summary and the Brief page all read that. Two floors exist today — `cards.py` 500 000 kr and the Brief page's "én månedslønn" — so the missing-setting default becomes one month's wages (what the CEO already sees), with 500 000 kr only when no wage figure is known.
