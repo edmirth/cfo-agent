@@ -13,6 +13,23 @@ export type Kpi = {
   why: string
   status: "good" | "watch" | "bad" | "unknown"
   headline?: boolean
+  // "company.md" when the target is the company's own rule, not the industry's.
+  target_from?: string
+}
+
+/** Én regel fra company.md. `assumed` betyr at verdien er vår standard, ikke selskapets. */
+export type Rule = {
+  value: number | null
+  assumed: boolean
+  basis: string
+  label: string
+}
+
+export type Rules = {
+  likviditetsgulv_kr: Rule
+  purring_etter_dager: Rule
+  varsel_minimum_kr: Rule
+  lonnsandel_mal_pct: Rule
 }
 
 export type Week = {
@@ -119,6 +136,7 @@ export const api = {
   commitments: () => get<Commitments>("/api/commitments"),
   preflight: () => get<Preflight>("/api/preflight"),
   cashflow: () => get<Cashflow>("/api/cashflow"),
+  rules: () => get<{ rules: Rules }>("/api/rules"),
   summary: () => get<Summary>("/api/summary"),
   presets: () => get<{ presets: Preset[] }>("/api/presets"),
 }

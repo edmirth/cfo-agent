@@ -7,6 +7,12 @@ lonn_etterskuddsvis_mnd: 1     # lønn i september gjelder arbeid utført i augu
 # kredittid_dager: 45          # settes bare hvis fakturaene ikke sier det selv
 # ferie_utbetalingsmnd: 6      # måneden feriepengene utbetales
 # ferie_uker: 5                # hvor mange uker ferie de ansatte har
+
+# Selskapets regler. Uten dem bruker CFO-en standardverdier, og sier det.
+# likviditetsgulv_kr: 2 000 000  # laveste saldo dere vil ha på konto (uten: én månedslønn)
+# purring_etter_dager: 14        # dager etter forfall før en kunde purres
+# varsel_minimum_kr: 20 000      # beløp under dette gir ingen sak eller varsel (uten: 10 000)
+# lonnsandel_mal_pct: 75         # målet for lønn som andel av omsetningen
 ---
 
 # Slik fungerer Ullensaker Renholdsteknikk

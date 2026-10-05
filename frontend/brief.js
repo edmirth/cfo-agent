@@ -62,6 +62,17 @@ async function grab(name, url) {
   return data;
 }
 
+// Gulvet er selskapets egen regel fra company.md, det samme tallet sakene
+// måles mot. Har de ikke satt et, er det vårt anslag på én månedslønn, og
+// det sies.
+function floorOf() {
+  const r = state.rules?.rules?.likviditetsgulv_kr;
+  const basis = r?.basis === "standard" ? "standardverdi" : r?.basis;
+  return { amount: r?.value || 0, assumed: !!r?.assumed,
+           tag: r?.assumed ? `antatt ${basis}` : "deres eget",
+           said: r?.assumed ? ` — antatt ${basis}, sett deres eget under Selskapet` : "" };
+}
+
 /* ── signalene: det som krever handling ──────────────────────────── */
 // Hvert signal er én sak: hvor alvorlig, hva som er galt, og spørsmålet som
 // tar deg videre inn i det. Rekkefølgen er alvorlighetsgrad, ikke kilde.
@@ -73,7 +84,7 @@ function signals() {
         dash = state.dashboard, pre = state.preflight;
 
   if (cash && !cash.error) {
-    const floor = cash.assumptions?.monthly_wages || 0;
+    const { amount: floor, said } = floorOf();
     if (cash.goes_negative) {
       out.push({ id: "cash_negative", sev: "crit", tag: "Kontanter",
         title: `Kontoen går i minus i ${cash.goes_negative.label.toLowerCase()}`,
@@ -87,8 +98,8 @@ function signals() {
         out.push({ id: "cash_floor:" + dip.label, sev: "warn", tag: "Kontanter",
           title: `Under gulvet i ${dip.label.toLowerCase()}`,
           body: `Den sikre kontantstrømmen faller til ${bkr(dip.committed_close)} kr i uka fra ` +
-                `${dateNo(dip.start)} — under én månedslønn (${bkr(floor)} kr).`,
-          ask: `Hvorfor faller kontantstrømmen under én månedslønn i ${dip.label}? ` +
+                `${dateNo(dip.start)} — under gulvet på ${bkr(floor)} kr${said}.`,
+          ask: `Hvorfor faller kontantstrømmen under gulvet på ${bkr(floor)} kr i ${dip.label}? ` +
                "Vis ukene rundt, og hvilke innbetalinger som må komme inn for å unngå det." });
       }
     }
@@ -155,7 +166,7 @@ function signals() {
 function headline(list) {
   const cash = state.cashflow, ov = state.overview;
   if (cash && !cash.error) {
-    const floor = cash.assumptions?.monthly_wages || 0;
+    const { amount: floor, assumed } = floorOf();
     const dip = cash.weeks.findIndex((w) => w.committed_close < floor);
     const debtor = ov?.top_debtor?.name;
     if (cash.goes_negative) {
@@ -167,7 +178,8 @@ function headline(list) {
              `faller kontoen under gulvet` + (debtor ? `, med mindre ${debtor} betaler.` : ".");
     }
     if (dip === -1 && floor) {
-      return `Kontantstrømmen holder seg over én månedslønn alle de neste 13 ukene. ` +
+      return `Kontantstrømmen holder seg over gulvet på ${bkr(floor)} kr` +
+             `${assumed ? " (antatt)" : ""} alle de neste 13 ukene. ` +
              `Tynnest i ${cash.low_committed.label.toLowerCase()}, med ` +
              `${bkr(cash.low_committed.amount)} kr.`;
     }
@@ -179,7 +191,8 @@ function headline(list) {
 
 /* ── kontantstrømmen: 13 uker ────────────────────────────────────── */
 // To linjer, aldri én: det som allerede er fakturert (fakta) og det samme
-// pluss fortsatt drift (anslag). Gulvet er én månedslønn, og det står det.
+// pluss fortsatt drift (anslag). Gulvet er selskapets regel, og om det er
+// antatt, står det.
 const compact = () => window.innerWidth < 680;
 
 function drawCash(cash) {
@@ -188,7 +201,7 @@ function drawCash(cash) {
   const weeks = cash.weeks || [];
   if (!weeks.length) { wrap.hidden = true; return; }
 
-  const floor = cash.assumptions?.monthly_wages || 0;
+  const { amount: floor, tag } = floorOf();
   // Telefon får sin egen geometri, ikke bare større tekst: høyere plott,
   // verdiene langs venstre kant og annenhver uke merket.
   const cm = compact();
@@ -215,11 +228,11 @@ function drawCash(cash) {
 
   B("cashSvg").innerHTML = `
     <svg class="${cm ? "compact" : ""}" viewBox="0 0 ${W} ${H}" role="img"
-         aria-label="Kontantbeholdning 13 uker fram, bundet og forventet, mot et gulv på én månedslønn">
+         aria-label="Kontantbeholdning 13 uker fram, bundet og forventet, mot selskapets gulv">
       ${gridVals.map((v, i) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${ys(v).toFixed(1)}" y2="${ys(v).toFixed(1)}"/>
         ${cm && i ? "" : yLabel(v)}`).join("")}
       ${floor ? `<line class="floor" x1="${L}" x2="${W - R}" y1="${ys(floor).toFixed(1)}" y2="${ys(floor).toFixed(1)}"/>
-        <text class="floor-lab" x="${L + 4}" y="${(ys(floor) + (cm ? 26 : -7)).toFixed(1)}">gulv · én månedslønn ${bmill(floor)}</text>` : ""}
+        <text class="floor-lab" x="${L + 4}" y="${(ys(floor) + (cm ? 26 : -7)).toFixed(1)}">gulv · ${tag} ${bmill(floor)}</text>` : ""}
       <path class="ln expected" d="${path("expected_close")}"/>
       <path class="ln committed" d="${path("committed_close")}"/>
       <text class="lab expected" x="${(W - R + 6).toFixed(1)}" y="${(ys(last.expected_close) + 3.5).toFixed(1)}">anslag</text>
@@ -459,7 +472,10 @@ async function loadBrief() {
     grab("dashboard", "/api/dashboard"),
     grab("commitments", "/api/commitments"),
     grab("preflight", "/api/preflight"),
-    grab("cashflow", "/api/cashflow"),
+    // Reglene etter prognosen: gulvet regnes mot dens månedslønn, og fra en
+    // varm prognose er det ingen ekstra vei til Tripletex.
+    grab("cashflow", "/api/cashflow").then((d) =>
+      grab("rules", "/api/rules").catch(() => {}).then(() => d)),
   ];
   // Hver del tegnes når den lander; kontantstrømmen tar lengst tid og skal
   // ikke holde resten av siden igjen.

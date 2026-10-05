@@ -13,6 +13,7 @@ from datetime import date
 
 from anthropic import AsyncAnthropic
 
+import cashflow
 import company
 import config
 import memory
@@ -58,6 +59,9 @@ Skriv tre til fem setninger, i sammenheng, på norsk. Krav:
   der den forklarer det. Den gjelder for mening, aldri for tall: står den mot
   regnskapet, har regnskapet rett på tallet og beskrivelsen på grunnen.
 - Pek på det som har endret seg de siste månedene, ikke bare nivået nå.
+- Mål mot selskapets egne regler i grunnlaget — likviditetsgulvet og målet
+  for lønnsandel — ikke mot dine egne tommelfingerregler. Står det at en regel
+  er antatt, og du bruker den, si at den er antatt.
 - Si én ting som bør følges opp. Én, den viktigste.
 - Skriv som til en daglig leder som ikke er regnskapsfører: ingen fagord, ingen
   forkortelser, ingen punktliste, ingen overskrift.
@@ -69,9 +73,14 @@ Svar med JSON og ingenting annet:
 "Stram likviditet" eller "Presset margin"."""
 
 
-def _shape(ov: dict, com: dict, months: list[dict]) -> dict:
+def _shape(ov: dict, com: dict, months: list[dict],
+           cf: dict | None = None) -> dict:
     k = ov.get("kpis") or {}
     recent = [m for m in months if m.get("revenue") is not None][-6:]
+    rules = cashflow.rules(cf)
+    floor, wage = rules["likviditetsgulv_kr"], rules["lonnsandel_mal_pct"]
+    low = (cf or {}).get("low_committed") or {}
+    hit = cashflow.below_floor(cf, floor["value"]) if cf else None
     return {
         "periode": ov.get("period"),
         "omsetning_hittil": k.get("omsetning"),
@@ -80,6 +89,8 @@ def _shape(ov: dict, com: dict, months: list[dict]) -> dict:
         "driftsmargin_pct": k.get("driftsmargin_pct"),
         "lonnsandel_pct": k.get("lonnsandel_pct"),
         "lonnsandel_budsjett_pct": k.get("lonnsandel_budsjett_pct"),
+        "lonnsandel_mal_pct": wage["value"],
+        "lonnsandel_mal_hvor_fra": company.said(wage),
         "penger_i_banken": k.get("bank"),
         "kundefordringer": k.get("kundefordringer"),
         "likviditetsgrad": k.get("likviditetsgrad"),
@@ -89,6 +100,15 @@ def _shape(ov: dict, com: dict, months: list[dict]) -> dict:
         "ubokfort_skatt": (ov.get("flags") or {}).get("ubokfort_skatt"),
         "fritt_paa_konto_naa": com.get("free_now"),
         "fritt_etter_alle_forpliktelser": com.get("free_all"),
+        # Without the forecast there is no low point to hold the floor
+        # against, and a floor on its own invites a comparison with today's
+        # balance, which is the wrong one.
+        "likviditetsgulv": ({"kr": floor["value"],
+                             "hvor_fra": company.said(floor)} if cf else None),
+        "laveste_bundne_saldo_13_uker": (
+            {"uke": low.get("label"), "fra": low.get("start"),
+             "kr": low.get("amount")} if low else None),
+        "forste_uke_under_gulvet": hit,
         "apne_funn": [
             {"tema": f.get("topic"), "alvor": f.get("severity"),
              "sagt": f.get("statement"), "reist": f.get("opened")}
@@ -156,14 +176,15 @@ def _write(data: dict) -> None:
 
 async def build(today: date | None = None) -> dict:
     today = today or date.today()
-    ov, com = await asyncio.gather(overview_cached(), commitments_cached(),
-                                   return_exceptions=True)
+    ov, com, cf = await asyncio.gather(overview_cached(), commitments_cached(),
+                                       cashflow.cached(), return_exceptions=True)
     ov = {} if isinstance(ov, Exception) else ov
     com = {} if isinstance(com, Exception) else com
+    cf = None if isinstance(cf, Exception) else cf
     if not (ov.get("kpis") or {}).get("omsetning"):
         raise ValueError("Ingen tall å oppsummere ennå")
 
-    facts = _shape(ov, com, ov.get("monthly") or [])
+    facts = _shape(ov, com, ov.get("monthly") or [], cf)
     msg = await client.messages.create(
         model=config.CFO_MODEL, max_tokens=MAX_TOKENS,
         messages=[{"role": "user", "content": PROMPT.format(

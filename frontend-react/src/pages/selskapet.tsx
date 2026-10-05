@@ -2,7 +2,9 @@ import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { get } from "@/lib/api"
+import { api, get } from "@/lib/api"
+import type { Rule, Rules } from "@/lib/api"
+import { kr, pct } from "@/lib/format"
 
 type Company = {
   exists: boolean
@@ -13,6 +15,15 @@ type Company = {
   known_settings: Record<string, string>
 }
 
+/** En regel slik den brukes, med enheten den har. */
+const ruleValue = (key: string, r: Rule) => {
+  if (r.value == null) return null
+  if (key.endsWith("_kr")) return `${kr(r.value)} kr`
+  if (key.endsWith("_pct")) return pct(r.value, r.value % 1 ? 1 : 0)
+  if (key.endsWith("_dager")) return `${r.value} dager`
+  return String(r.value)
+}
+
 export function Selskapet() {
   const [text, setText] = useState("")
   const [co, setCo] = useState<Company | null>(null)
@@ -21,6 +32,18 @@ export function Selskapet() {
     tone: "",
   })
   const [saving, setSaving] = useState(false)
+  // Reglene slik beregningene faktisk bruker dem nå — med standardverdien der
+  // selskapet ikke har satt noe, så «ikke satt» aldri betyr «ingen regel».
+  const [rules, setRules] = useState<Rules | null>(null)
+  const loadRules = () =>
+    api
+      .rules()
+      .then((r) => setRules(r.rules))
+      .catch(() => setRules(null))
+
+  useEffect(() => {
+    loadRules()
+  }, [])
 
   useEffect(() => {
     get<Company>("/api/company")
@@ -42,6 +65,7 @@ export function Selskapet() {
       })
       if (!r.ok) throw new Error((await r.text()).slice(0, 200))
       setCo(await r.json())
+      loadRules()
       setStatus({ msg: "Lagret. CFO-en bruker den fra neste spørsmål.", tone: "ok" })
     } catch (e) {
       setStatus({ msg: "Kunne ikke lagre: " + (e as Error).message, tone: "bad" })
@@ -103,12 +127,24 @@ export function Selskapet() {
         <ul className="divide-border divide-y border-y text-sm">
           {Object.entries(co?.known_settings || {}).map(([key, what]) => {
             const value = co?.settings?.[key]
+            const rule = rules?.[key as keyof Rules]
+            const used = rule && ruleValue(key, rule)
             return (
               <li key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5">
                 <code className="font-mono text-[13px]">{key}</code>
                 <span className="text-muted-foreground flex-1 text-[13px]">{what}</span>
                 <b className="font-mono tabular-nums">
-                  {value ?? <span className="text-muted-foreground font-sans font-normal">ikke satt</span>}
+                  {value != null ? (
+                    // A rule the company set reads with its unit, «2 000 000 kr», not 2000000.
+                    rule && !rule.assumed && used ? used : value
+                  ) : (
+                    <span className="text-muted-foreground font-sans font-normal">
+                      ikke satt
+                      {rule?.assumed && used
+                        ? ` · bruker ${used} (${rule.basis === "standard" ? "standard" : rule.basis})`
+                        : ""}
+                    </span>
+                  )}
                 </b>
               </li>
             )

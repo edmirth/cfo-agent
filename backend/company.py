@@ -49,12 +49,73 @@ KNOWN = {
     "kredittid_dager": ("int", "standard betalingsfrist på fakturaene deres"),
     "ferie_utbetalingsmnd": ("int", "måneden feriepengene utbetales (1-12)"),
     "ferie_uker": ("int", "hvor mange uker ferie de ansatte har"),
+    # The rulebook: thresholds every card, alert and brief is measured against.
+    "likviditetsgulv_kr": ("kr", "laveste saldo dere vil ha på konto; under "
+                           "den varsler CFO-en"),
+    "purring_etter_dager": ("int", "dager etter forfall før en kunde purres"),
+    "varsel_minimum_kr": ("kr", "beløp under dette gir ingen sak eller varsel"),
+    "lonnsandel_mal_pct": ("pct", "målet for lønn som andel av omsetningen, "
+                           "i prosent"),
 }
+
+# The company's own rules. They decide when a card is raised and what the
+# brief calls tight, so they are settings the engine reads — a "2 MNOK floor"
+# written in the prose is a sentence the agent might read one way today and
+# another tomorrow. A rule nobody set still has to be *something*, because a
+# card is raised under some floor, so each has a default, and whatever uses one
+# says when it is ours rather than theirs.
+RULES = ("likviditetsgulv_kr", "purring_etter_dager", "varsel_minimum_kr",
+         "lonnsandel_mal_pct")
+RULE_DEFAULTS = {
+    "purring_etter_dager": 14,
+    "varsel_minimum_kr": 10_000,
+    # No target is better than one we made up: a payroll share is only "too
+    # high" against a number someone in the company chose.
+    "lonnsandel_mal_pct": None,
+}
+# The floor defaults to one month's wages, which is what the Brief has always
+# drawn: whether the account covers the next payroll. This is only for when the
+# forecast has no wage figure to give.
+FLOOR_FALLBACK = 500_000
 
 MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
                "august", "september", "oktober", "november", "desember"]
 
 _cache: dict = {}
+
+
+def _kroner(raw: str) -> int | None:
+    """An amount as people write it: «2 000 000», «2000000 kr», «2 MNOK», «20k».
+
+    Anything else is refused rather than guessed at. Picking the first digits
+    out of «2 000 000», as the plain number reader does, would set a floor of
+    two kroner and silence every cash alert without anyone noticing.
+    """
+    s = raw.lower().replace(" ", " ").replace(" ", " ").strip()
+    s = re.sub(r"^(kr\.?|nok)\s*", "", s)
+    s = re.sub(r"\s*(kr\.?|nok|,-)$", "", s).strip()
+    m = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*(mnok|mill\.?|millioner|million|m|k|tusen)", s)
+    if m:
+        scale = 1_000 if m.group(2) in ("k", "tusen") else 1_000_000
+        return round(float(m.group(1).replace(",", ".")) * scale)
+    if re.fullmatch(r"\d{1,3}(?:[ .]\d{3})+|\d+", s):
+        return int(re.sub(r"[ .]", "", s))
+    return None
+
+
+def _percent(raw: str) -> int | float | None:
+    """«75», «75 %» or «72,5». A share above 100 or at zero is a typo."""
+    m = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*%?\s*", raw)
+    if not m:
+        return None
+    value = float(m.group(1).replace(",", "."))
+    if not 0 < value <= 100:
+        return None
+    return int(value) if value.is_integer() else value
+
+
+_WHAT = {"kr": "et kronebeløp, som 2 000 000 eller 2 MNOK",
+         "pct": "en prosent over 0 og opptil 100, som 75"}
 
 
 def _parse(text: str) -> tuple[dict, str, list[str]]:
@@ -84,7 +145,20 @@ def _parse(text: str) -> tuple[dict, str, list[str]]:
                 notes.append(f"«{key}» må være et tall. «{raw}» ble hoppet "
                              f"over, og beregningene bruker den ikke.")
                 continue
+            if key in RULES and int(m.group()) < 0:
+                notes.append(f"«{key}» kan ikke være negativ. «{raw}» ble "
+                             f"hoppet over, og beregningene bruker "
+                             f"standardverdien.")
+                continue
             settings[key] = int(m.group())
+        elif kind in _WHAT:
+            value = _kroner(raw) if kind == "kr" else _percent(raw)
+            if value is None:
+                notes.append(f"«{key}» må være {_WHAT[kind]}. «{raw}» ble "
+                             f"hoppet over, og beregningene bruker "
+                             f"standardverdien.")
+                continue
+            settings[key] = value
         else:
             settings[key] = raw
             if key not in KNOWN:
@@ -180,6 +254,71 @@ def setting(key: str, default=None):
     return load()["settings"].get(key, default)
 
 
+def rules(monthly_wages: float | None = None) -> dict[str, dict]:
+    """Each rule as the calculations will use it, and where it came from.
+
+    `assumed` is true when the value is ours, not the company's — that is what
+    lets the brief say "gulvet er antatt" instead of presenting our guess as
+    their rule. `monthly_wages` is the forecast's, for the floor's default;
+    without it the floor falls back to FLOOR_FALLBACK.
+    """
+    settings = load()["settings"]
+    wages = round(monthly_wages) if monthly_wages and monthly_wages > 0 else None
+    out: dict[str, dict] = {}
+    for key in RULES:
+        if key in settings:
+            value, basis, assumed = settings[key], "company.md", False
+        elif key == "likviditetsgulv_kr":
+            value, basis = ((wages, "én månedslønn") if wages
+                            else (FLOOR_FALLBACK, "standard"))
+            assumed = True
+        else:
+            value = RULE_DEFAULTS[key]
+            basis = "standard" if value is not None else "ikke satt"
+            assumed = value is not None
+        out[key] = {"value": value, "assumed": assumed, "basis": basis,
+                    "label": KNOWN[key][1]}
+    return out
+
+
+def said(rule: dict) -> str:
+    """Where a rule came from, in the words the CEO reads."""
+    if not rule["assumed"]:
+        return "satt i Selskapet" if rule["value"] is not None else "ikke satt"
+    basis = "standardverdi" if rule["basis"] == "standard" else rule["basis"]
+    return f"antatt: {basis} — ikke satt i Selskapet"
+
+
+def _rules_briefing() -> str:
+    """The rulebook, for the agent. No figures from the forecast here: this
+    sits in the cached block, and the floor's amount is said with the forecast."""
+    r = rules()
+    floor, days = r["likviditetsgulv_kr"], r["purring_etter_dager"]
+    alert, wage = r["varsel_minimum_kr"], r["lonnsandel_mal_pct"]
+    out = ["### Selskapets regler\n",
+           "Thresholds the cards, the alerts and the brief are measured "
+           "against. Use these, never a rule of thumb of your own. When one is "
+           "assumed rather than set by the company, say so whenever you rely "
+           "on it, and that the CEO can set his own under Selskapet.\n"]
+    out.append(f"- Likviditetsgulv: " + (
+        f"{_kr(floor['value'])} kr, satt i Selskapet." if not floor["assumed"]
+        else "ikke satt — antatt én månedslønn. Beløpet står med prognosen."))
+    out.append(f"- Purring: når en kunde er {days['value']} dager forbi "
+               f"forfall ({said(days)}).")
+    out.append(f"- Varsel: ingen sak eller varsel under {_kr(alert['value'])} "
+               f"kr ({said(alert)}).")
+    out.append(f"- Lønnsandel: mål {wage['value']} % ({said(wage)})."
+               if wage["value"] is not None else
+               "- Lønnsandel: ikke noe mål satt. Ikke kall en lønnsandel for "
+               "høy eller lav mot et mål selskapet ikke har valgt; sammenlign "
+               "med budsjettet eller med tidligere måneder i stedet.")
+    return "\n".join(out) + "\n"
+
+
+def _kr(v) -> str:
+    return f"{round(v):,}".replace(",", " ")
+
+
 def briefing() -> str:
     """The company's own account of itself, for the system prompt."""
     data = load()
@@ -226,6 +365,7 @@ def briefing() -> str:
             out.append(f"{' og '.join(said).capitalize()}. I den måneden tar de "
                        f"ansatte ut feriepenger i stedet for vanlig lønn, så "
                        f"lønnen den måneden er lavere eller faller bort.\n")
+    out.append(_rules_briefing())
     if data["story"]:
         out.append(data["story"])
     return "\n".join(out)

@@ -46,6 +46,7 @@ curl -s localhost:8000/api/preflight   # the tie-out checks
 curl -s localhost:8000/api/commitments
 curl -s localhost:8000/api/cashflow
 curl -s localhost:8000/api/cards
+curl -s localhost:8000/api/rules      # the floor and thresholds in force, and which are assumed
 curl -s "localhost:8000/api/trace?account=1920&date_from=2026-09-01&date_to=2026-09-27"
 curl -s localhost:8000/api/dashboard localhost:8000/api/definitions localhost:8000/api/toolset
 ```

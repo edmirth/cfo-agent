@@ -34,6 +34,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import cashflow
+import company
 import config
 import memory
 import preflight
@@ -262,11 +263,9 @@ def deck(today: date | None = None) -> dict:
 # ------------------------------------------------------------- the generators
 # Derived cards need no model: they come straight out of the checks that
 # already run. Thresholds keep the deck to things worth a morning's attention —
-# a card for every small thing trains the CEO to ignore all of them.
-
-LATE_DAYS = 14
-LATE_AMOUNT = 10_000
-CASH_FLOOR = 500_000
+# a card for every small thing trains the CEO to ignore all of them. They are
+# the company's own rules, read from company.md through `company.rules()`, so
+# a card and the brief can never disagree about where the floor is.
 
 
 def _reminder_draft(invoices: list[dict], total: float) -> dict:
@@ -289,8 +288,12 @@ def _reminder_draft(invoices: list[dict], total: float) -> dict:
     }
 
 
-def _collections(invoices: list[dict], today: date) -> list[dict]:
+def _collections(invoices: list[dict], today: date,
+                 rules: dict | None = None) -> list[dict]:
     """One card per customer who is materially late, with the chase written."""
+    rules = rules or company.rules()
+    days_rule, min_rule = rules["purring_etter_dager"], rules["varsel_minimum_kr"]
+    late_days, minimum = days_rule["value"], min_rule["value"]
     by: dict[str, list[dict]] = {}
     for inv in invoices:
         try:
@@ -298,14 +301,14 @@ def _collections(invoices: list[dict], today: date) -> list[dict]:
         except (ValueError, TypeError, KeyError):
             continue
         late = (today - due).days
-        if late < LATE_DAYS:
+        if late < late_days:
             continue
         by.setdefault(inv["name"], []).append({**inv, "late": late})
 
     cards = []
     for customer, items in by.items():
         total = sum(i["amount"] for i in items)
-        if total < LATE_AMOUNT:
+        if total < minimum:
             continue
         worst = max(i["late"] for i in items)
         cards.append({
@@ -313,12 +316,17 @@ def _collections(invoices: list[dict], today: date) -> list[dict]:
             "kind": "collections", "amount": total,
             "urgency": "high" if worst >= 30 or total >= 100_000 else "medium",
             "title": f"{customer} er {worst} dager på etterskudd med {_kr(total)} kr",
-            "body": (f"{len(items)} faktura(er) har stått ubetalt i mer enn "
-                     f"{LATE_DAYS} dager. Lønnen din går ut hver måned uansett, "
+            "body": (f"{len(items)} faktura(er) har stått ubetalt i {late_days} "
+                     f"dager eller mer. Lønnen din går ut hver måned uansett, "
                      f"så det er dine penger som finansierer ventetiden."),
             "evidence": [{"label": f"Faktura {i.get('number') or '—'}",
                           "value": f"{_kr(i['amount'])} kr, forfalt {i['due']} "
-                                   f"({i['late']} d siden)"} for i in items[:6]],
+                                   f"({i['late']} d siden)"} for i in items[:6]]
+            # The rule that raised it, so a card the CEO thinks came too early
+            # tells him where to change that.
+            + [{"label": "Regel", "value": (
+                f"purring etter {late_days} dager ({company.said(days_rule)}), "
+                f"over {_kr(minimum)} kr ({company.said(min_rule)})")}],
             "draft": _reminder_draft(items, total),
             "options": [
                 {"id": "send", "label": "Send påminnelsen", "effect": "approve"},
@@ -395,20 +403,26 @@ def _from_preflight(pf: dict) -> list[dict]:
     return cards
 
 
-def _from_cashflow(cf: dict) -> list[dict]:
+def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
     low = cf.get("low_committed") or {}
-    if low.get("amount") is None or low["amount"] > CASH_FLOOR:
+    floor = (rules or cashflow.rules(cf))["likviditetsgulv_kr"]
+    if low.get("amount") is None or low["amount"] >= floor["value"]:
         return []
+    assumed = (f" Gulvet er {company.said(floor)}; sett deres eget i Selskapet "
+               f"om det skal ligge et annet sted." if floor["assumed"] else "")
     return [{
         "key": f"cash:{low.get('start')}",
         "kind": "cash", "urgency": "high", "amount": low["amount"],
-        "title": (f"Tynnest i {low.get('label')}: {_kr(low['amount'])} kr igjen "
-                  f"hvis ingenting nytt faktureres"),
-        "body": ("Dette er gulvet — bare det som allerede er avtalt inn og ut. "
-                 "Fakturerer du som vanlig ligger du høyere, men da er det "
-                 "faktureringen som må skje i tide."),
+        "title": (f"Under gulvet i {low.get('label')}: {_kr(low['amount'])} kr "
+                  f"igjen hvis ingenting nytt faktureres"),
+        "body": (f"Gulvet er {_kr(floor['value'])} kr. Dette er den bundne "
+                 f"linjen — bare det som allerede er avtalt inn og ut. "
+                 f"Fakturerer du som vanlig ligger du høyere, men da er det "
+                 f"faktureringen som må skje i tide." + assumed),
         "evidence": [{"label": "Uke", "value": f"{low.get('label')} ({low.get('start')})"},
-                     {"label": "Bundet saldo", "value": f"{_kr(low['amount'])} kr"}],
+                     {"label": "Bundet saldo", "value": f"{_kr(low['amount'])} kr"},
+                     {"label": "Gulv", "value": f"{_kr(floor['value'])} kr "
+                                                f"({company.said(floor)})"}],
         "options": [
             {"id": "seen", "label": "Forstått", "effect": "approve"},
             {"id": "later", "label": "Følg opp om en uke", "effect": "snooze", "days": 7},
@@ -439,10 +453,13 @@ async def refresh(today: date | None = None) -> dict:
     if pf:
         candidates += _from_preflight(pf)
     if cf:
-        candidates += _from_cashflow(cf)
+        # Resolved once, against this forecast's wages, so every card in one
+        # rebuild is measured against the same rules.
+        rules = cashflow.rules(cf)
+        candidates += _from_cashflow(cf, rules)
         # The forecast already fetched the open invoices; reusing them keeps
         # the deck and the forecast on the same figures.
-        candidates += _collections(cf.get("ar_open") or [], today)
+        candidates += _collections(cf.get("ar_open") or [], today, rules)
 
     reconcile(candidates, sources_ok=True, unknown=_unknown(pf, cf))
     return deck(today)

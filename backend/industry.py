@@ -32,6 +32,7 @@ from anthropic import AsyncAnthropic
 
 import calc
 import commitments
+import company
 import config
 import overview
 from mcp_client import mcp
@@ -481,6 +482,32 @@ def _status(value, target, alert, better: str) -> str:
     return "watch"
 
 
+def _with_rules(data: dict) -> dict:
+    """The company's own payroll target over the one the profile guessed.
+
+    The profile's target is the model's idea of what is normal for the trade;
+    the company's is a decision, and the brief measures against it — one
+    figure with two targets on the same page is a contradiction the CEO has
+    to resolve himself. Applied on every read, not cached with the tiles, so a
+    target set in Selskapet counts on the next load.
+    """
+    rule = company.rules()["lonnsandel_mal_pct"]
+    if rule["assumed"] or rule["value"] is None:
+        return data
+    target, tiles = rule["value"], []
+    for t in data.get("kpis") or []:
+        if t.get("id") == "lonnsandel":
+            alert = t.get("alert")
+            # An industry alert at or under the company's own target would
+            # call the target itself a failure; the company's choice wins.
+            if alert is not None and alert <= target:
+                alert = None
+            t = {**t, "target": target, "alert": alert, "target_from": "company.md",
+                 "status": _status(t.get("value"), target, alert, t["better"])}
+        tiles.append(t)
+    return {**data, "kpis": tiles}
+
+
 async def dashboard(today: date | None = None, refresh: bool = False) -> dict:
     """The tiles, built on the saved profile — or on a new one with `refresh`.
 
@@ -493,7 +520,7 @@ async def dashboard(today: date | None = None, refresh: bool = False) -> dict:
     now = time.time()
     if (not refresh and _values_cache.get("data")
             and now - _values_cache.get("at", 0) < VALUES_CACHE_SECONDS):
-        return _values_cache["data"]
+        return _with_rules(_values_cache["data"])
 
     gathered = await _gather(today)
     prof = await profile(refresh=refresh, today=today, gathered=gathered)
@@ -524,4 +551,4 @@ async def dashboard(today: date | None = None, refresh: bool = False) -> dict:
             "reasoning": prof.get("begrunnelse"), "confidence": prof.get("sikkerhet"),
             "decided": prof.get("bestemt"), "kpis": tiles}
     _values_cache.update({"data": data, "at": now})
-    return data
+    return _with_rules(data)
