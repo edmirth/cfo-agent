@@ -1,48 +1,25 @@
-"""The CFO agent: Claude, Tripletex over MCP, and a Python sandbox.
+"""The tools the model may call that run on this server.
 
-Tripletex tool calls are executed by Anthropic through the MCP connector, and
-code execution runs server-side too, which is what lets the agent build a
-forecast on figures it just pulled. Which Tripletex tools exist at all for the
-model is decided in `toolset.py` — reads only, by name. The only tools executed
-here are the
-controller's own notebook — `memory.py` and the approval deck in `cards.py`.
-They write to this machine's disk, which nothing on Anthropic's side can reach.
+Tripletex tools and the Python sandbox both run on Anthropic's side, so
+neither can reach this machine's disk. These run here, and they are the only
+writes in the product: the CFO's own notebook and the deck of work it has
+prepared for the CEO. Neither touches the ledger.
+
+A job names the ones it may use. The rest are never offered to the model, and
+`agent/core.py` refuses a call to one rather than running it.
 """
 import logging
-from collections.abc import AsyncIterator
-
-from anthropic import AsyncAnthropic, BadRequestError
 
 import calc
-import cards
-import config
-import memory
-import toolset
 import trace
-import verify
-from labels import label
-from prompt import system_blocks
-from tlx_oauth import OAuthError, tokens
 
-log = logging.getLogger("cfo.agent")
+# `cards` and `memory` are imported in run(), when a tool is used, not here.
+# The core imports this module, and memory → definitions → industry imports
+# the core back. Loading them here would make industry ask for core.Job while
+# the core is still half-loaded. That loop closes once the KPI catalogue
+# leaves industry.py, as the target map has it.
 
-client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
-
-# Turned off permanently if this account rejects the parameter, so a deployment
-# without the beta still runs instead of failing every request.
-_fallbacks_enabled = True
-
-CODE_TOOL = {"type": "code_execution_20260521", "name": "code_execution"}
-TOOL_BLOCK_TYPES = {
-    "tool_use", "server_tool_use", "mcp_tool_use",
-    "code_execution_tool_use", "bash_code_execution_tool_use",
-}
-
-# ------------------------------------------------------------ local tools
-# Tripletex tools and the Python sandbox both run on Anthropic's side, so
-# neither can reach this machine's disk. These six run here, and they are the
-# only writes in the product: the CFO's own notebook and the deck of work it
-# has prepared for the CEO. Neither touches the ledger.
+log = logging.getLogger("cfo.tools")
 
 LOCAL_TOOLS = [
     {
@@ -254,12 +231,29 @@ LOCAL_TOOLS = [
     },
 ]
 
-LOCAL_TOOL_NAMES = {t["name"] for t in LOCAL_TOOLS}
+
+NAMES: tuple[str, ...] = tuple(t["name"] for t in LOCAL_TOOLS)
 
 
-async def _run_local_tool(name: str, args: dict) -> str:
+def definitions(names) -> list[dict]:
+    """The definitions of these tools, in catalogue order.
+
+    Catalogue order rather than the order asked for: the tool list is part of
+    the cached prompt, and a job that lists the same tools differently should
+    not pay for a second cache.
+    """
+    unknown = set(names) - set(NAMES)
+    if unknown:
+        raise ValueError(f"Ukjent verktøy: {', '.join(sorted(unknown))}")
+    return [t for t in LOCAL_TOOLS if t["name"] in names]
+
+
+async def run(name: str, args: dict) -> str:
     """Execute one local tool. Errors come back to the model as text so it can
     correct itself — a bad id or a malformed sum should not end the turn."""
+    import cards
+    import memory
+
     try:
         if name == "remember_finding":
             rec = memory.add_finding(
@@ -333,211 +327,3 @@ async def _run_local_tool(name: str, args: dict) -> str:
         log.exception("Local tool %s failed", name)
         return f"Could not record that: {exc}"
     return f"Unknown tool {name}."
-
-
-async def _request_kwargs(messages: list[dict]) -> dict:
-    betas = ["code-execution-2025-08-25", "mcp-client-2025-11-20"]
-    kwargs: dict = {
-        "model": config.CFO_MODEL,
-        "max_tokens": config.MAX_TOKENS,
-        # The breakpoint sits inside system_blocks(), on the persona — the
-        # part that repeats identically on every tool round. Memory follows it
-        # uncached so a note written mid-turn costs a small block, not the lot.
-        "system": await system_blocks(),
-        "messages": messages,
-        # The Tripletex toolset is closed by default and opened tool by tool
-        # in toolset.py. A write tool is not offered to the model at all, so
-        # read-only stops depending on the model choosing to obey.
-        "tools": [toolset.toolset("tripletex"), CODE_TOOL, *LOCAL_TOOLS],
-        "mcp_servers": [{
-            "type": "url",
-            "url": config.TRIPLETEX_MCP_URL,
-            "name": "tripletex",
-            "authorization_token": await tokens.access_token(),
-        }],
-        "thinking": {"type": "adaptive", "display": "summarized"},
-        "output_config": {"effort": config.CFO_EFFORT},
-    }
-    if _fallbacks_enabled:
-        betas.append("server-side-fallback-2026-07-01")
-        kwargs["fallbacks"] = "default"
-    kwargs["betas"] = betas
-    return kwargs
-
-
-async def run_turn(messages: list[dict]) -> AsyncIterator[dict]:
-    """Stream one assistant turn, yielding UI events.
-
-    Mutates `messages` in place with the assistant turns it produces, so the
-    caller's history is correct when this returns — and only then: an
-    interrupted turn is rolled back entirely.
-    """
-    # Everything the agent is given this turn, so the figures in its answer can
-    # be traced back to a source afterwards.
-    corpus = verify.Corpus()
-    for m in messages:
-        if m.get("role") == "user" and isinstance(m.get("content"), str):
-            corpus.add(m["content"], "det du skrev")
-    said: list[str] = []
-    tool_names: dict[str, str] = {}   # id -> name, kept across rounds
-
-    # A turn that does not finish must not leave half of itself in the
-    # history. An assistant message ending in a tool call with no result, or
-    # a paused server turn, makes every later request on the session fail —
-    # and a client closing the tab mid-answer is the ordinary way to get one.
-    start = len(messages)
-    completed = False
-    try:
-        async for event in _turn(messages, corpus, said, tool_names, start):
-            if event.get("type") == "done":
-                completed = True
-            yield event
-    finally:
-        if not completed:
-            del messages[start:]
-
-
-# Stop reasons that end the answer before the model meant to. Without these
-# the turn went straight to "done", and the CEO read half an answer as a whole.
-CUT_OFF = {
-    "max_tokens": ("Svaret ble kuttet fordi det ble for langt, og er ikke "
-                   "fullstendig. Be om resten, eller still et smalere spørsmål."),
-    "model_context_window_exceeded": (
-        "Samtalen er blitt så lang at svaret ikke fikk plass, og det er ikke "
-        "fullstendig. Start en ny samtale for å fortsette."),
-}
-
-
-def _answered_only(content: list) -> list:
-    """The assistant turn without tool calls that never got a result.
-
-    A turn cut off mid-call stores a tool_use with nothing answering it, and
-    the API rejects every later request on the session until it is gone.
-    Server-side calls carry their result in the same message; a client-side
-    tool_use never does, so on a cut-off turn it is always dropped.
-    """
-    answered = {getattr(b, "tool_use_id", None) for b in content}
-    kept = [b for b in content
-            if getattr(b, "type", None) not in TOOL_BLOCK_TYPES
-            or getattr(b, "id", None) in answered]
-    return kept or [{"type": "text", "text": "(Svaret ble avbrutt.)"}]
-
-
-async def _turn(messages, corpus, said, tool_names, start) -> AsyncIterator[dict]:
-    global _fallbacks_enabled
-    system_seen = False
-
-    for _ in range(config.MAX_TOOL_ROUNDS):
-        try:
-            kwargs = await _request_kwargs(messages)
-        except OAuthError as exc:
-            yield {"type": "error", "message": str(exc)}
-            return
-
-        if not system_seen:
-            # The condition, commitments, forecast and memory blocks are
-            # figures this server computed; quoting them is quoting a source.
-            for block in kwargs["system"]:
-                corpus.add(block.get("text", ""), "forsiden (beregnet her)")
-            system_seen = True
-
-        try:
-            final = None
-            async with client.beta.messages.stream(**kwargs) as stream:
-                async for event in stream:
-                    if event.type == "content_block_start":
-                        block = event.content_block
-                        if block.type in TOOL_BLOCK_TYPES:
-                            name = getattr(block, "name", "") or block.type
-                            yield {"type": "tool", "label": label(name), "name": name}
-                    elif event.type == "content_block_delta":
-                        delta = event.delta
-                        if delta.type == "text_delta":
-                            said.append(delta.text)
-                            yield {"type": "text", "text": delta.text}
-                        elif delta.type == "thinking_delta":
-                            yield {"type": "reasoning", "text": delta.thinking}
-                final = await stream.get_final_message()
-
-        except BadRequestError as exc:
-            detail = str(exc)
-            if _fallbacks_enabled and "fallback" in detail.lower():
-                log.warning("Disabling server-side fallbacks: %s", detail)
-                _fallbacks_enabled = False
-                continue
-            log.exception("Request rejected")
-            # The full provider error — request id, billing links, internals —
-            # belongs in the log, not on the CEO's screen. Out of credits is the
-            # one case worth naming, because only the owner can fix it.
-            if "credit balance is too low" in detail:
-                shown = ("Anthropic-kontoen er tom for kreditt, så modellen "
-                         "svarer ikke. Tallene på forsiden virker fortsatt.")
-            else:
-                shown = ("Modellen avviste forespørselen. Detaljene ligger i "
-                         "serverloggen.")
-            yield {"type": "error", "message": shown}
-            return
-
-        if final is None:
-            yield {"type": "error", "message": "Tomt svar fra modellen."}
-            return
-
-        cut = CUT_OFF.get(final.stop_reason)
-        messages.append({"role": "assistant",
-                         "content": _answered_only(final.content) if cut
-                         else final.content})
-        # Tool results are the evidence: what Tripletex actually returned, and
-        # each one keeps the name of the call that produced it.
-        for where, text in verify.sources(final.content, tool_names):
-            corpus.add(text, where)
-
-        if final.stop_reason == "refusal":
-            yield {"type": "error",
-                   "message": "Modellen avslo forespørselen. Formuler spørsmålet på nytt."}
-            return
-
-        if final.stop_reason == "pause_turn":
-            continue  # a server tool paused the turn; resume it
-
-        if final.stop_reason == "tool_use":
-            # Only the memory tools run here. Every block must be answered in
-            # the same user turn, including one we do not recognise — an
-            # unanswered tool_use is rejected on the next request.
-            results = []
-            for b in final.content:
-                if getattr(b, "type", None) != "tool_use":
-                    continue
-                if b.name in LOCAL_TOOL_NAMES:
-                    text = await _run_local_tool(b.name, b.input or {})
-                else:
-                    log.error("Unknown client-side tool: %s", b.name)
-                    text = f"No such tool: {b.name}."
-                corpus.add(text, f"{b.name} (regnet ut her)")
-                results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": text})
-            messages.append({"role": "user", "content": results})
-            continue
-
-        check = verify.check("".join(said), corpus)
-        if check["unverified"]:
-            log.warning("Svaret inneholder %d tall uten kilde",
-                        len(check["unverified"]))
-        for t in check["traced"][:6]:
-            log.info("spor: %s ← %s", verify.fmt(t["value"]),
-                     ", ".join(t["from"]))
-        yield {"type": "check", **check}
-        if cut:
-            # After the text, so it reads as a note on the answer, not instead
-            # of it. Both frontends show an error below what was written.
-            log.warning("Svaret stoppet på %s", final.stop_reason)
-            yield {"type": "error", "message": cut}
-
-        u = final.usage
-        yield {"type": "done", "usage": {
-            "input": u.input_tokens, "output": u.output_tokens,
-            "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
-            "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
-        }}
-        return
-
-    yield {"type": "error", "message": "Turen ble avbrutt etter for mange verktøyrunder."}

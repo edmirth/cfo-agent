@@ -17,7 +17,7 @@ Four things are kept, because they are the four a controller is held to:
   re-litigate it.
 
 Stored as one JSON file, written atomically. Snapshots are deterministic; the
-other three are written by the agent through the tools in `agent.py`.
+other three are written by the agent through the tools in `agent/tools.py`.
 """
 import json
 import logging

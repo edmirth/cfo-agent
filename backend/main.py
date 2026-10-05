@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import config
-from agent import run_turn
+from agent.jobs.chat import run_turn
 from mcp_client import McpError
 from overview import cached as overview_cached
 import cards

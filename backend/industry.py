@@ -28,13 +28,12 @@ from dataclasses import dataclass
 from datetime import date
 from collections.abc import Callable
 
-from anthropic import AsyncAnthropic
-
 import calc
 import commitments
 import company
 import config
 import overview
+from agent import core
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.industry")
@@ -42,8 +41,6 @@ log = logging.getLogger("cfo.industry")
 PROFILE_STORE = config.ROOT / "state" / "profile.json"
 VALUES_CACHE_SECONDS = 600
 _values_cache: dict = {}
-
-client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
 
 @dataclass(frozen=True)
@@ -373,6 +370,13 @@ bare hvis bransjen ikke har noe meningsfylt normalnivå.
 Skriv alt på norsk, uten regnskapsord."""
 
 
+# The targets and alarm levels it sets are its own judgement of what is normal
+# in the trade. They are not in the books, so the run log counts them as
+# figures without a source. That is correct, not a fault.
+JOB = core.Job(name="classify", output="json", max_tokens=2000,
+               given_as="bevisene fra regnskapet")
+
+
 def _menu(available: list[str]) -> str:
     return "\n".join(
         f"- {k.id} — {k.label} ({k.unit}, {'høyt er bra' if k.better == 'high' else 'lavt er bra'}): {k.plain}"
@@ -396,14 +400,7 @@ async def classify(ctx: dict, evidence: dict) -> dict:
     prompt = CLASSIFIER_PROMPT.format(
         evidence=json.dumps(evidence, ensure_ascii=False, indent=1),
         menu=_menu(available))
-    msg = await client.messages.create(
-        model=config.CFO_MODEL, max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}])
-    text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"Klassifiseringen svarte ikke med JSON: {text[:200]}")
-    data = json.loads(text[start:end + 1])
+    data = await core.complete(JOB, prompt)
 
     # The model chose from a menu, but trust is not a substitute for checking:
     # anything it invented is dropped rather than rendered as a blank tile.

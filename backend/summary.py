@@ -11,12 +11,11 @@ import json
 import logging
 from datetime import date
 
-from anthropic import AsyncAnthropic
-
 import cashflow
 import company
 import config
 import memory
+from agent import core
 from commitments import cached as commitments_cached
 # The saved profile, read from disk rather than re-decided: classifying the
 # industry costs a model call, and this text already is one. Same reach into a
@@ -27,10 +26,13 @@ from overview import cached as overview_cached
 
 log = logging.getLogger("cfo.summary")
 
-client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
-
 STORE = config.ROOT / "state" / "summary.json"
 MAX_TOKENS = 700
+
+# The figures it writes from are in the prompt, so a number in the text traces
+# back to the basis or to nothing.
+JOB = core.Job(name="summary", output="json", max_tokens=MAX_TOKENS,
+               given_as="grunnlaget (beregnet her)")
 
 # Ett kall om gangen. Uten dette skriver fem samtidige sidelaster den samme
 # teksten fem ganger den første morgenen noen åpner forsiden.
@@ -185,18 +187,11 @@ async def build(today: date | None = None) -> dict:
         raise ValueError("Ingen tall å oppsummere ennå")
 
     facts = _shape(ov, com, ov.get("monthly") or [], cf)
-    msg = await client.messages.create(
-        model=config.CFO_MODEL, max_tokens=MAX_TOKENS,
-        messages=[{"role": "user", "content": PROMPT.format(
-            company=config.COMPANY_NAME,
-            industry=_industry(_load_profile()),
-            company_context=company.briefing() or "Ikke skrevet ennå.",
-            facts=json.dumps(facts, ensure_ascii=False, indent=1))}])
-    raw = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    start, end = raw.find("{"), raw.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"Oppsummeringen svarte ikke med JSON: {raw[:200]}")
-    data = json.loads(raw[start:end + 1])
+    data = await core.complete(JOB, PROMPT.format(
+        company=config.COMPANY_NAME,
+        industry=_industry(_load_profile()),
+        company_context=company.briefing() or "Ikke skrevet ennå.",
+        facts=json.dumps(facts, ensure_ascii=False, indent=1)))
     text = (data.get("text") or "").strip()
     if not text:
         raise ValueError("Oppsummeringen kom tom tilbake")

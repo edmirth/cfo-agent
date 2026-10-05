@@ -37,8 +37,16 @@ so no restart.
 - *Figures* (`backend/mcp_client.py` → `backend/overview.py`) are fetched by
   calling the MCP server directly over JSON-RPC. No model in the loop, so a page
   load is free, fast and exact.
-- *Answers* (`backend/agent.py`) go through Claude with the MCP connector, so
-  Anthropic runs the tool loop. There is no tool-execution code here to maintain.
+- *Answers* (`backend/agent/`) go through Claude with the MCP connector, so
+  Anthropic runs the Tripletex tool loop. There is no Tripletex tool-execution
+  code here to maintain.
+
+**One agent core, many jobs.** `backend/agent/core.py` is the only module that
+talks to Anthropic. A job — the chat, the front-page summary, the industry
+classification — is a `Job`: what it is given, which local tools it may call,
+and what it hands back. `run()` does the rest the same way for every job:
+read-only toolset, tool loop, rollback, `verify` on the answer, and one log
+line per run with tokens, cost and the figures that had no source.
 
 **Auth is a self-registered OAuth client.** Tripletex's own company API key is a
 refresh token bound to a client we cannot identify, so `scripts/oauth_login.py`
@@ -69,7 +77,9 @@ is code, and every figure it states is traced back to a source afterwards.
 |---|---|
 | `.claude/agents/cfo.md` | The agent: scope, voice, standing analysis, data traps. Start here. |
 | `company.md` | Starter for what the company says about itself. Copied to `state/` on first run; edited in the app after that. |
-| `backend/agent.py` | The turn: Claude call, MCP wiring, local tools, stream → UI events, rollback on interruption |
+| `backend/agent/core.py` | Runs any job: Claude call, MCP wiring, tool loop, stream → UI events, rollback, verify, cost per run |
+| `backend/agent/tools.py` | The local tools — memory, cards, calculate, metric, trace — and which a job may call |
+| `backend/agent/jobs/chat.py` | The chat: the job with every tool, Tripletex and the Python sandbox |
 | `backend/prompt.py` | Assembles the system prompt: persona + company (cached), then the computed blocks |
 | `backend/toolset.py` | Read-only, enforced: the 62 Tripletex tools the model may see, and an audit against the server |
 | `backend/calc.py` | Arithmetic the model must not do in its head; named metrics carry the finance rules |
