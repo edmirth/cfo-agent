@@ -1019,6 +1019,25 @@ async def cached() -> dict:
     return await _flight.get()
 
 
+def rules(data: dict | None) -> dict:
+    """The company's rules, with the floor resolved against this forecast.
+
+    Resolved on every read and never stored in the forecast: the forecast is
+    cached for ten minutes, and a floor changed in Selskapet has to count the
+    next time anyone looks, not after the cache happens to expire.
+    """
+    wages = ((data or {}).get("assumptions") or {}).get("monthly_wages")
+    return company.rules(wages)
+
+
+def below_floor(data: dict, floor: float) -> dict | None:
+    """The first week the committed line closes under the floor, if any."""
+    return next(({"label": w["label"], "start": w["start"],
+                  "amount": w["committed_close"]}
+                 for w in data.get("weeks") or []
+                 if w["committed_close"] < floor), None)
+
+
 def _opening_note(bank: dict | None) -> str:
     """Where the opening figure comes from, said every time.
 
@@ -1068,6 +1087,27 @@ def _opening_note(bank: dict | None) -> str:
     return note
 
 
+def _floor_line(data: dict) -> str:
+    """The low point against the company's floor, and whose floor it is.
+
+    The floor is what "tight" means for this company. Measured against our own
+    default, the CEO must be told it is ours — otherwise a guess at his
+    comfort level reads as his rule, and he never learns he can set it.
+    """
+    floor = rules(data)["likviditetsgulv_kr"]
+    whose = ("satt av selskapet i Selskapet" if not floor["assumed"] else
+             f"{company.said(floor)}. Say it is assumed whenever you measure "
+             f"against it, and that he can set his own floor under Selskapet")
+    hit = below_floor(data, floor["value"])
+    where = (f"Den bundne linjen er under gulvet første gang i {hit['label']} "
+             f"({hit['start']}), med {_kr(hit['amount'])} kr."
+             if hit else "Den bundne linjen holder seg over gulvet alle 13 "
+                         "ukene.")
+    return (f"- **Gulvet** er **{_kr(floor['value'])} kr** — {whose}. {where} "
+            f"Weigh the low point against this floor, not against zero alone: "
+            f"under it is tight even while the balance is still positive.\n")
+
+
 def briefing(data: dict | None) -> str:
     """The forecast block injected into the system prompt."""
     if not data or not data.get("weeks"):
@@ -1087,7 +1127,8 @@ def briefing(data: dict | None) -> str:
            f"{low_c['label']} ({low_c['start']}).",
            f"- **Forventet linje** — med vanlig drift og fakturering: lavest "
            f"**{_kr(low_e['amount'])} kr** i {low_e['label']} "
-           f"({low_e['start']}).\n"]
+           f"({low_e['start']}).",
+           _floor_line(data)]
 
     # Said per line, never as one verdict. The floor and the forecast go dry
     # in different weeks and for different reasons, and "kontoen går i minus"

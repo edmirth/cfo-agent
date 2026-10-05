@@ -38,6 +38,7 @@ import type {
   Month,
   Overview,
   Preflight,
+  Rules,
   Summary,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
@@ -71,6 +72,24 @@ type Data = {
   dash?: Dashboard
   pre?: Preflight
   sum?: Summary
+  rules?: Rules
+}
+
+/* ── gulvet ───────────────────────────────────────────────────── */
+// Fra selskapets regler, samme tall som sakene måles mot. Har ikke selskapet
+// satt et eget, er gulvet vårt anslag — én månedslønn — og det sies, ellers
+// leses gjetningen vår som deres regel.
+function floorOf({ rules }: Data) {
+  const r = rules?.likviditetsgulv_kr
+  const amount = r?.value || 0
+  const assumed = !!r?.assumed
+  return {
+    amount,
+    assumed,
+    // Kort, til grafen: «antatt én månedslønn» eller «deres eget».
+    tag: assumed ? `antatt ${r?.basis === "standard" ? "standard" : r?.basis}` : "deres eget",
+    said: assumed ? ` — antatt ${r?.basis === "standard" ? "standardverdi" : r?.basis}, sett deres eget under Selskapet` : "",
+  }
 }
 
 /* ── de fire kortene ──────────────────────────────────────────── */
@@ -92,7 +111,7 @@ type CardSpec = {
   partial?: boolean
 }
 
-function metrics({ ov }: Data): CardSpec[] {
+function metrics({ ov, rules }: Data): CardSpec[] {
   const k = ov?.kpis || {}
   const m = ov?.monthly || []
 
@@ -113,10 +132,18 @@ function metrics({ ov }: Data): CardSpec[] {
           : "Hittil i år"
       })()
 
-  const wageTarget = k.lonnsandel_budsjett_pct
+  // Selskapets eget mål går foran budsjettet: det er regelen sakene og
+  // nøkkeltallet måles mot, og to forskjellige mål på samme tall er ett for mye.
+  const wageGoal = rules?.lonnsandel_mal_pct
+  const wageTarget = wageGoal?.value != null && !wageGoal.assumed ? wageGoal.value : null
+  const wageBudget = k.lonnsandel_budsjett_pct
   const wageNote = k.lonnsandel_pct
     ? `${pct(k.lonnsandel_pct, 0)} av omsetningen` +
-      (wageTarget ? `, mot ${pct(wageTarget, 0)} i budsjettet` : "")
+      (wageTarget
+        ? `, mot ${pct(wageTarget, 0)} i mål`
+        : wageBudget
+          ? `, mot ${pct(wageBudget, 0)} i budsjettet`
+          : "")
     : "Hittil i år"
 
   // Retningen de siste tre månedene sier mer om banken enn saldoen alene.
@@ -165,11 +192,12 @@ function metrics({ ov }: Data): CardSpec[] {
 }
 
 /* ── signalene: det som krever handling ───────────────────────── */
-function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
+function buildSignals(data: Data): Signal[] {
+  const { cash, com, ov, dash } = data
   const out: Signal[] = []
 
   if (cash) {
-    const floor = cash.assumptions?.monthly_wages || 0
+    const { amount: floor, said } = floorOf(data)
     // The committed line, not the expected one: this card's own words are
     // "det som allerede er fakturert inn og ut", and its amount reads
     // committed_close. It used to key off goes_negative, which the backend
@@ -196,8 +224,8 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
           sev: "warn",
           tag: "Kontanter",
           title: `Under gulvet i ${dip.label.toLowerCase()}`,
-          body: `Den sikre kontantstrømmen faller til ${kr(dip.committed_close)} kr i uka fra ${dateNo(dip.start)} — under én månedslønn (${kr(floor)} kr).`,
-          ask: `Hvorfor faller kontantstrømmen under én månedslønn i ${dip.label}? Vis ukene rundt, og hvilke innbetalinger som må komme inn for å unngå det.`,
+          body: `Den sikre kontantstrømmen faller til ${kr(dip.committed_close)} kr i uka fra ${dateNo(dip.start)} — under gulvet på ${kr(floor)} kr${said}.`,
+          ask: `Hvorfor faller kontantstrømmen under gulvet på ${kr(floor)} kr i ${dip.label}? Vis ukene rundt, og hvilke innbetalinger som må komme inn for å unngå det.`,
           amount: floor - dip.committed_close,
           due: dip.start,
         })
@@ -287,9 +315,10 @@ function buildSignals({ cash, com, ov, dash }: Data): Signal[] {
 }
 
 /* ── overskriften: én setning, den viktigste ──────────────────── */
-function headline({ cash, ov }: Data, list: Signal[]) {
+function headline(data: Data, list: Signal[]) {
+  const { cash, ov } = data
   if (cash) {
-    const floor = cash.assumptions?.monthly_wages || 0
+    const { amount: floor, assumed } = floorOf(data)
     const dip = cash.weeks.findIndex((w) => w.committed_close < floor)
     const debtor = ov?.top_debtor?.name
     // "hvis ingenting endres" is the committed line by definition — nothing
@@ -306,7 +335,7 @@ function headline({ cash, ov }: Data, list: Signal[]) {
       )
     }
     if (dip === -1 && floor) {
-      return `Kontantstrømmen holder seg over én månedslønn alle de neste 13 ukene. Tynnest i ${cash.low_committed.label.toLowerCase()}, med ${kr(cash.low_committed.amount)} kr.`
+      return `Kontantstrømmen holder seg over gulvet på ${kr(floor)} kr${assumed ? " (antatt)" : ""} alle de neste 13 ukene. Tynnest i ${cash.low_committed.label.toLowerCase()}, med ${kr(cash.low_committed.amount)} kr.`
     }
   }
   const crit = list.find((s) => s.sev === "crit")
@@ -320,8 +349,8 @@ const chartConfig = {
   expected_close: { label: "anslag", color: "var(--chart-expected)" },
 } satisfies ChartConfig
 
-function CashChart({ cash }: { cash: Cashflow }) {
-  const floor = cash.assumptions?.monthly_wages || 0
+function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
+  const { amount: floor, tag } = floorOf({ rules })
   const data = cash.weeks.map((w) => ({ ...w, week: w.label.replace("Uke ", "") }))
   return (
     <ChartContainer config={chartConfig} className="h-[280px] w-full">
@@ -348,7 +377,7 @@ function CashChart({ cash }: { cash: Cashflow }) {
             stroke="var(--destructive)"
             strokeDasharray="2 5"
             label={{
-              value: `gulv · én månedslønn ${mill(floor)}`,
+              value: `gulv · ${tag} ${mill(floor)}`,
               position: "insideBottomLeft",
               fill: "var(--destructive)",
               fontSize: 11,
@@ -501,6 +530,7 @@ export function Brief() {
       api.commitments().then((com) => setD((s) => ({ ...s, com }))),
       api.preflight().then((pre) => setD((s) => ({ ...s, pre }))),
       api.cashflow().then((cash) => setD((s) => ({ ...s, cash }))),
+      api.rules().then((r) => setD((s) => ({ ...s, rules: r.rules }))),
     ]
     Promise.allSettled(jobs).then((res) => {
       setLoading(false)
@@ -616,7 +646,7 @@ export function Brief() {
           <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {d.cash ? (
               <>
-                <CashChart cash={d.cash} />
+                <CashChart cash={d.cash} rules={d.rules} />
                 <CashTable cash={d.cash} />
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   Tynnest i{" "}

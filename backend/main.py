@@ -23,6 +23,7 @@ import lock
 import toolset
 import trace
 from cashflow import cached as cashflow_cached
+from cashflow import rules as cashflow_rules
 from commitments import cached as commitments_cached
 from industry import dashboard as industry_dashboard
 from preflight import cached as preflight_cached
@@ -273,6 +274,21 @@ async def cashflow() -> dict:
     except Exception as exc:  # noqa: BLE001
         log.exception("Cashflow failed")
         return _panel(exc, "Kontantstrømmen")
+
+
+@app.get("/api/rules")
+async def rules() -> dict:
+    """Selskapets regler slik beregningene bruker dem nå.
+
+    Gulvet regnes mot prognosens månedslønn, så forsiden og sakene måler mot
+    det samme tallet. Kan ikke prognosen bygges, svarer dette likevel — da står
+    gulvet på standardverdien, og `basis` sier det."""
+    try:
+        cf = await cashflow_cached()
+    except Exception as exc:  # noqa: BLE001 — reglene skal kunne leses uansett
+        log.warning("Reglene uten prognose: %s", exc)
+        cf = None
+    return {"rules": cashflow_rules(cf)}
 
 
 @app.get("/api/summary")
