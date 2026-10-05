@@ -134,7 +134,10 @@ export function Selskapet() {
                 <code className="font-mono text-[13px]">{key}</code>
                 <span className="text-muted-foreground flex-1 text-[13px]">{what}</span>
                 <b className="font-mono tabular-nums">
-                  {value ?? (
+                  {value != null ? (
+                    // A rule the company set reads with its unit, «2 000 000 kr», not 2000000.
+                    rule && !rule.assumed && used ? used : value
+                  ) : (
                     <span className="text-muted-foreground font-sans font-normal">
                       ikke satt
                       {rule?.assumed && used
