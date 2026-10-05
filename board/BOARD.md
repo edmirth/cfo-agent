@@ -35,7 +35,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 3. Extract the shared agent core so every AI job runs on it @agent #agent
 - [ ] 4. Store forecasts, cards, memory and job runs in a database @either #platform
 - [ ] 5. Save every weekly forecast and score it against the real balance @agent #forecast
 - [ ] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops
@@ -57,6 +56,7 @@ kanban-plugin: board
 
 ## Done
 
+- [x] 3. Extract the shared agent core so every AI job runs on it @agent #agent ✓ 2026-10-05
 - [x] 2. Move the cash floor, reminder days and alert minimum into the company rulebook @agent #rulebook ✓ 2026-10-05
 - [x] 1. Open the forecast on the money that is in the bank, not on the booked balance @edmir #liquidity ✓ 2026-10-04
 - [x] Place the 13 Week Cash Table on a better visual part, so that it it at least over the CFO summary and under the 4 cards, but that it is visible to see and track. ✓ 2026-10-02

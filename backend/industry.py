@@ -28,13 +28,12 @@ from dataclasses import dataclass
 from datetime import date
 from collections.abc import Callable
 
-from anthropic import AsyncAnthropic
-
 import calc
 import commitments
 import company
 import config
 import overview
+from agent import core
 from mcp_client import mcp
 
 log = logging.getLogger("cfo.industry")
@@ -42,8 +41,6 @@ log = logging.getLogger("cfo.industry")
 PROFILE_STORE = config.ROOT / "state" / "profile.json"
 VALUES_CACHE_SECONDS = 600
 _values_cache: dict = {}
-
-client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
 
 @dataclass(frozen=True)
@@ -391,19 +388,19 @@ def _computable(ctx: dict) -> list[str]:
     return out
 
 
+# The model picks from a menu and sets targets from what it knows of the
+# trade, so its targets are judgements and `verify` will log them as figures
+# without a source. That is the right reading of them, and the log says so.
+CLASSIFY = core.Job(name="bransje", max_tokens=2000, output="json",
+                    prompt_source="bevisene")
+
+
 async def classify(ctx: dict, evidence: dict) -> dict:
     available = _computable(ctx)
     prompt = CLASSIFIER_PROMPT.format(
         evidence=json.dumps(evidence, ensure_ascii=False, indent=1),
         menu=_menu(available))
-    msg = await client.messages.create(
-        model=config.CFO_MODEL, max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}])
-    text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"Klassifiseringen svarte ikke med JSON: {text[:200]}")
-    data = json.loads(text[start:end + 1])
+    data = (await core.complete(CLASSIFY, prompt)).data
 
     # The model chose from a menu, but trust is not a substitute for checking:
     # anything it invented is dropped rather than rendered as a blank tile.
