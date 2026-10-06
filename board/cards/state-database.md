@@ -20,3 +20,4 @@ State is JSON files in `state/`, written under thread locks, and chat sessions l
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
 - 2026-10-04 (agent): priority 4 in Next: the forecast ledger, job runs and the brief all need somewhere to be stored.
+- 2026-10-06 (agent): design written in `docs/database.md`: what goes in and stays out, the tables, seven rules, and the build order. SQLite now, Postgres at [[tenant-isolation]]. The schema in its appendix runs on SQLite 3.45 and its constraints were tested.
