@@ -8,10 +8,16 @@ Plain asserts, no framework: the venv has none, and adding a dependency so
 that the tests can exist would be the wrong trade.
 """
 import importlib
+import os
 import pkgutil
 import sys
+import tempfile
 import traceback
 from pathlib import Path
+
+# Before any backend module is imported: the whole run writes to a throwaway
+# database, so no test can reach state/cfo.db or import the real JSON files.
+os.environ["CFO_DB"] = str(Path(tempfile.mkdtemp()) / "cfo.db")
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "backend"))
