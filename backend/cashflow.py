@@ -30,6 +30,7 @@ from datetime import date, timedelta
 import bankgap
 import commitments
 import company
+import forecasts
 import freshness
 import workdays
 from mcp_client import mcp
@@ -846,6 +847,12 @@ async def build(today: date | None = None) -> dict:
     # of a company being told it has no receivables. `Cached` keeps a degraded
     # build only long enough to stop a stampede, then goes and asks again.
     data["partial"] = not (ar_complete and ap_complete)
+    # Kept, so it can be scored against what the bank later shows (card 5).
+    # Saving is never allowed to cost the forecast itself.
+    try:
+        forecasts.record(data, bankgap.ledger_balances(rows), today)
+    except Exception:  # noqa: BLE001
+        log.exception("Kunne ikke lagre prognosen")
     return data
 
 
