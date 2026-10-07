@@ -11,7 +11,7 @@ State is JSON files in `state/`, written under thread locks, and chat sessions l
 **Note.** Owner is @either: SQLite now or Postgres from day one depends on where you intend to host it. This card also covers [[sessions-out-of-process]].
 
 ## Done when
-- [ ] A database with tables for forecasts, job runs, cards, memory and chat sessions
+- [x] A database with tables for forecasts, job runs, cards, memory and chat sessions
 - [x] Every row carries a company id, even while there is only one company
 - [x] `cards.json` and `memory.json` are migrated once without losing history
 - [x] Concurrent requests cannot corrupt state
@@ -66,3 +66,11 @@ State is JSON files in `state/`, written under thread locks, and chat sessions l
   Called from `cashflow.build` behind a guard: a failed save never costs the
   forecast. 245 tests pass. Live check waiting on a Tripletex re-login: the
   refresh token expired on 2026-10-07 (`invalid_grant`).
+- 2026-10-07 (edmir/agent): re-logged into Tripletex (`scripts/oauth_login.py`;
+  its docstring says the refresh token never expires, and it did). Live check
+  on a scratch database: two builds the same day kept one forecast (13 weeks,
+  143 flows across ten kinds, opening 3 139 381 kr from the bank feed), the
+  booked balance 3 032 917 kr under today and the bank's 3 139 381 kr under
+  the feed's last day (6 Oct), and one `forecast` job run that saved both.
+  Card done; [[forecast-ledger]] can start scoring.
+
