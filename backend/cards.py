@@ -25,29 +25,23 @@ Deduplicated on `key`, so the same overdue customer does not stack up a new
 card every time the deck is rebuilt.
 """
 import asyncio
-import json
+import copy
 import logging
-import os
-import tempfile
-import threading
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
 import cashflow
 import company
 import config
+import db
 import memory
 import preflight
 
 log = logging.getLogger("cfo.cards")
 
-STORE = config.ROOT / "state" / "cards.json"
-MAX_CLOSED = 200
 # How long an approved card answers its check. "Send påminnelsen" is a promise
 # to act, not proof the customer paid; still late two weeks on, it comes back.
 FOLLOW_UP_DAYS = 14
-
-_lock = threading.Lock()
 
 # What a button is allowed to do. Anything not on this list would be a promise
 # the product cannot keep.
@@ -63,33 +57,151 @@ def _now() -> str:
     return date.today().isoformat()
 
 
+# ---------------------------------------------------------------- storage
+# The deck is stored in `cards`, one row per card, and every change to a card
+# is appended to `card_events`. The logic below still works on the deck as a
+# list of dicts — dedup, follow-ups and reconcile read across every card at
+# once — so `_editing` loads it inside a write transaction and writes back what
+# changed. The transaction holds the write lock from load to save, which is
+# what the thread lock did, now across processes too. Nothing is deleted: the
+# deck shows the latest closed cards, the database keeps them all.
+
+# Card field -> column, for the ones that are not JSON.
+COLUMNS = {"key": "key", "source": "source", "kind": "kind", "urgency": "urgency",
+           "title": "title", "body": "body", "status": "status",
+           "created": "created_on", "refreshed": "refreshed_on",
+           "snooze_until": "snooze_until", "woke": "woke_on",
+           "closed": "closed_on", "released": "released_on"}
+JSON_COLUMNS = {"options": "[]", "draft": None, "evidence": "[]",
+                "follow_up": None, "decided": None}
+
+
+def _row(card: dict) -> dict:
+    """A card as the columns store it."""
+    out = {col: card.get(field) for field, col in COLUMNS.items()}
+    out["source"] = out["source"] or "agent"
+    out["urgency"] = out["urgency"] or "medium"
+    out["status"] = out["status"] or "open"
+    out["created_on"] = out["created_on"] or _now()
+    out["amount_ore"] = db.to_ore(card.get("amount"))
+    for field, empty in JSON_COLUMNS.items():
+        value = card.get(field)
+        out[field] = db.dumps(value) if value is not None else empty
+    return out
+
+
+def _card(r) -> dict:
+    """A row as the rest of this module reads a card: the same dict as ever."""
+    card = {"id": r["ref"], "amount": db.to_kr(r["amount_ore"])}
+    for field, col in COLUMNS.items():
+        if r[col] is not None or field in ("key", "kind", "body"):
+            card[field] = r[col]
+    for field in JSON_COLUMNS:
+        if r[field] is not None:
+            card[field] = db.loads(r[field])
+    return card
+
+
+def insert_row(conn, cid: int, card: dict, event: str = "created",
+               actor: str = "system") -> None:
+    """Store a new card and the event that brought it."""
+    row = _row(card)
+    cols = ["company_id", "ref", *row]
+    card_id = conn.execute(
+        f"INSERT INTO cards ({', '.join(cols)}) VALUES "
+        f"({', '.join('?' * len(cols))}) RETURNING id",
+        (cid, card["id"], *row.values())).fetchone()[0]
+    _event(conn, cid, card_id, event, actor=actor, at=card.get("created"))
+
+
+def _event(conn, cid: int, card_id: int, event: str, actor: str = "system",
+           at: str | None = None, decided: dict | None = None) -> None:
+    d = decided or {}
+    conn.execute(
+        "INSERT INTO card_events (company_id, card_id, at, event, option_id, "
+        "effect, label, note, actor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (cid, card_id, at or db.now(), event, d.get("option"), d.get("effect"),
+         d.get("label"), d.get("note"), actor))
+
+
+def _events_for(before: dict, after: dict) -> list[tuple[str, str, dict | None]]:
+    """What happened to a card between two states: (event, actor, decision)."""
+    out = []
+    if after.get("decided") != before.get("decided") and after.get("decided"):
+        d = after["decided"]
+        if d.get("effect") == "resolved":
+            out.append(("resolved", "system", d))
+        else:
+            out.append(("decided", "ceo", d))
+    if before.get("status") == "snoozed" and after.get("status") == "open":
+        out.append(("woke", "system", None))
+    if after.get("released") and not before.get("released"):
+        out.append(("released", "system", None))
+    if after.get("refreshed") != before.get("refreshed") and not out:
+        out.append(("refreshed", "system", None))
+    return out
+
+
+def _read(conn) -> dict:
+    cid = db.company_id()
+    rows = conn.execute("SELECT * FROM cards WHERE company_id = ? ORDER BY id",
+                        (cid,)).fetchall()
+    counter = conn.execute("SELECT value FROM counters WHERE company_id = ? "
+                           "AND series = 'cards'", (cid,)).fetchone()
+    return {"counter": counter[0] if counter else 0,
+            "cards": [_card(r) for r in rows]}
+
+
+def _write(conn, data: dict, before: dict) -> None:
+    """Write back every card that changed, with the events that changed it."""
+    cid = db.company_id()
+    old = {c["id"]: c for c in before["cards"]}
+    ids = {r["ref"]: r["id"] for r in conn.execute(
+        "SELECT id, ref FROM cards WHERE company_id = ?", (cid,))}
+    # Updates before inserts: a card leaving the live set must make way for a
+    # new one on the same key, or the unique index refuses the newcomer.
+    fresh = []
+    for card in data["cards"]:
+        prev = old.get(card["id"])
+        if prev is None:
+            fresh.append(card)
+            continue
+        if _row(card) == _row(prev):
+            continue
+        row = _row(card)
+        conn.execute(
+            f"UPDATE cards SET {', '.join(f'{c} = ?' for c in row)} "
+            f"WHERE company_id = ? AND ref = ?",
+            (*row.values(), cid, card["id"]))
+        for event, actor, decided in _events_for(prev, card):
+            _event(conn, cid, ids[card["id"]], event, actor=actor,
+                   at=(decided or {}).get("at"), decided=decided)
+    for card in fresh:
+        insert_row(conn, cid, card,
+                   actor="agent" if card.get("source") == "agent" else "system")
+
+
+@contextmanager
+def _editing():
+    """The deck, loaded under the write lock, written back on the way out."""
+    with db.tx() as conn:
+        data = _read(conn)
+        before = copy.deepcopy(data)
+        yield conn, data
+        _write(conn, data, before)
+
+
 def _load() -> dict:
-    if not STORE.exists():
-        return {"counter": 0, "cards": []}
-    try:
-        data = json.loads(STORE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        log.error("Kortene er ulesbare (%s); starter på nytt", exc)
-        try:
-            STORE.rename(STORE.with_suffix(".corrupt.json"))
-        except OSError:
-            pass
-        return {"counter": 0, "cards": []}
-    data.setdefault("counter", 0)
-    data.setdefault("cards", [])
-    return data
+    """The deck as it stands. A read: nothing is held."""
+    with db.read() as conn:
+        return _read(conn)
 
 
 def _save(data: dict) -> None:
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=STORE.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=1)
-        os.replace(tmp, STORE)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    """Write a deck back that was read with `_load`. Kept for the tests and
+    for one-off repairs; the module itself edits through `_editing`."""
+    with db.tx() as conn:
+        _write(conn, data, _read(conn))
 
 
 def _kr(v) -> str:
@@ -152,8 +264,7 @@ def add(card: dict) -> dict | None:
     still-standing approved card already covers it — a deck that repeats itself
     is a deck nobody reads.
     """
-    with _lock:
-        data = _load()
+    with _editing() as (conn, data):
         key = card.get("key")
         if key:
             for existing in data["cards"]:
@@ -178,19 +289,16 @@ def add(card: dict) -> dict | None:
                     "of": previous["id"], "closed": previous.get("closed"),
                     "label": (previous.get("decided") or {}).get("label")}}
                 card["body"] = _with_follow_up(card, card.get("body", ""))
-        data["counter"] += 1
-        card = {**card, "id": f"K{data['counter']:03d}", "created": _now(),
-                "status": "open"}
+        card = {**card, "id": db.next_ref(conn, "cards", "K"),
+                "created": _now(), "status": "open"}
         data["cards"].append(card)
-        _save(data)
     log.info("Kort %s laget: %s", card["id"], card.get("title", "")[:60])
     return card
 
 
 def decide(card_id: str, option_id: str, note: str = "") -> dict:
     """Record what the CEO chose, and do what that choice actually means."""
-    with _lock:
-        data = _load()
+    with _editing() as (conn, data):
         card = next((c for c in data["cards"]
                      if c["id"].upper() == card_id.upper()), None)
         if card is None:
@@ -214,18 +322,13 @@ def decide(card_id: str, option_id: str, note: str = "") -> dict:
             card["status"] = "done"
             card["closed"] = _now()
 
-        closed = [c for c in data["cards"] if c["status"] in ("done", "dismissed", "resolved")]
-        if len(closed) > MAX_CLOSED:
-            drop = {id(c) for c in closed[: len(closed) - MAX_CLOSED]}
-            data["cards"] = [c for c in data["cards"] if id(c) not in drop]
-        _save(data)
-
     # The CFO should not re-argue something already settled, so the choice goes
     # into its memory as well as into the deck.
     try:
         memory.add_decision(
             f"{option.get('label')} — {card.get('title')}",
-            context=f"Kort {card['id']}" + (f": {note}" if note else ""))
+            context=f"Kort {card['id']}" + (f": {note}" if note else ""),
+            card=card["id"])
     except Exception:  # noqa: BLE001 — the decision itself is already saved
         log.exception("Kunne ikke skrive beslutningen til hukommelsen")
     return card
@@ -241,12 +344,13 @@ def deck(today: date | None = None) -> dict:
     """
     hypothetical = today is not None
     today = today or date.today()
-    with _lock:
-        data = _load()
-        if _wake(data["cards"], today) and not hypothetical:
-            _save(data)
-        cards = json.loads(json.dumps(data["cards"])) if hypothetical \
-            else list(data["cards"])
+    if hypothetical:
+        cards = copy.deepcopy(_load()["cards"])
+        _wake(cards, today)
+    else:
+        with _editing() as (conn, data):
+            _wake(data["cards"], today)
+            cards = list(data["cards"])
 
     rank = {"high": 0, "medium": 1, "low": 2}
     open_cards = [c for c in cards if c.get("status") == "open"]
@@ -506,9 +610,7 @@ def reconcile(candidates: list[dict], sources_ok: bool,
     """
     by_key = {c["key"]: c for c in candidates if c.get("key")}
     live = set(by_key)
-    with _lock:
-        data = _load()
-        changed = False
+    with _editing() as (conn, data):
         for card in data["cards"]:
             if card.get("source") != "auto":
                 continue
@@ -521,7 +623,6 @@ def reconcile(candidates: list[dict], sources_ok: bool,
             if (card.get("status") == "done" and not card.get("released")
                     and sources_ok and card.get("key") not in live):
                 card["released"] = _now()
-                changed = True
                 continue
             if card.get("status") not in ("open", "snoozed"):
                 continue
@@ -533,7 +634,6 @@ def reconcile(candidates: list[dict], sources_ok: bool,
                               "draft", "options"):
                     if field in fresh and fresh[field] != card.get(field):
                         card[field] = fresh[field]
-                        changed = True
                 card["refreshed"] = _now()
             elif sources_ok:
                 card["status"] = "resolved"
@@ -542,10 +642,7 @@ def reconcile(candidates: list[dict], sources_ok: bool,
                                    "effect": "resolved", "label": "Løste seg selv",
                                    "note": "Kontrollen som laget kortet finner ikke "
                                            "lenger noe å melde."}
-                changed = True
                 log.info("Kort %s lukket: forholdet er borte", card["id"])
-        if changed:
-            _save(data)
     for card in by_key.values():
         add({**card, "source": "auto"})
 

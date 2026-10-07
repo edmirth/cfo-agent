@@ -13,13 +13,13 @@ def _card(key, title, amount=1000):
 
 
 def test_dedup_on_key():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     assert cards.add(_card("k1", "a")) is not None
     assert cards.add(_card("k1", "a")) is None
 
 
 def test_snooze_wakes_only_for_real_reads():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add(_card("k1", "a"))
     cards.decide(c["id"], "wait")
     later = date.today() + timedelta(days=8)
@@ -28,14 +28,14 @@ def test_snooze_wakes_only_for_real_reads():
 
 
 def test_decision_reaches_memory():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add(_card("k1", "Skanska er sen"))
     cards.decide(c["id"], "ok", note="ringt")
     assert any("Skanska" in d["decision"] for d in memory._load()["decisions"])
 
 
 def test_reconcile_updates_and_closes_derived_cards():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     cards.add({**_card("collections:Skanska", "Skanska 70 d, 99 449 kr", 99449), "source": "auto"})
     cards.add({**_card("collections:Seby", "Seby 40 d", 94500), "source": "auto"})
     cards.add({**_card("agent:x", "agentens eget"), "source": "agent"})
@@ -51,14 +51,14 @@ def test_reconcile_updates_and_closes_derived_cards():
 
 
 def test_reconcile_closes_nothing_when_a_source_failed():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     cards.add({**_card("collections:Seby", "Seby 40 d", 94500), "source": "auto"})
     cards.reconcile([], sources_ok=False)
     assert len(cards.deck()["open"]) == 1
 
 
 def test_propose_drops_invalid_effects():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.propose("t", "b", options=[{"label": "Send", "effect": "launch_missiles"},
                                          {"label": "Ok", "effect": "approve"}])
     assert [o["effect"] for o in c["options"]] == ["approve"]
@@ -67,7 +67,7 @@ def test_propose_drops_invalid_effects():
 def test_approved_card_does_not_come_straight_back():
     # "Send påminnelsen", then the page reloads the deck: the customer is still
     # late, but the CEO has already acted. No new card.
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     cards.decide(c["id"], "ok")
     cards.reconcile([_card("collections:Skanska", "Skanska 70 d")], sources_ok=True)
@@ -75,7 +75,7 @@ def test_approved_card_does_not_come_straight_back():
 
 
 def test_approved_card_returns_once_the_condition_cleared_and_recurs():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     cards.decide(c["id"], "ok")
     cards.reconcile([], sources_ok=False)                  # unknown: still held
@@ -96,7 +96,7 @@ def _approve_days_ago(card_id, days):
 
 
 def test_still_late_two_weeks_after_approval_comes_back_as_a_follow_up():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     _approve_days_ago(c["id"], 13)
     cards.reconcile([_card("collections:Skanska", "Skanska 83 d")], sources_ok=True)
@@ -111,7 +111,7 @@ def test_still_late_two_weeks_after_approval_comes_back_as_a_follow_up():
 
 
 def test_a_follow_up_keeps_saying_so_when_refreshed():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     _approve_days_ago(c["id"], 20)
     cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
@@ -123,7 +123,7 @@ def test_a_follow_up_keeps_saying_so_when_refreshed():
 
 
 def test_approving_the_follow_up_starts_a_new_fortnight():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     _approve_days_ago(c["id"], 20)
     cards.reconcile([_card("collections:Skanska", "x")], sources_ok=True)
@@ -135,7 +135,7 @@ def test_approving_the_follow_up_starts_a_new_fortnight():
 
 # ------------------------------------- a check that did not run closes nothing
 def test_a_failed_check_does_not_close_its_cards():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     cards.add({**_card("reconcile:ar_tie", "Kundefordringer stemmer ikke"), "source": "auto"})
     cards.add({**_card("vouchers:2026-10", "12 bilag ubokført"), "source": "auto"})
     # Kundereskontro failed, the inbox answered and is now empty.
@@ -148,7 +148,7 @@ def test_a_failed_check_does_not_close_its_cards():
 
 
 def test_an_unread_invoice_list_does_not_mark_customers_as_paid():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     unknown = cards._unknown({"checks": []}, {"ar_complete": False})
     cards.reconcile([], sources_ok=True, unknown=unknown)
@@ -156,7 +156,7 @@ def test_an_unread_invoice_list_does_not_mark_customers_as_paid():
 
 
 def test_an_approved_card_is_not_released_while_its_check_is_unknown():
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     c = cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     cards.decide(c["id"], "ok")
     cards.reconcile([], sources_ok=True, unknown={"collections:"})
@@ -166,7 +166,7 @@ def test_an_approved_card_is_not_released_while_its_check_is_unknown():
 
 def test_refresh_keeps_cards_when_tripletex_fails():
     import asyncio
-    _tmp.store(cards); _tmp.store(memory)
+    _tmp.db()
     cards.add({**_card("collections:Skanska", "Skanska 70 d"), "source": "auto"})
     cards.add({**_card("reconcile:ap_tie", "Leverandørgjeld stemmer ikke"), "source": "auto"})
 

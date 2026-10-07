@@ -18,6 +18,7 @@ from mcp_client import McpError
 from overview import cached as overview_cached
 import cards
 import company
+import db
 import definitions
 import lock
 import toolset
@@ -194,6 +195,21 @@ async def toolset_audit() -> dict:
         return _panel(exc, "Verktøylista")
 
 
+def _open_database() -> None:
+    """Create or upgrade the database, and import the JSON files the first time.
+
+    Unlike the checks below, a failure here stops the server: an app that
+    cannot remember would serve a CFO that forgets every decision, and a
+    half-run migration is better looked at than worked around.
+    """
+    try:
+        cid = db.company_id()
+    except Exception:
+        log.critical("Databasen %s kunne ikke åpnes eller oppgraderes", db.PATH)
+        raise
+    log.info("Database: %s, selskap %d", db.PATH.name, cid)
+
+
 async def _check_definitions() -> None:
     """Record any definition that changed since the last run, before serving."""
     try:
@@ -224,6 +240,7 @@ async def _check_toolset() -> None:
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """What runs once at start and once at stop."""
+    _open_database()
     await _check_definitions()
     await _check_toolset()
     yield

@@ -16,28 +16,19 @@ Four things are kept, because they are the four a controller is held to:
 - **decisions** — what the CEO said to do, so the next conversation does not
   re-litigate it.
 
-Stored as one JSON file, written atomically. Snapshots are deterministic; the
-other three are written by the agent through the tools in `agent.py`.
+Stored in the database (`db.py`): `findings`, `predictions`, `decisions` and
+`kpi_snapshots`, every row with its company. Nothing is deleted to make room —
+the caps below limit what the briefing shows, not what is kept. Snapshots are
+deterministic; the other three are written by the agent through the tools in
+`agent/tools.py`.
 """
-import json
 import logging
-import os
-import tempfile
-import threading
 from datetime import date, timedelta
-from pathlib import Path
 
+import db
 import definitions
-from config import ROOT
 
 log = logging.getLogger("cfo.memory")
-
-STORE = ROOT / "state" / "memory.json"
-
-# A year of daily snapshots is enough to speak to any comparison a CEO asks
-# for; beyond that the ledger itself is the better source.
-MAX_SNAPSHOTS = 400
-MAX_RESOLVED = 100
 
 # What the briefing block shows. Caps exist because this text ships in every
 # system prompt — memory that crowds out the analysis is not an improvement.
@@ -45,58 +36,62 @@ SHOW_FINDINGS = 20
 SHOW_FORECASTS = 10
 SHOW_DECISIONS = 8
 
-_lock = threading.Lock()
-
 
 class NotFound(KeyError):
     """No record with that id. Distinct from a malformed call."""
 
-EMPTY: dict = {"since": None, "counter": 0, "snapshots": [],
-               "findings": [], "forecasts": [], "decisions": []}
-
-
-def _load() -> dict:
-    if not STORE.exists():
-        return dict(EMPTY, snapshots=[], findings=[], forecasts=[], decisions=[])
-    try:
-        data = json.loads(STORE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        # Memory is an enhancement, never a reason to fail a question. A
-        # corrupt store is set aside so the next write starts clean.
-        log.error("Memory unreadable (%s); starting a fresh store", exc)
-        try:
-            STORE.rename(STORE.with_suffix(".corrupt.json"))
-        except OSError:
-            pass
-        return dict(EMPTY, snapshots=[], findings=[], forecasts=[], decisions=[])
-    for key in ("snapshots", "findings", "forecasts", "decisions"):
-        data.setdefault(key, [])
-    data.setdefault("counter", 0)
-    data.setdefault("since", None)
-    return data
-
-
-def _save(data: dict) -> None:
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    # Write-then-rename: a crash mid-write leaves the old file intact rather
-    # than a truncated one.
-    fd, tmp = tempfile.mkstemp(dir=STORE.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=1)
-        os.replace(tmp, STORE)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-
-
-def _next_id(data: dict, prefix: str) -> str:
-    data["counter"] += 1
-    return f"{prefix}{data['counter']:03d}"
-
 
 def _today() -> str:
     return date.today().isoformat()
+
+
+# ------------------------------------------------------------------ rows
+def _finding(r) -> dict:
+    rec = {"id": r["ref"], "opened": r["opened_on"], "topic": r["topic"],
+           "severity": r["severity"], "statement": r["statement"],
+           "metric": r["metric"], "value": r["value"], "status": r["status"]}
+    if r["closed_on"] is not None or r["status"] != "open":
+        rec.update(closed=r["closed_on"], outcome=r["outcome"])
+    return rec
+
+
+def _prediction(r) -> dict:
+    rec = {"id": r["ref"], "made": r["made_on"], "period": r["period"],
+           "metric": r["metric"], "expected": r["expected"], "low": r["low"],
+           "high": r["high"], "basis": r["basis"], "actual": r["actual"]}
+    if r["scored_on"] is not None:
+        rec.update(scored=r["scored_on"], note=r["note"])
+        if r["error_pct"] is not None:
+            rec["error_pct"] = r["error_pct"]
+    return rec
+
+
+def _decision(r) -> dict:
+    return {"id": r["ref"], "date": r["decided_on"], "decision": r["decision"],
+            "context": r["context"]}
+
+
+def _load() -> dict:
+    """Everything remembered, in the shape the briefing reads, oldest first."""
+    cid = db.company_id()
+    with db.read() as conn:
+        snaps: dict[str, dict] = {}
+        for r in conn.execute(
+                "SELECT on_date, kpi, value, definitions_hash FROM kpi_snapshots "
+                "WHERE company_id = ? ORDER BY on_date", (cid,)):
+            s = snaps.setdefault(r["on_date"], {"date": r["on_date"], "kpis": {}})
+            s["kpis"][r["kpi"]] = r["value"]
+            if r["definitions_hash"]:
+                s["definitions_hash"] = r["definitions_hash"]
+        q = lambda table: conn.execute(  # noqa: E731
+            f"SELECT * FROM {table} WHERE company_id = ? ORDER BY id", (cid,))
+        findings = [_finding(r) for r in q("findings")]
+        forecasts = [_prediction(r) for r in q("predictions")]
+        decisions = [_decision(r) for r in q("decisions")]
+    snapshots = list(snaps.values())
+    return {"since": snapshots[0]["date"] if snapshots else None,
+            "snapshots": snapshots, "findings": findings,
+            "forecasts": forecasts, "decisions": decisions}
 
 
 # ---------------------------------------------------------------- snapshots
@@ -108,21 +103,20 @@ def snapshot(kpis: dict, on: str | None = None) -> None:
     clean = {k: v for k, v in (kpis or {}).items() if isinstance(v, (int, float))}
     if not clean:
         return
-    with _lock:
-        data = _load()
-        data["snapshots"] = [s for s in data["snapshots"] if s.get("date") != on]
-        # Stamped with the definitions in force, so a trend across a change of
-        # definition can be spotted instead of quietly compared.
-        try:
-            mark = definitions.stamp()
-        except Exception:  # noqa: BLE001 — a snapshot is better than none
-            mark = {}
-        data["snapshots"].append({"date": on, "kpis": clean, **mark})
-        data["snapshots"].sort(key=lambda s: s["date"])
-        del data["snapshots"][:-MAX_SNAPSHOTS]
-        if not data["since"]:
-            data["since"] = on
-        _save(data)
+    # Stamped with the definitions in force, so a trend across a change of
+    # definition can be spotted instead of quietly compared.
+    try:
+        mark = definitions.stamp().get("definitions_hash")
+    except Exception:  # noqa: BLE001 — a snapshot is better than none
+        mark = None
+    cid = db.company_id()
+    with db.tx() as conn:
+        conn.execute("DELETE FROM kpi_snapshots WHERE company_id = ? AND on_date = ?",
+                     (cid, on))
+        conn.executemany(
+            "INSERT INTO kpi_snapshots (company_id, on_date, kpi, value, "
+            "definitions_hash) VALUES (?, ?, ?, ?, ?)",
+            [(cid, on, k, float(v), mark) for k, v in clean.items()])
 
 
 # ----------------------------------------------------------------- writes
@@ -130,75 +124,89 @@ def snapshot(kpis: dict, on: str | None = None) -> None:
 def add_finding(topic: str, severity: str, statement: str,
                 metric: str | None = None, value: float | None = None) -> dict:
     """Flag something. Returns the stored record, id included."""
-    with _lock:
-        data = _load()
-        rec = {"id": _next_id(data, "F"), "opened": _today(), "topic": topic,
-               "severity": severity, "statement": statement,
-               "metric": metric, "value": value, "status": "open"}
-        data["findings"].append(rec)
-        _save(data)
-    log.info("Finding %s opened: %s", rec["id"], topic)
-    return rec
+    with db.tx() as conn:
+        ref = db.next_ref(conn, "memory", "F")
+        conn.execute(
+            "INSERT INTO findings (company_id, ref, opened_on, topic, severity, "
+            "statement, metric, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (db.company_id(), ref, _today(), topic, severity, statement,
+             metric, value))
+    log.info("Finding %s opened: %s", ref, topic)
+    return {"id": ref, "opened": _today(), "topic": topic, "severity": severity,
+            "statement": statement, "metric": metric, "value": value,
+            "status": "open"}
 
 
 def resolve_finding(finding_id: str, outcome: str, status: str = "resolved") -> dict:
-    with _lock:
-        data = _load()
-        for rec in data["findings"]:
-            if rec["id"].upper() == finding_id.upper():
-                rec.update(status=status, closed=_today(), outcome=outcome)
-                closed = [f for f in data["findings"] if f["status"] != "open"]
-                if len(closed) > MAX_RESOLVED:
-                    drop = {id(f) for f in closed[: len(closed) - MAX_RESOLVED]}
-                    data["findings"] = [f for f in data["findings"] if id(f) not in drop]
-                _save(data)
-                return rec
+    with db.tx() as conn:
+        row = conn.execute(
+            "UPDATE findings SET status = ?, closed_on = ?, outcome = ? "
+            "WHERE company_id = ? AND ref = ? RETURNING *",
+            (status, _today(), outcome, db.company_id(),
+             finding_id.strip().upper())).fetchone()
+    if row is None:
         raise NotFound(f"No finding {finding_id}")
+    return _finding(row)
 
 
 def open_findings() -> list[dict]:
     """Everything flagged and not yet closed, oldest first."""
-    with _lock:
-        return [dict(f) for f in _load()["findings"] if f.get("status") == "open"]
+    with db.read() as conn:
+        return [_finding(r) for r in conn.execute(
+            "SELECT * FROM findings WHERE company_id = ? AND status = 'open' "
+            "ORDER BY id", (db.company_id(),))]
 
 
 def add_forecast(period: str, metric: str, expected: float,
                  basis: str, low: float | None = None,
                  high: float | None = None) -> dict:
-    with _lock:
-        data = _load()
-        rec = {"id": _next_id(data, "P"), "made": _today(), "period": period,
-               "metric": metric, "expected": expected, "low": low, "high": high,
-               "basis": basis, "actual": None}
-        data["forecasts"].append(rec)
-        _save(data)
-    log.info("Forecast %s recorded: %s %s", rec["id"], metric, period)
-    return rec
+    with db.tx() as conn:
+        ref = db.next_ref(conn, "memory", "P")
+        conn.execute(
+            "INSERT INTO predictions (company_id, ref, made_on, period, metric, "
+            "expected, low, high, basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (db.company_id(), ref, _today(), period, metric, expected, low,
+             high, basis))
+    log.info("Forecast %s recorded: %s %s", ref, metric, period)
+    return {"id": ref, "made": _today(), "period": period, "metric": metric,
+            "expected": expected, "low": low, "high": high, "basis": basis,
+            "actual": None}
 
 
 def score_forecast(forecast_id: str, actual: float, note: str = "") -> dict:
-    with _lock:
-        data = _load()
-        for rec in data["forecasts"]:
-            if rec["id"].upper() == forecast_id.upper():
-                rec.update(actual=actual, scored=_today(), note=note)
-                exp = rec.get("expected")
-                if exp:
-                    rec["error_pct"] = round((actual - exp) / abs(exp) * 100, 1)
-                _save(data)
-                return rec
-        raise NotFound(f"No forecast {forecast_id}")
+    cid, ref = db.company_id(), forecast_id.strip().upper()
+    with db.tx() as conn:
+        row = conn.execute("SELECT expected FROM predictions "
+                           "WHERE company_id = ? AND ref = ?", (cid, ref)).fetchone()
+        if row is None:
+            raise NotFound(f"No forecast {forecast_id}")
+        exp = row["expected"]
+        error = round((actual - exp) / abs(exp) * 100, 1) if exp else None
+        row = conn.execute(
+            "UPDATE predictions SET actual = ?, scored_on = ?, note = ?, "
+            "error_pct = ? WHERE company_id = ? AND ref = ? RETURNING *",
+            (actual, _today(), note, error, cid, ref)).fetchone()
+    return _prediction(row)
 
 
-def add_decision(decision: str, context: str = "") -> dict:
-    with _lock:
-        data = _load()
-        rec = {"id": _next_id(data, "D"), "date": _today(),
-               "decision": decision, "context": context}
-        data["decisions"].append(rec)
-        _save(data)
+def add_decision(decision: str, context: str = "",
+                 card: str | None = None) -> dict:
+    """Record what the CEO chose. `card` is the card's ref when it came from
+    one, so the decision can be traced back to what it answered."""
+    cid = db.company_id()
+    with db.tx() as conn:
+        ref = db.next_ref(conn, "memory", "D")
+        card_id = None
+        if card:
+            hit = conn.execute("SELECT id FROM cards WHERE company_id = ? AND ref = ?",
+                               (cid, card.upper())).fetchone()
+            card_id = hit["id"] if hit else None
+        conn.execute(
+            "INSERT INTO decisions (company_id, ref, decided_on, decision, "
+            "context, card_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, ref, _today(), decision, context, card_id))
     log.info("Decision recorded: %s", decision[:60])
-    return rec
+    return {"id": ref, "date": _today(), "decision": decision, "context": context}
 
 
 # ---------------------------------------------------------------- briefing
@@ -251,8 +259,7 @@ def briefing(today: date | None = None) -> str:
     """
     today = today or date.today()
     try:
-        with _lock:
-            data = _load()
+        data = _load()
     except Exception as exc:  # noqa: BLE001 — memory must never break a turn
         log.exception("Briefing failed: %s", exc)
         return ""
