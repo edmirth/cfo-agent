@@ -56,3 +56,13 @@ State is JSON files in `state/`, written under thread locks, and chat sessions l
   second read the prompt from cache). 240 tests pass. This also covers
   [[sessions-out-of-process]]. **Left for PR C:** forecast runs and bank
   balances written daily; then box 1 is ticked and the card is done.
+- 2026-10-07 (agent): **PR C.** `backend/forecasts.py` keeps the 13-week
+  forecast once a day — the first whole build — in `forecast_runs`, with its
+  13 weeks and every flow behind them, the assumptions, the definitions hash
+  and the `forecast` job run that saved it. A partial build is not kept.
+  `bank_balances` gets each bank account's booked balance (`ledger`) every
+  build, and the bank's own figure (`bank_feed`, booked + the measured gap)
+  filed under the feed's last day, only when every month of the gap was read.
+  Called from `cashflow.build` behind a guard: a failed save never costs the
+  forecast. 245 tests pass. Live check waiting on a Tripletex re-login: the
+  refresh token expired on 2026-10-07 (`invalid_grant`).
