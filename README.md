@@ -113,6 +113,7 @@ Anthropic credits.
 | `GET` | `/api/trace` | `?account=1920&date_from=&date_to=` — the postings behind a balance |
 | `GET` `PUT` | `/api/company` | What the company says about itself; `PUT {text}` saves it |
 | `GET` | `/api/toolset` | Allowed tools audited against the server |
+| `GET` | `/api/forecast-accuracy` | Each Monday's forecast against the bank 1, 2 and 4 weeks later, and the streak |
 | `GET` | `/api/job-runs` | `?job=chat&limit=50` — what ran, how it ended, tokens and cost |
 | `GET` | `/api/presets` | The suggested questions |
 | `POST` | `/api/chat` | Chat turn, streamed as SSE; emits a `check` event tracing the figures |

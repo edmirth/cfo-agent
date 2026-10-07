@@ -98,14 +98,15 @@ def _forecast(conn, data: dict, today: date, run: int | None) -> int | None:
     row = conn.execute(
         "INSERT INTO forecast_runs (company_id, made_on, purpose, opening_ore, "
         "opening_source, low_committed_ore, low_committed_week, low_expected_ore, "
-        "low_expected_week, assumptions, definitions_hash, job_run_id) "
-        "VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "low_expected_week, assumptions, definitions_hash, job_run_id, items) "
+        "VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT DO NOTHING RETURNING id",
         (cid, today.isoformat(), db.to_ore(data["opening"]),
          "bank_feed" if bank.get("adjustment") is not None else "ledger",
          db.to_ore(low_c.get("amount")), low_c.get("start"),
          db.to_ore(low_e.get("amount")), low_e.get("start"),
-         db.dumps(data.get("assumptions") or {}), stamp, run)).fetchone()
+         db.dumps(data.get("assumptions") or {}), stamp, run,
+         db.dumps(data.get("items")))).fetchone()
     if row is None:
         return None                     # today's is already kept
     run_id = row[0]

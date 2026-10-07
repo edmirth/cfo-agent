@@ -31,6 +31,7 @@ import bankgap
 import commitments
 import company
 import forecasts
+import scoring
 import freshness
 import workdays
 from mcp_client import mcp
@@ -229,51 +230,92 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     return out, warnings, complete
 
 
-def _schedule_receipts(invoices: list, today: date) -> list:
-    """When the money actually lands.
+def _receipt_parts(inv: dict, today: date) -> list[tuple[date, float]] | None:
+    """When one customer invoice's money is expected to land: (date, amount).
 
     An invoice that is already overdue will not arrive the day you notice it,
     and one that is not yet due will not arrive on the dot either. Overdue
     invoices are spread over the next few weeks; the rest are dated from their
-    due date plus the lag customers take anyway.
+    due date plus the lag customers take anyway. None for an invoice with no
+    usable due date. The schedule below and the invoice list kept with each
+    forecast both come from here, so a miss is measured against what the
+    forecast actually said.
     """
+    try:
+        due = date.fromisoformat(inv["due"])
+    except (ValueError, TypeError, KeyError):
+        return None
+    if due < today:
+        per = inv["amount"] / LATE_SPREAD_WEEKS
+        return [(today + timedelta(days=7 * (w + 1)), per)
+                for w in range(LATE_SPREAD_WEEKS)]
+    return [(due + timedelta(days=PAY_LAG_DAYS), inv["amount"])]
+
+
+def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
+    """When one of our own bills leaves: on its due date, or this week if it
+    is already overdue. As `_receipt_parts`, but without the lag or the spread
+    — both would understate what leaves the account soon."""
+    try:
+        due = date.fromisoformat(bill["due"])
+    except (ValueError, TypeError, KeyError):
+        return None
+    return [(max(due, today), bill["amount"])]
+
+
+def _schedule_receipts(invoices: list, today: date) -> list:
+    """Customer invoices as flows. Not-yet-due ones keep their own line;
+    overdue ones are pooled into one line a week, since the spread is ours and
+    a line per invoice per week would bury the table."""
     flows, overdue = [], []
     for inv in invoices:
-        try:
-            due = date.fromisoformat(inv["due"])
-        except (ValueError, TypeError):
+        parts = _receipt_parts(inv, today)
+        if parts is None:
             continue
-        if due < today:
-            overdue.append(inv)
-        else:
-            flows.append({"date": due + timedelta(days=PAY_LAG_DAYS),
-                          "amount": inv["amount"], "kind": "ar",
+        if len(parts) > 1:
+            overdue.append((inv, parts))
+            continue
+        for when, amount in parts:
+            flows.append({"date": when, "amount": amount, "kind": "ar",
                           "label": f"Faktura til {inv['name']}"})
     if overdue:
-        total = sum(i["amount"] for i in overdue)
-        per = total / LATE_SPREAD_WEEKS
         for w in range(LATE_SPREAD_WEEKS):
             flows.append({"date": today + timedelta(days=7 * (w + 1)),
-                          "amount": per, "kind": "ar_late",
+                          "amount": sum(p[w][1] for _, p in overdue),
+                          "kind": "ar_late",
                           "label": f"Forfalte fakturaer ({len(overdue)} stk), "
                                    f"fordelt over {LATE_SPREAD_WEEKS} uker"})
     return flows
 
 
 def _schedule_payments(bills: list, today: date) -> list:
-    """When our own bills leave. A bill not yet due goes on its due date; one
-    already overdue goes this week. The customer scheduler above must not be
-    reused here — it adds the lag customers take, and spreads the overdue
-    book over weeks, both of which understate what leaves the account soon."""
+    """Our own bills as flows. The customer scheduler above must not be reused
+    here — it adds the lag customers take, and spreads the overdue book over
+    weeks, both of which understate what leaves the account soon."""
     flows = []
     for bill in bills:
-        try:
-            due = date.fromisoformat(bill["due"])
-        except (ValueError, TypeError):
-            continue
-        flows.append({"date": max(due, today), "amount": -bill["amount"],
-                      "kind": "ap", "label": f"Regning fra {bill['name']}"})
+        for when, amount in _payment_parts(bill, today) or []:
+            flows.append({"date": when, "amount": -amount,
+                          "kind": "ap", "label": f"Regning fra {bill['name']}"})
     return flows
+
+
+def _expected_items(invoices: list, bills: list, today: date) -> dict:
+    """Every open invoice and bill, with when this forecast expects it.
+
+    Kept with the saved forecast, so that when it is scored a miss can be put
+    down to who paid later than expected — the pooled overdue line cannot say.
+    """
+    def items(rows, parts_of):
+        out = []
+        for r in rows:
+            parts = parts_of(r, today)
+            if parts:
+                out.append({"number": r.get("number"), "name": r.get("name") or "",
+                            "amount": round(r["amount"], 2),
+                            "parts": [[d.isoformat(), round(a, 2)] for d, a in parts]})
+        return out
+    return {"ar": items(invoices, _receipt_parts), "ap": items(bills, _payment_parts)}
 
 
 def _run_rates(rows: list, columns: list,
@@ -835,6 +877,7 @@ async def build(today: date | None = None) -> dict:
                      vat_share, vat_measured, booked_vat,
                      invoiced_this_month, payroll_months)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
+    data["items"] = _expected_items(ar_due, ap_due, today)
     # What is still owed after the bank's unbooked receipts: a customer who
     # has paid must not be sent a reminder because the books are behind.
     data["ar_open"] = ar_due
@@ -853,6 +896,12 @@ async def build(today: date | None = None) -> dict:
         forecasts.record(data, bankgap.ledger_balances(rows), today)
     except Exception:  # noqa: BLE001
         log.exception("Kunne ikke lagre prognosen")
+    # And the forecasts from 1, 2 and 4 weeks ago held against what the bank
+    # showed — scored as soon as the figures for it exist, and only once.
+    try:
+        scoring.score(today)
+    except Exception:  # noqa: BLE001
+        log.exception("Kunne ikke score prognosene")
     return data
 
 

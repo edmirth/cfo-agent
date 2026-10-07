@@ -23,6 +23,7 @@ import db
 import definitions
 import job_runs
 import lock
+import scoring
 import toolset
 import trace
 from cashflow import cached as cashflow_cached
@@ -416,6 +417,16 @@ async def save_company(req: CompanyText) -> dict:
     except OSError as exc:
         log.exception("Kunne ikke lagre company.md")
         raise HTTPException(500, str(exc)) from exc
+
+
+@app.get("/api/forecast-accuracy")
+async def forecast_accuracy() -> dict:
+    """How close each Monday's forecast came, 1, 2 and 4 weeks later."""
+    try:
+        return scoring.track_record()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Treffsikkerheten feilet")
+        return _panel(exc, "Treffsikkerheten")
 
 
 @app.get("/api/job-runs")
