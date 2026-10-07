@@ -113,6 +113,7 @@ Anthropic credits.
 | `GET` | `/api/trace` | `?account=1920&date_from=&date_to=` — the postings behind a balance |
 | `GET` `PUT` | `/api/company` | What the company says about itself; `PUT {text}` saves it |
 | `GET` | `/api/toolset` | Allowed tools audited against the server |
+| `GET` | `/api/job-runs` | `?job=chat&limit=50` — what ran, how it ended, tokens and cost |
 | `GET` | `/api/presets` | The suggested questions |
 | `POST` | `/api/chat` | Chat turn, streamed as SSE; emits a `check` event tracing the figures |
 | `POST` | `/api/session/reset?session_id=…` | Clear a conversation |
@@ -122,8 +123,6 @@ Sending a preset id (`daily`, `money`, `ar`, `margin`, `forecast`, `weeks`,
 
 ## Before this goes to a customer
 
-- **Sessions are in-memory.** `SESSIONS` in `main.py` is a process-local dict.
-  Move to Redis or Postgres before running more than one worker.
 - **No auth on the app itself.** Anyone who reaches the port gets the CFO.
 - **The daily brief runs on request.** A cron or a scheduled deployment is what
   makes it arrive unasked.

@@ -23,6 +23,7 @@ import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +38,11 @@ MIGRATIONS = Path(__file__).parent / "migrations"
 BUSY_TIMEOUT_S = 10.0
 
 _ready: dict[str, int] = {}          # path -> company id, once migrated
+
+# The job run doing the current work, set by the agent core for the length of
+# a run. Rows a job writes carry it, so each can be traced to the run that
+# made it. A ContextVar, so two chats at once each see their own.
+job_run: ContextVar[int | None] = ContextVar("job_run", default=None)
 _ready_lock = threading.Lock()
 
 
