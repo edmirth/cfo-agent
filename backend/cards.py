@@ -104,8 +104,8 @@ def _card(r) -> dict:
 
 def insert_row(conn, cid: int, card: dict, event: str = "created",
                actor: str = "system") -> None:
-    """Store a new card and the event that brought it."""
-    row = _row(card)
+    """Store a new card, the run that raised it, and the event that brought it."""
+    row = {**_row(card), "job_run_id": db.job_run.get()}
     cols = ["company_id", "ref", *row]
     card_id = conn.execute(
         f"INSERT INTO cards ({', '.join(cols)}) VALUES "

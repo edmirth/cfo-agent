@@ -40,3 +40,19 @@ State is JSON files in `state/`, written under thread locks, and chat sessions l
   **Left for PR B:** chat sessions and job runs into their tables. **PR C:**
   forecast runs and bank balances written daily. Then box 1 is ticked.
 
+- 2026-10-07 (agent): **PR B.** Chat sessions are in `conversations` /
+  `messages` (`backend/conversations.py`); `SESSIONS` in `main.py` is gone. A
+  turn is saved in one transaction when it finishes, before the `done` event
+  goes out; a failed or interrupted turn saves nothing; trimming happens on
+  reading. Content blocks are stored as the API sent them (`to_dict`), and a
+  thinking signature or MCP call comes back byte-identical. Every job run is a
+  row in `job_runs` (`backend/job_runs.py`): opened as running, closed as ok /
+  partial / failed with tokens, cost, unverified figures and the error. Its id
+  is in `db.job_run` while it works, so findings, predictions, cards and
+  messages it writes carry it. `GET /api/job-runs` lists them.
+- 2026-10-07 (agent): checked live on a copy of `state/`: asked, restarted
+  the server, asked again — the conversation came back and the answer quoted
+  the first one (week 50, 933 265 kr). Runs recorded at 0.71 and 0.11 USD (the
+  second read the prompt from cache). 240 tests pass. This also covers
+  [[sessions-out-of-process]]. **Left for PR C:** forecast runs and bank
+  balances written daily; then box 1 is ticked and the card is done.

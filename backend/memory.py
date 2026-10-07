@@ -128,9 +128,9 @@ def add_finding(topic: str, severity: str, statement: str,
         ref = db.next_ref(conn, "memory", "F")
         conn.execute(
             "INSERT INTO findings (company_id, ref, opened_on, topic, severity, "
-            "statement, metric, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "statement, metric, value, job_run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (db.company_id(), ref, _today(), topic, severity, statement,
-             metric, value))
+             metric, value, db.job_run.get()))
     log.info("Finding %s opened: %s", ref, topic)
     return {"id": ref, "opened": _today(), "topic": topic, "severity": severity,
             "statement": statement, "metric": metric, "value": value,
@@ -164,9 +164,10 @@ def add_forecast(period: str, metric: str, expected: float,
         ref = db.next_ref(conn, "memory", "P")
         conn.execute(
             "INSERT INTO predictions (company_id, ref, made_on, period, metric, "
-            "expected, low, high, basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "expected, low, high, basis, job_run_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (db.company_id(), ref, _today(), period, metric, expected, low,
-             high, basis))
+             high, basis, db.job_run.get()))
     log.info("Forecast %s recorded: %s %s", ref, metric, period)
     return {"id": ref, "made": _today(), "period": period, "metric": metric,
             "expected": expected, "low": low, "high": high, "basis": basis,

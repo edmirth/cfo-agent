@@ -18,8 +18,10 @@ from mcp_client import McpError
 from overview import cached as overview_cached
 import cards
 import company
+import conversations
 import db
 import definitions
+import job_runs
 import lock
 import toolset
 import trace
@@ -49,30 +51,6 @@ except lock.AlreadyRunning as exc:
     raise SystemExit(1) from None
 
 app = FastAPI(title="CFO Agent", version="0.1.0")
-
-# In-memory conversation store. One process only — move to Redis or Postgres
-# before running more than one worker. Oldest sessions are evicted so a
-# long-running server cannot grow without bound.
-SESSIONS: dict[str, list[dict]] = {}
-MAX_SESSIONS = 200
-
-
-def _touch(session_id: str) -> list[dict]:
-    """Fetch a session and mark it most recently used."""
-    history = SESSIONS.pop(session_id, [])
-    SESSIONS[session_id] = history
-    while len(SESSIONS) > MAX_SESSIONS:
-        SESSIONS.pop(next(iter(SESSIONS)))
-    return history
-
-
-def _answers_a_tool(msg: dict) -> bool:
-    """True when this user message only carries tool results."""
-    content = msg.get("content")
-    if not isinstance(content, list):
-        return False
-    return any((b.get("type") if isinstance(b, dict) else getattr(b, "type", None))
-               == "tool_result" for b in content)
 
 DAILY_BRIEF = (
     "Hvordan går det med selskapet akkurat nå? Hent ferske tall. Start med "
@@ -440,6 +418,16 @@ async def save_company(req: CompanyText) -> dict:
         raise HTTPException(500, str(exc)) from exc
 
 
+@app.get("/api/job-runs")
+async def runs(job: str | None = None,
+               limit: int = Query(50, ge=1, le=500)) -> dict:
+    """What ran, newest first: status, tokens, cost and figures without a source."""
+    rows = job_runs.recent(job, limit)
+    return {"runs": rows,
+            "cost_usd": round(sum(r["cost_usd"] or 0 for r in rows), 4),
+            "failed": sum(r["status"] == "failed" for r in rows)}
+
+
 @app.get("/api/presets")
 async def presets() -> dict:
     return {"presets": [{"id": p["id"], "label": p["label"]} for p in PRESETS]}
@@ -447,7 +435,7 @@ async def presets() -> dict:
 
 @app.post("/api/session/reset")
 async def reset(session_id: str) -> dict:
-    SESSIONS.pop(session_id, None)
+    conversations.delete(session_id)
     return {"ok": True}
 
 
@@ -457,29 +445,30 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         raise HTTPException(500, "ANTHROPIC_API_KEY er ikke satt.")
 
     session_id = req.session_id or uuid.uuid4().hex
-    history = _touch(session_id)
-
-    # A question the assistant never answered — the previous turn failed or
-    # was interrupted — is dropped rather than stacked under the new one.
-    while history and history[-1]["role"] == "user":
-        history.pop()
+    # From the database, already trimmed to open on a real question. A turn
+    # that failed or was interrupted was never saved, so there is no
+    # unanswered question left to stack the new one under.
+    history = conversations.load(session_id)
 
     # A preset id sent as the message body expands to its full prompt.
     text = next((p["prompt"] for p in PRESETS if p["id"] == req.message), req.message)
     history.append({"role": "user", "content": text})
-
-    # Trim oldest turns. The history must open on a real user message: an
-    # assistant turn, or a user turn carrying tool results whose tool_use has
-    # just been trimmed away, is rejected by the API.
-    if len(history) > config.MAX_HISTORY_MESSAGES:
-        del history[: len(history) - config.MAX_HISTORY_MESSAGES]
-        while history and (history[0]["role"] != "user" or _answers_a_tool(history[0])):
-            history.pop(0)
+    asked = len(history) - 1
 
     async def stream():
         yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
         try:
             async for event in run_turn(history):
+                if event.get("type") == "done":
+                    # Saved once the answer is whole — the question and
+                    # everything the answer produced, in one transaction — and
+                    # before the last event goes out, so a browser that closes
+                    # on "done" cannot cost the conversation its last turn.
+                    try:
+                        conversations.append(session_id, history[asked:],
+                                             job_run_id=event.get("job_run_id"))
+                    except Exception:  # noqa: BLE001 — he has the answer
+                        log.exception("Kunne ikke lagre samtalen %s", session_id)
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
             log.exception("Turn failed")

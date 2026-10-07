@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from anthropic import AsyncAnthropic, BadRequestError
 
 import config
+import db
+import job_runs
 import toolset
 import verify
 from agent import tools
@@ -57,6 +59,10 @@ PRICES = {
     "claude-sonnet-4-6": (3.0, 15.0), "claude-haiku-4-5": (1.0, 5.0),
 }
 CACHE_READ, CACHE_WRITE = 0.1, 1.25
+
+
+# How a run ended, in the log's words and in the job_runs status.
+OUTCOMES = {"ok": "ferdig", "partial": "kuttet", "failed": "feilet"}
 
 
 @dataclass(frozen=True)
@@ -175,19 +181,24 @@ def cost(usage: dict, model: str | None = None) -> float | None:
             + usage.get("output", 0) * p_out) / 1_000_000
 
 
-def _log_run(job: Job, usage: dict, rounds: int, unverified: int | None,
-             outcome: str) -> None:
-    usd = cost(usage)
+def _log_run(job: Job, run_id: int | None, run: dict, status: str) -> None:
+    """Say what the run cost and how it ended — in the log and in job_runs."""
+    usage, usd = run["usage"], cost(run["usage"])
     log.info("jobb %s %s: %d runder, %d inn, %d ut, cache %d lest / %d skrevet, "
              "%s, %s tall uten kilde",
-             job.name, outcome, rounds, usage["input"], usage["output"],
-             usage["cache_read"], usage["cache_write"],
+             job.name, OUTCOMES[status], run["rounds"], usage["input"],
+             usage["output"], usage["cache_read"], usage["cache_write"],
              f"{usd:.4f} USD" if usd is not None else "ukjent pris",
-             "?" if unverified is None else unverified)
+             "?" if run["unverified"] is None else run["unverified"])
+    job_runs.finish(run_id, status, usage=usage, cost_usd=usd,
+                    unverified=run["unverified"], error=run.get("error"),
+                    details={"rounds": run["rounds"],
+                             "cache_write_tokens": usage["cache_write"],
+                             "stop_reason": run.get("stop_reason")})
 
 
-async def stream(job: Job, messages: list[dict], *,
-                 raise_errors: bool = False) -> AsyncIterator[dict]:
+async def stream(job: Job, messages: list[dict], *, raise_errors: bool = False,
+                 triggered_by: str = "user") -> AsyncIterator[dict]:
     """Run one turn of `job`, yielding UI events.
 
     Mutates `messages` in place with the assistant turns it produces, so the
@@ -196,6 +207,11 @@ async def stream(job: Job, messages: list[dict], *,
 
     With `raise_errors`, a rejected request raises with the provider's own
     message instead of yielding the sentence meant for the CEO's screen.
+
+    Every run is recorded in `job_runs` — opened as running, closed with what
+    it cost — and its id is in `db.job_run` while it works, so what it writes
+    carries it. The `done` event carries it too, for the caller to file the
+    turn under.
     """
     # Everything the agent is given this turn, so the figures in its answer can
     # be traced back to a source afterwards.
@@ -212,18 +228,32 @@ async def stream(job: Job, messages: list[dict], *,
     # and a client closing the tab mid-answer is the ordinary way to get one.
     start = len(messages)
     completed = False
-    outcome = "avbrutt"
+    run_id = job_runs.start(job.name, triggered_by, config.CFO_MODEL)
+    token = db.job_run.set(run_id)
     try:
         async for event in _turn(job, messages, corpus, run, raise_errors):
             if event.get("type") == "done":
-                completed, outcome = True, "ferdig"
-            elif event.get("type") == "error" and not completed:
-                outcome = "feilet"
+                completed = True
+                event = {**event, "job_run_id": run_id}
+            elif event.get("type") == "error":
+                run.setdefault("error", event.get("message"))
             yield event
+    except BaseException as exc:
+        run.setdefault("error", str(exc) or type(exc).__name__)
+        raise
     finally:
         if not completed:
             del messages[start:]
-        _log_run(job, run["usage"], run["rounds"], run["unverified"], outcome)
+            run.setdefault("error", "avbrutt før svaret var ferdig")
+        status = ("failed" if not completed
+                  else "partial" if run.get("stop_reason") in CUT_OFF else "ok")
+        _log_run(job, run_id, run, status)
+        try:
+            db.job_run.reset(token)
+        except ValueError:
+            # An abandoned stream is closed from another context; there is
+            # nothing of this run's left to reset there.
+            db.job_run.set(None)
 
 
 async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]:
@@ -298,6 +328,7 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
         for k, v in round_usage.items():
             run["usage"][k] += v
 
+        run["stop_reason"] = final.stop_reason
         cut = CUT_OFF.get(final.stop_reason)
         messages.append({"role": "assistant",
                          "content": _answered_only(final.content) if cut
@@ -368,7 +399,8 @@ def parse_json(text: str, what: str) -> dict:
         raise JobError(f"{what} svarte med ugyldig JSON: {exc}") from exc
 
 
-async def complete(job: Job, prompt: str | list[dict]) -> Result:
+async def complete(job: Job, prompt: str | list[dict],
+                   triggered_by: str = "user") -> Result:
     """Run `job` to the end and return what it produced.
 
     For jobs that are not a conversation: the summary, the classification, and
@@ -378,7 +410,8 @@ async def complete(job: Job, prompt: str | list[dict]) -> Result:
     messages = ([{"role": "user", "content": prompt}] if isinstance(prompt, str)
                 else prompt)
     text, check, usage, problems = [], {}, {}, []
-    async for event in stream(job, messages, raise_errors=True):
+    async for event in stream(job, messages, raise_errors=True,
+                              triggered_by=triggered_by):
         kind = event["type"]
         if kind == "text":
             text.append(event["text"])
