@@ -19,6 +19,7 @@ import definitions
 import commitments
 import memory
 import preflight
+import scoring
 from config import AGENT_DEFINITION, COMPANY_NAME
 
 log = logging.getLogger("cfo.prompt")
@@ -125,5 +126,5 @@ async def system_blocks() -> list[dict]:
     condition, money, ahead = await asyncio.gather(
         _condition(), _commitments(), _forecast())
     parts = [_deployment(), definitions.briefing(), condition, money, ahead,
-             cards.briefing(), memory.briefing()]
+             scoring.briefing(), cards.briefing(), memory.briefing()]
     return [stable, {"type": "text", "text": "\n\n".join(p for p in parts if p)}]
