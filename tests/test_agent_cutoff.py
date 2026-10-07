@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace as NS
 
 import agent
+from agent import core
 
 
 class _Stream:
@@ -31,18 +32,18 @@ def _run(stop_reason, content, text="Likviditeten er"):
                usage=NS(input_tokens=1, output_tokens=1))
     fake = NS(beta=NS(messages=NS(stream=lambda **kw: _Stream(final, text))))
 
-    async def kwargs(messages):
+    async def kwargs(job, messages):
         return {"system": [], "messages": messages}
 
-    originals = agent.client, agent._request_kwargs
-    agent.client, agent._request_kwargs = fake, kwargs
+    originals = core.client, core._request_kwargs
+    core.client, core._request_kwargs = fake, kwargs
     messages = [{"role": "user", "content": "Hvordan går det?"}]
     try:
         async def collect():
             return [e async for e in agent.run_turn(messages)]
         return asyncio.run(collect()), messages
     finally:
-        agent.client, agent._request_kwargs = originals
+        core.client, core._request_kwargs = originals
 
 
 def test_a_cut_off_answer_says_so():
@@ -74,4 +75,4 @@ def test_an_answered_server_call_survives_the_cut():
     content = [NS(type="server_tool_use", id="srv_1"),
                NS(type="code_execution_tool_result", tool_use_id="srv_1"),
                NS(type="text", text="Resultatet viser")]
-    assert agent._answered_only(content) == content
+    assert core._answered_only(content) == content

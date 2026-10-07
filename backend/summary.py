@@ -11,12 +11,11 @@ import json
 import logging
 from datetime import date
 
-from anthropic import AsyncAnthropic
-
 import cashflow
 import company
 import config
 import memory
+from agent import core
 from commitments import cached as commitments_cached
 # The saved profile, read from disk rather than re-decided: classifying the
 # industry costs a model call, and this text already is one. Same reach into a
@@ -27,10 +26,14 @@ from overview import cached as overview_cached
 
 log = logging.getLogger("cfo.summary")
 
-client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
-
 STORE = config.ROOT / "state" / "summary.json"
 MAX_TOKENS = 700
+
+# No tools: it is given the figures and asked to phrase them, not fetch them.
+# Through the core so `verify` reads it like every other answer — a figure in
+# the summary that is not in the grunnlag is logged as one.
+SUMMARY = core.Job(name="oppsummering", max_tokens=MAX_TOKENS, output="json",
+                   prompt_source="grunnlaget")
 
 # Ett kall om gangen. Uten dette skriver fem samtidige sidelaster den samme
 # teksten fem ganger den første morgenen noen åpner forsiden.
@@ -185,23 +188,20 @@ async def build(today: date | None = None) -> dict:
         raise ValueError("Ingen tall å oppsummere ennå")
 
     facts = _shape(ov, com, ov.get("monthly") or [], cf)
-    msg = await client.messages.create(
-        model=config.CFO_MODEL, max_tokens=MAX_TOKENS,
-        messages=[{"role": "user", "content": PROMPT.format(
-            company=config.COMPANY_NAME,
-            industry=_industry(_load_profile()),
-            company_context=company.briefing() or "Ikke skrevet ennå.",
-            facts=json.dumps(facts, ensure_ascii=False, indent=1))}])
-    raw = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    start, end = raw.find("{"), raw.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"Oppsummeringen svarte ikke med JSON: {raw[:200]}")
-    data = json.loads(raw[start:end + 1])
+    result = await core.complete(SUMMARY, PROMPT.format(
+        company=config.COMPANY_NAME,
+        industry=_industry(_load_profile()),
+        company_context=company.briefing() or "Ikke skrevet ennå.",
+        facts=json.dumps(facts, ensure_ascii=False, indent=1)))
+    data = result.data
     text = (data.get("text") or "").strip()
     if not text:
         raise ValueError("Oppsummeringen kom tom tilbake")
     return {"verdict": (data.get("verdict") or "").strip() or None,
-            "text": text, "written": today.isoformat()}
+            "text": text, "written": today.isoformat(),
+            # Kept with the text, so a figure the grunnlag does not hold can be
+            # found again after the log has rolled over.
+            "unverified": list(result.check.get("unverified", []))}
 
 
 async def cached(refresh: bool = False) -> dict:
