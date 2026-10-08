@@ -351,7 +351,9 @@ def render(b: dict) -> str:
     if d["count"]:
         out.append(f"Trenger deg ({d['count']})")
         for c in d["top"]:
-            amount = f" — {_kr(c['amount'])} kr" if c.get("amount") else ""
+            # Most titles say their amount already; said twice it reads as two.
+            amount = (f" — {_kr(c['amount'])} kr"
+                      if c.get("amount") and _kr(c["amount"]) not in c["title"] else "")
             out.append(f"- {c['title']}{amount}")
         if d["more"]:
             out.append(f"- og {d['more']} til under Saker")

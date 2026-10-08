@@ -141,6 +141,14 @@ def test_at_most_three_decisions_each_linked_to_its_card():
     assert [c["link"] for c in d["top"]] == ["#saker/K001", "#saker/K002", "#saker/K003"]
 
 
+def test_an_amount_the_title_already_says_is_not_said_twice():
+    deck = {"open": [{"id": "K016", "title": "Seby AS skylder 57 056 kr",
+                      "amount": 57056.0}]}
+    with _world(_cf(), deck):
+        b = asyncio.run(brief.build(MON))
+    assert "- Seby AS skylder 57 056 kr\n" in b["body"]
+
+
 def test_nothing_needs_you_is_said_when_nothing_does():
     with _world(_cf(), {"open": []}):
         b = asyncio.run(brief.build(MON))

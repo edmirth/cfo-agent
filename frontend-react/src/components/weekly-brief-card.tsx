@@ -15,6 +15,11 @@ const LIGHT = {
   red: { word: "Rød", color: "var(--destructive)" },
 } as const
 
+// Most card titles say their amount already. Compared without spaces: the
+// backend groups digits with plain spaces, `kr` with non-breaking ones.
+const said = (title: string, amount: number) =>
+  title.replace(/\s/g, "").includes(kr(amount).replace(/\s/g, ""))
+
 function Label({ children }: { children: ReactNode }) {
   return (
     <p className="text-muted-foreground mb-1.5 font-mono text-[10px] tracking-[0.12em] uppercase">
@@ -114,7 +119,7 @@ export function WeeklyBriefCard({
                     <a href={c.link} className="underline-offset-4 hover:underline">
                       {c.title}
                     </a>
-                    {c.amount ? (
+                    {c.amount && !said(c.title, c.amount) ? (
                       <span className="text-muted-foreground font-mono text-xs tabular-nums">
                         {" "}
                         · {kr(c.amount)} kr
