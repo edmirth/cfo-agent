@@ -1,6 +1,11 @@
 /* Innloggingen. Bare daglig leder har konto; ingen kan registrere seg selv.
- * Passord, eller en lenke på e-post for den som ikke vil huske et. */
-import { useState, type FormEvent } from "react"
+ * Passord, eller en lenke på e-post for den som ikke vil huske et.
+ *
+ * En dør, ikke en utstilling: her skal ingen overtales til noe. Så siden
+ * arver appens egne tokens i stedet for å finne opp en palett — en
+ * innlogging som ser ut som et annet produkt enn det den åpner, er dårlig
+ * design uansett hvor pen den er. */
+import { useId, useState, type FormEvent } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -17,12 +22,34 @@ function said(message: string): string {
   return "Innloggingen feilet. Prøv igjen."
 }
 
+/** Merket: de to linjene hele produktet hviler på — den bundne og den
+ *  forventede. Samme to fargene som kontantgrafen bruker, som er kjørt
+ *  gjennom fargevalidatoren i begge moduser, så de holder her også. */
+function Mark() {
+  return (
+    <svg
+      viewBox="0 0 46 18"
+      className="h-[18px] w-[46px]"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="2,7 13,4 24,6 35,2 44,3" stroke="var(--chart-expected)" />
+      <polyline points="2,13 13,11 24,13 35,10 44,16" stroke="var(--chart-committed)" />
+    </svg>
+  )
+}
+
 export function Login({ denied }: { denied?: string | null }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(denied ?? null)
   const [sent, setSent] = useState(false)
+  const emailId = useId()
+  const passwordId = useId()
 
   const withPassword = async (e: FormEvent) => {
     e.preventDefault()
@@ -51,54 +78,117 @@ export function Login({ denied }: { denied?: string | null }) {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardContent className="grid gap-5">
-          <div>
-            <p className="text-muted-foreground mb-2 font-mono text-[11px] tracking-[0.16em] uppercase">
-              CFO
-            </p>
-            <h1 className="font-heading text-2xl font-semibold tracking-tight">Logg inn</h1>
-          </div>
+    <div className="flex min-h-svh items-center justify-center px-4 py-10">
+      <main className="w-full max-w-sm">
+        <Card className="[--card-spacing:--spacing(7)]">
+          <CardContent className="grid gap-7">
+            <div className="grid gap-5">
+              <div className="flex items-center gap-3">
+                <Mark />
+                <span className="font-mono text-[11px] tracking-[0.16em] uppercase">CFO</span>
+              </div>
+              <div className="grid gap-1.5">
+                <h1 className="font-heading text-2xl font-semibold tracking-tight">
+                  {sent ? "Sjekk e-posten" : "Logg inn"}
+                </h1>
+                <p className="text-muted-foreground text-[13px] leading-relaxed">
+                  {sent
+                    ? "Lenken logger deg inn uten passord."
+                    : "Tilgang er personlig. Ingen kan registrere seg selv."}
+                </p>
+              </div>
+            </div>
 
-          {sent ? (
-            <p className="text-sm leading-relaxed">
-              Sjekk e-posten. Lenken vi sendte til <b>{email}</b> logger deg inn.
-            </p>
-          ) : (
-            <form onSubmit={withPassword} className="grid gap-3">
-              <Input
-                type="email"
-                autoComplete="email"
-                placeholder="E-post"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-              <Input
-                type="password"
-                autoComplete="current-password"
-                placeholder="Passord"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              {error && <p className="text-destructive text-sm">{error}</p>}
-              <Button type="submit" disabled={busy || !password}>
-                {busy ? "Logger inn …" : "Logg inn"}
-              </Button>
-              <Button
-                type="button"
-                variant="link"
-                className="h-auto p-0 text-sm"
-                onClick={withLink}
-                disabled={busy}
-              >
-                Send meg en innloggingslenke i stedet
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+            {sent ? (
+              <div className="grid gap-5">
+                <div className="grid gap-2">
+                  <p className="text-sm leading-relaxed">
+                    Vi har sendt en innloggingslenke til{" "}
+                    <span className="font-medium">{email}</span>. Åpne den i denne nettleseren,
+                    så er du inne.
+                  </p>
+                  <p className="text-muted-foreground text-[13px] leading-relaxed">
+                    Lenken virker én gang. Ligger den ikke i innboksen, se i søppelposten.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => setSent(false)}
+                >
+                  Bruk passord i stedet
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={withPassword} className="grid gap-5">
+                <div className="grid gap-4">
+                  <div className="grid gap-2">
+                    <label htmlFor={emailId} className="text-[13px] font-medium">
+                      E-post
+                    </label>
+                    <Input
+                      id={emailId}
+                      type="email"
+                      autoComplete="email"
+                      autoFocus
+                      className="h-9"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label htmlFor={passwordId} className="text-[13px] font-medium">
+                      Passord
+                    </label>
+                    <Input
+                      id={passwordId}
+                      type="password"
+                      autoComplete="current-password"
+                      className="h-9"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Sagt høyt for skjermlesere også: feilen kommer etter at
+                    knappen er trykket, og da er fokus et annet sted. */}
+                {error && (
+                  <p role="alert" className="text-destructive text-[13px] leading-relaxed">
+                    {error}
+                  </p>
+                )}
+
+                <Button type="submit" size="lg" className="w-full" disabled={busy}>
+                  {busy ? "Logger inn …" : "Logg inn"}
+                </Button>
+
+                {/* Lenka på e-post er en likeverdig vei inn, ikke en
+                    bortgjemt utvei, så den ser ut som en knapp. */}
+                <div className="flex items-center gap-3" aria-hidden="true">
+                  <span className="bg-border h-px flex-1" />
+                  <span className="text-muted-foreground text-xs">eller</span>
+                  <span className="bg-border h-px flex-1" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="w-full"
+                  onClick={withLink}
+                  disabled={busy}
+                >
+                  Send meg en innloggingslenke
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </main>
     </div>
   )
 }
