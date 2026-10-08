@@ -49,11 +49,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent
 
 
 ## Done
 
+- [x] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent ✓ 2026-10-08
 - [x] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops ✓ 2026-10-08
 - [x] 5. Save every weekly forecast and score it against the real balance @agent #forecast ✓ 2026-10-08
 - [x] 4. Store forecasts, cards, memory and job runs in a database @either #platform ✓ 2026-10-07

@@ -16,6 +16,7 @@ import db
 import memory
 import preflight
 import scheduler
+import scoring
 from agent import core
 from tests import _tmp
 
@@ -188,6 +189,22 @@ def test_no_record_yet_is_said_and_no_accuracy_is_claimed():
     acc = brief.accuracy(MON)
     assert not acc["scored"]
     assert acc["text"].startswith("Treffsikkerhet: ikke målt ennå (0 ukeprognoser")
+
+
+def test_the_record_is_said_once_there_is_one():
+    real = scoring.track_record
+    scoring.track_record = lambda today=None: {
+        "weekly_forecasts_kept": 9, "within_pct": 10.0, "streak": 3, "next": None,
+        "latest": {1: None, 2: None, 4: {"error_pct": -4.2}},
+        "mean_abs_error_pct": {1: None, 2: None, 4: 6.5}}
+    try:
+        acc = brief.accuracy(MON)
+    finally:
+        scoring.track_record = real
+    assert acc["scored"]
+    assert acc["text"] == ("Treffsikkerhet: prognosen fire uker fram bommet med "
+                           "-4,2 % sist, ±6,5 % i snitt. Innenfor ±10 % 3 uker på "
+                           "rad; målet er 8.")
 
 
 # ---------------------------------------------------------- writing and keeping
