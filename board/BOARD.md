@@ -36,7 +36,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 9. Send the Monday brief by email @either #delivery
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email @agent #delivery
 - [ ] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent
@@ -48,6 +47,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 9. Send the Monday brief by email @either #delivery
 
 
 ## Done
