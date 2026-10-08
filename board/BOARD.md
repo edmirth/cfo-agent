@@ -36,7 +36,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 8. Add login and authentication in front of every API route @either #platform
 - [ ] 9. Send the Monday brief by email @either #delivery
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email @agent #delivery
@@ -49,6 +48,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 8. Add login and authentication in front of every API route @either #platform
 
 
 ## Done
