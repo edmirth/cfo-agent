@@ -1,5 +1,7 @@
 /* SSE-en fra /api/chat. Backend sender fem hendelsestyper:
  * session, tool, reasoning, text, error — og til slutt done. */
+import { authFetch } from "@/lib/auth"
+
 
 export type TurnEvents = {
   onSession?: (id: string) => void
@@ -16,7 +18,7 @@ export async function runTurn(
   signal: AbortSignal,
   ev: TurnEvents,
 ) {
-  const res = await fetch("/api/chat", {
+  const res = await authFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, session_id: sessionId }),

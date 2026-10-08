@@ -3,8 +3,10 @@ import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { api, get } from "@/lib/api"
+import { authEnabled, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
+import { Login } from "@/pages/login"
 import { Saker } from "@/pages/saker"
 import { Selskapet } from "@/pages/selskapet"
 import { ConversationsProvider, useConversations } from "@/store/conversations"
@@ -82,7 +84,57 @@ function Shell() {
   )
 }
 
+type Gate = "loading" | "in" | "out" | "broken"
+
+/** Ingenting av appen tegnes før det er klart at noen er logget inn — eller
+ * at serveren kjører uten innlogging med vilje. */
+function useGate(): { gate: Gate; denied: string | null } {
+  const [gate, setGate] = useState<Gate>("loading")
+  const [denied, setDenied] = useState<string | null>(null)
+
+  useEffect(() => {
+    let unsubscribe = () => {}
+    initAuth()
+      .then(async ({ enabled }) => {
+        if (!enabled) return setGate("in")
+        const auth = supabase().auth
+        const { data } = await auth.getSession()
+        setGate(data.session ? "in" : "out")
+        // Lenken fra e-posten kommer tilbake med ?code=. Når den er byttet
+        // mot en økt, har den gjort jobben sin og skal ikke ligge i adressen.
+        if (data.session && new URLSearchParams(window.location.search).has("code")) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.hash)
+        }
+        const sub = auth.onAuthStateChange((_event, session) => {
+          setGate(session ? "in" : "out")
+          if (session) setDenied(null)
+        })
+        unsubscribe = () => sub.data.subscription.unsubscribe()
+      })
+      .catch(() => setGate("broken"))
+    const off = onLoggedOut((why) => {
+      setDenied(why ?? null)
+      setGate("out")
+    })
+    return () => {
+      unsubscribe()
+      off()
+    }
+  }, [])
+  return { gate, denied }
+}
+
 export default function App() {
+  const { gate, denied } = useGate()
+  if (gate === "loading") return null
+  if (gate === "broken") {
+    return (
+      <p className="text-muted-foreground p-10 text-sm">
+        Får ikke kontakt med serveren. Last siden på nytt om litt.
+      </p>
+    )
+  }
+  if (gate === "out" && authEnabled()) return <Login denied={denied} />
   return (
     <ConversationsProvider>
       <Shell />

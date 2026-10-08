@@ -1,5 +1,6 @@
 /* Alt som hentes fra FastAPI-en. Endepunktene regnes ut uten modell i loopen,
  * så en sidelast koster ingenting — bortsett fra /api/chat, som går via Claude. */
+import { authFetch } from "@/lib/auth"
 
 export type Kpi = {
   id: string
@@ -163,7 +164,7 @@ export type Preset = { id: string; label: string }
 
 /** Kaster på feil, slik at hver del av forsiden kan feile for seg. */
 export async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path)
+  const res = await authFetch(path)
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`)
   const data = await res.json()
   if (data && typeof data === "object" && "error" in data && data.error) {

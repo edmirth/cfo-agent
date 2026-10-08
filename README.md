@@ -33,6 +33,30 @@ because the server was off, is said at the top of the front page with a
 **Kjør nå** button. `CFO_SCHEDULER=off` turns it off; `CFO_MORNING_AT=06:30`
 moves it.
 
+### Innlogging
+
+Only the CEO gets in. Supabase does the signing in (password, or a login link
+by email); the server checks the token on every `/api` call and lets in only
+the emails in `CFO_OWNER_EMAIL`. The server will not start without it.
+
+1. Create a project at [supabase.com](https://supabase.com) (any region).
+2. **Authentication → Sign In / Providers**: turn **off** "Allow new users to
+   sign up". Nobody can then make an account; the app only has the ones you add.
+3. **Authentication → Users → Add user**: the CEO's email, with a password
+   (or send an invite and let them set one).
+4. **Authentication → URL Configuration**: Site URL `http://localhost:8000`
+   (the address the app is opened on; add a hosted one later under Redirect URLs).
+5. **Project Settings → API**: copy the project URL and the publishable (anon)
+   key into `.env` as `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and the CEO's
+   email as `CFO_OWNER_EMAIL`.
+
+The publishable key is public by design: the browser needs it. Tokens are
+checked against the project's published signing keys, so no secret is needed;
+a project still on the legacy shared secret sets `SUPABASE_JWT_SECRET`.
+`CFO_AUTH=off` runs the app with no login, open to anyone who reaches the
+port. All of it is in `backend/auth.py` and `frontend-react/src/lib/auth.ts`;
+moving off Supabase changes those two files.
+
 ## How it works
 
 **The agent definition is one file.** `.claude/agents/cfo.md` holds the CFO
@@ -98,6 +122,7 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token written back to `.env` atomically |
 | `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
 | `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00 and the Monday brief after it, caught up after sleep, retried, and said when it fails |
+| `backend/auth.py` | The login gate: every `/api` route checks the Supabase token and the owner list; fail closed |
 | `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |
@@ -109,11 +134,13 @@ is code, and every figure it states is traced back to a source afterwards.
 
 ## Endpoints
 
-Everything except `/api/chat` is computed without a model and works with no
-Anthropic credits.
+Every route except `/api/auth/config` needs the CEO signed in: a Supabase
+access token as `Authorization: Bearer …`. Everything except `/api/chat` is
+computed without a model and works with no Anthropic credits.
 
 | Method | Path | Purpose |
 |---|---|---|
+| `GET` | `/api/auth/config` | What the browser needs to sign in. The only route that answers without a login |
 | `GET` | `/api/health` | Key present, PID, read-only, tools allowed |
 | `GET` | `/api/overview` | Headline figures, cached 10 min |
 | `GET` | `/api/preflight` | Condition of the books |
@@ -139,7 +166,6 @@ Sending a preset id (`daily`, `money`, `ar`, `margin`, `forecast`, `weeks`,
 
 ## Before this goes to a customer
 
-- **No auth on the app itself.** Anyone who reaches the port gets the CFO.
 - **The morning runs only while the server does.** On a Mac that means while
   it is awake with `run.sh` going. Hosted, it runs every working day; the
   scheduler moves with the server and needs no cron.

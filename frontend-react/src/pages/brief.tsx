@@ -48,6 +48,7 @@ import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/for
 import { rank } from "@/lib/signals"
 import type { Signal } from "@/lib/signals"
 import { useConversations } from "@/store/conversations"
+import { authFetch } from "@/lib/auth"
 
 /* ── hva som er nytt siden sist ───────────────────────────────── */
 // Backend leverer ennå ikke brief-er på plan, så «nytt» måles mot forrige gang
@@ -583,7 +584,7 @@ export function Brief() {
   const [runningNow, setRunningNow] = useState(false)
   const runNow = (name: string) => {
     setRunningNow(true)
-    fetch(`/api/schedule/${name}/run`, { method: "POST" })
+    authFetch(`/api/schedule/${name}/run`, { method: "POST" })
       .catch(() => {})
       .finally(() => {
         setRunningNow(false)
