@@ -35,3 +35,18 @@ SCHEDULER = os.getenv("CFO_SCHEDULER", "on").strip().lower() not in ("off", "0",
 # morning at seven in Norway.
 TIMEZONE = os.getenv("CFO_TIMEZONE", "Europe/Oslo")
 MORNING_AT = os.getenv("CFO_MORNING_AT", "07:00")
+
+# Who may open the app (backend/auth.py). Supabase signs the CEO in; this
+# server checks the token and lets in only the emails listed here.
+# CFO_AUTH=off opens every route to anyone who reaches the port: for a laptop
+# that knows it, never for a server anyone else can reach.
+AUTH = os.getenv("CFO_AUTH", "supabase").strip().lower()
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+# Public by design: the browser needs it to talk to Supabase. Not a secret.
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or ""
+# Only for projects still on the legacy shared secret; new projects sign with
+# asymmetric keys, read from the project's JWKS.
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") or ""
+OWNER_EMAILS = frozenset(e.strip().lower()
+                         for e in (os.getenv("CFO_OWNER_EMAIL") or "").split(",")
+                         if e.strip())
