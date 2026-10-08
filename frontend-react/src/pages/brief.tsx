@@ -592,6 +592,21 @@ export function Brief() {
       })
   }
 
+  // Sender ukas lagrede brev på e-post, og laster brevet på nytt så kortet
+  // viser når det gikk og til hvem. Feiler det, sier planleggerens linje
+  // øverst hvorfor.
+  const [sendingNow, setSendingNow] = useState(false)
+  const sendNow = () => {
+    setSendingNow(true)
+    authFetch("/api/schedule/weekly_mail/run", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        setSendingNow(false)
+        api.brief().then((r) => setD((s) => ({ ...s, weekly: r.brief }))).catch(() => {})
+        api.schedule().then((sched) => setD((s) => ({ ...s, sched }))).catch(() => {})
+      })
+  }
+
   const rewrite = () => {
     setRewriting(true)
     get<Summary>("/api/summary?refresh=true")
@@ -674,6 +689,8 @@ export function Brief() {
           loading={d.weekly === undefined}
           writing={runningNow}
           onWrite={() => runNow("weekly_brief")}
+          sending={sendingNow}
+          onSend={sendNow}
         />
       </section>
 

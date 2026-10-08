@@ -28,16 +28,31 @@ function Label({ children }: { children: ReactNode }) {
   )
 }
 
+/** «sendt til deg@x.no mandag kl 07:01», fra tidspunktet serveren lagret. */
+function sentLine(sent: NonNullable<WeeklyBrief["sent"]>) {
+  const at = new Date(sent.at)
+  const when = at.toLocaleString("nb-NO", {
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+  return `Sendt på e-post til ${sent.to.join(", ")} ${when}.`
+}
+
 export function WeeklyBriefCard({
   data,
   loading,
   onWrite,
   writing,
+  onSend,
+  sending,
 }: {
   data?: WeeklyBrief | null
   loading?: boolean
   onWrite: () => void
   writing?: boolean
+  onSend: () => void
+  sending?: boolean
 }) {
   if (loading || writing) {
     return (
@@ -149,6 +164,19 @@ export function WeeklyBriefCard({
           <p>{data.accuracy.text}</p>
           {data.written_by === "engine" && (
             <p>Skrevet ut fra tallene alene denne gangen — CFO-en fikk ikke skrevet sine egne ord.</p>
+          )}
+          {data.current && (
+            <p className="flex flex-wrap items-baseline gap-x-3">
+              <span>{data.sent ? sentLine(data.sent) : "Ikke sendt på e-post ennå."}</span>
+              <Button
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={onSend}
+                disabled={sending}
+              >
+                {sending ? "Sender …" : data.sent ? "Send igjen" : "Send på e-post nå"}
+              </Button>
+            </p>
           )}
         </div>
       </CardContent>

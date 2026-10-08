@@ -57,6 +57,25 @@ a project still on the legacy shared secret sets `SUPABASE_JWT_SECRET`.
 port. All of it is in `backend/auth.py` and `frontend-react/src/lib/auth.ts`;
 moving off Supabase changes those two files.
 
+### E-post
+
+The Monday brief is emailed to the CEO straight after it is written, through
+[Resend](https://resend.com). Without a domain of our own it goes from
+Resend's test sender, `onboarding@resend.dev`, which only delivers to the
+email the Resend account was made with — so make the account with the email
+the brief should reach.
+
+1. Sign up at resend.com with that email (the free plan is enough).
+2. **API Keys → Create API key**, permission "Sending access".
+3. Put it in `.env` as `RESEND_API_KEY`.
+
+Recipients are `brev_mottakere` in the settings at the top of Selskapet,
+comma-separated; without it, the brief goes to `CFO_OWNER_EMAIL`. The front
+page's brief card has **Send på e-post nå** for a test. A failed send is said
+at the top of the front page and retried every half hour, three times; it is
+never sent twice in a week unless sent by hand. With a domain later: verify
+it in Resend and set `CFO_MAIL_FROM`; nothing else changes.
+
 ## How it works
 
 **The agent definition is one file.** `.claude/agents/cfo.md` holds the CFO
@@ -123,6 +142,8 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
 | `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00 and the Monday brief after it, caught up after sleep, retried, and said when it fails |
 | `backend/auth.py` | The login gate: every `/api` route checks the Supabase token and the owner list; fail closed |
+| `backend/mailer.py` | Sending email: the one module that knows Resend. Idempotency key on every send |
+| `backend/brief_email.py` | The Monday brief as a phone-width email, complete on its own; sent once a week to `brev_mottakere` |
 | `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |
