@@ -266,8 +266,8 @@ the company, and a query that runs without one fails instead of guessing.
 ### What it wrote and said: `reports`, `conversations`, `messages`
 
 - **`reports`**: every piece of writing the product produces on its own:
-  `summary` (today's `summary.json`), and later `weekly_brief` (card 7),
-  `monthly_pack` and `health_check`. Each has the period it covers, the text,
+  `summary` (today's `summary.json`), `weekly_brief` (card 7, period
+  `2026-W41`), and later `monthly_pack` and `health_check`. Each has the period it covers, the text,
   and the figures it was written from. Rewrites are new rows. This is the
   archive that lets month three cite month two. A `status` column carries the
   human-review queue (card 15): `draft`, `in_review`, `approved`, `sent`.
