@@ -32,8 +32,9 @@ did not finish is tried again half an hour later, three times at most. A run
 that failed, and a morning missed because the server was off, are both said
 on the front page (`status`) — the server log is not something a CEO reads.
 
-Card 7 (the Monday brief), card 9 (sending it) and card 12 (the morning watch)
-add their steps here.
+The Monday brief (card 7) is a job of its own, on the first working day of
+each week, run straight after the morning. Card 9 (sending it) and card 12
+(the morning watch) add their steps here.
 """
 import asyncio
 import logging
@@ -43,6 +44,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
 from zoneinfo import ZoneInfo
 
+import brief
 import cards
 import cashflow
 import commitments
@@ -162,6 +164,29 @@ async def _summary() -> dict:
     return {"verdict": s.get("verdict"), "written": s.get("written")}
 
 
+async def _brief() -> dict:
+    try:
+        b = await brief.write()
+    except brief.BriefError as exc:
+        raise StepFailed(str(exc)) from exc
+    out = {"light": b["light"], "period": b["period"],
+           "decisions": b["decisions"]["count"], "written_by": b["written_by"]}
+    if b["written_by"] != "model":
+        return {**out, "partial": True,
+                "cause": "Brevet ble skrevet ut fra tallene alene, uten CFO-ens "
+                         "egne ord. Grunnen står i serverloggen."}
+    if b.get("forecast_partial"):
+        return {**out, "partial": True,
+                "cause": "Prognosen manglet noe fra Tripletex da brevet ble skrevet."}
+    return out
+
+
+def first_working_day_of_week(d: date) -> bool:
+    """Monday, or the day after when Monday is a holiday (Easter, Whit)."""
+    monday = d - timedelta(days=d.weekday())
+    return d == workdays.forward(monday) and d.isocalendar()[1] == monday.isocalendar()[1]
+
+
 def _at(text: str) -> time:
     try:
         return time.fromisoformat(text)
@@ -180,7 +205,14 @@ MORNING = Scheduled(
            Step("cards", "Sakene", _cards),
            Step("summary", "Oppsummeringen", _summary)))
 
-JOBS: tuple[Scheduled, ...] = (MORNING,)
+# After the morning, in the same minute: `tick` runs jobs in this order, so the
+# brief reads the forecast, checks and deck the morning has just made fresh.
+WEEKLY = Scheduled(
+    name="weekly_brief", label="Mandagsbrevet", at=MORNING.at,
+    runs_on=first_working_day_of_week, days="første virkedag i uka",
+    steps=(Step("brief", "Mandagsbrevet", _brief),))
+
+JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY)
 
 
 def job(name: str) -> Scheduled:
