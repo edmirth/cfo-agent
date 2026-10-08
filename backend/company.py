@@ -56,6 +56,9 @@ KNOWN = {
     "varsel_minimum_kr": ("kr", "beløp under dette gir ingen sak eller varsel"),
     "lonnsandel_mal_pct": ("pct", "målet for lønn som andel av omsetningen, "
                            "i prosent"),
+    "brev_mottakere": ("emails", "hvem mandagsbrevet sendes til på e-post, "
+                       "skilt med komma; står den ikke, går det til den som "
+                       "logger inn"),
 }
 
 # The company's own rules. They decide when a card is raised and what the
@@ -114,6 +117,23 @@ def _percent(raw: str) -> int | float | None:
     return int(value) if value.is_integer() else value
 
 
+EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}", re.IGNORECASE)
+
+
+def _emails(raw: str) -> tuple[list[str], list[str]]:
+    """Addresses split on commas, semicolons or spaces: (good, refused)."""
+    good, bad = [], []
+    for part in re.split(r"[,;\s]+", raw.strip()):
+        if not part:
+            continue
+        if EMAIL.fullmatch(part):
+            if part.lower() not in good:
+                good.append(part.lower())
+        else:
+            bad.append(part)
+    return good, bad
+
+
 _WHAT = {"kr": "et kronebeløp, som 2 000 000 eller 2 MNOK",
          "pct": "en prosent over 0 og opptil 100, som 75"}
 
@@ -151,6 +171,13 @@ def _parse(text: str) -> tuple[dict, str, list[str]]:
                              f"standardverdien.")
                 continue
             settings[key] = int(m.group())
+        elif kind == "emails":
+            good, bad = _emails(raw)
+            if bad:
+                notes.append(f"«{key}»: {', '.join(f'«{b}»' for b in bad)} er "
+                             f"ikke en e-postadresse og ble hoppet over.")
+            if good:
+                settings[key] = good
         elif kind in _WHAT:
             value = _kroner(raw) if kind == "kr" else _percent(raw)
             if value is None:
@@ -279,6 +306,12 @@ def rules(monthly_wages: float | None = None) -> dict[str, dict]:
         out[key] = {"value": value, "assumed": assumed, "basis": basis,
                     "label": KNOWN[key][1]}
     return out
+
+
+def recipients() -> list[str]:
+    """Who the Monday brief is emailed to: the rulebook's list, or else
+    whoever may sign in."""
+    return list(setting("brev_mottakere") or sorted(config.OWNER_EMAILS))
 
 
 def said(rule: dict) -> str:

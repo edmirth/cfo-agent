@@ -33,8 +33,8 @@ that failed, and a morning missed because the server was off, are both said
 on the front page (`status`) — the server log is not something a CEO reads.
 
 The Monday brief (card 7) is a job of its own, on the first working day of
-each week, run straight after the morning. Card 9 (sending it) and card 12
-(the morning watch) add their steps here.
+each week, run straight after the morning, and emailing it (card 9) is
+another, straight after that. Card 12 (the morning watch) adds its steps here.
 """
 import asyncio
 import logging
@@ -45,6 +45,7 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 
 import brief
+import brief_email
 import cards
 import cashflow
 import commitments
@@ -52,6 +53,7 @@ import config
 import db
 import forecasts
 import job_runs
+import mailer
 import overview
 import preflight
 import summary
@@ -181,6 +183,16 @@ async def _brief() -> dict:
     return out
 
 
+async def _mail() -> dict:
+    try:
+        out = await brief_email.send()
+    except (brief_email.NotWritten, mailer.MailError) as exc:
+        raise StepFailed(str(exc)) from exc
+    if out["skipped"]:
+        return {"skipped": True, "period": out["period"]}
+    return {"period": out["period"], "to": out["to"], "id": out["id"]}
+
+
 def first_working_day_of_week(d: date) -> bool:
     """Monday, or the day after when Monday is a holiday (Easter, Whit)."""
     monday = d - timedelta(days=d.weekday())
@@ -212,7 +224,15 @@ WEEKLY = Scheduled(
     runs_on=first_working_day_of_week, days="første virkedag i uka",
     steps=(Step("brief", "Mandagsbrevet", _brief),))
 
-JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY)
+# Its own job, after the brief: a send that fails is retried on its own,
+# without writing the brief again — that would be a second model call and,
+# worse, a different brief from the one the front page shows.
+MAIL = Scheduled(
+    name="weekly_mail", label="E-posten med mandagsbrevet", at=MORNING.at,
+    runs_on=first_working_day_of_week, days="første virkedag i uka",
+    steps=(Step("mail", "E-posten", _mail),))
+
+JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY, MAIL)
 
 
 def job(name: str) -> Scheduled:
