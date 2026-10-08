@@ -116,6 +116,25 @@ export type Preflight = {
 
 export type Dashboard = { industry?: string; kpis: Kpi[]; error?: string }
 
+/** Det som kjører av seg selv. `attention` er setningen forsiden viser når
+ * siste kjøring ikke gjorde jobben sin, eller ikke ble kjørt i det hele tatt. */
+export type ScheduledJob = {
+  name: string
+  label: string
+  at: string
+  days: string
+  next_run: string | null
+  last_run: {
+    status: "running" | "ok" | "partial" | "failed"
+    triggered_by: string
+    started_at: string
+    finished_at: string | null
+  } | null
+  attention: string | null
+}
+
+export type Schedule = { enabled: boolean; running: boolean; jobs: ScheduledJob[] }
+
 export type Preset = { id: string; label: string }
 
 /** Kaster på feil, slik at hver del av forsiden kan feile for seg. */
@@ -139,4 +158,5 @@ export const api = {
   rules: () => get<{ rules: Rules }>("/api/rules"),
   summary: () => get<Summary>("/api/summary"),
   presets: () => get<{ presets: Preset[] }>("/api/presets"),
+  schedule: () => get<Schedule>("/api/schedule"),
 }

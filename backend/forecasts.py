@@ -14,8 +14,9 @@ first day:
   scored against (card 5).
 
 Written from the forecast build itself, which runs whenever the forecast is
-fresh. Until the scheduler exists (card 6), a day nobody opens the app is a
-day with no row; the scoring has to live with gaps rather than invent them.
+fresh — and every working morning from the scheduler (card 6), so a day
+nobody opens the app still has its row. A day the server was off has none;
+the scoring has to live with gaps rather than invent them.
 
 Nothing here may cost the forecast: `record` is called inside a guard, and a
 failure to save is logged, not raised.
@@ -42,11 +43,11 @@ def record(data: dict, ledger: dict[str, float], today: date) -> dict:
     written = {"forecast_run": None, "balances": 0}
     with db.tx() as conn:
         written["balances"] = _balances(conn, data, ledger, today)
-    if data.get("partial") or _kept(today):
+    if data.get("partial") or kept(today):
         return written
     # A run of its own, so the saved forecast can say which run made it — and
     # only when one is saved: the build runs every ten minutes in use.
-    run = job_runs.start("forecast", triggered_by="user")
+    run = job_runs.start("forecast")
     token = db.job_run.set(run)
     try:
         with db.tx() as conn:
@@ -60,7 +61,8 @@ def record(data: dict, ledger: dict[str, float], today: date) -> dict:
     return written
 
 
-def _kept(today: date) -> bool:
+def kept(today: date) -> bool:
+    """Whether today's forecast is saved."""
     with db.read() as conn:
         return conn.execute(
             "SELECT 1 FROM forecast_runs WHERE company_id = ? AND made_on = ? "

@@ -27,3 +27,11 @@ MAX_TOKENS = 64_000
 MAX_HISTORY_MESSAGES = 60
 # Ceiling on tool rounds in a single turn, so a loop cannot run away.
 MAX_TOOL_ROUNDS = 12
+
+# What runs without anyone asking (backend/scheduler.py). CFO_SCHEDULER=off
+# stops it, for a server that should not spend a model call of its own.
+SCHEDULER = os.getenv("CFO_SCHEDULER", "on").strip().lower() not in ("off", "0", "false", "no")
+# The company's clock, whatever the machine's: a host in UTC still runs the
+# morning at seven in Norway.
+TIMEZONE = os.getenv("CFO_TIMEZONE", "Europe/Oslo")
+MORNING_AT = os.getenv("CFO_MORNING_AT", "07:00")

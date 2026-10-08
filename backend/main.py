@@ -23,6 +23,7 @@ import db
 import definitions
 import job_runs
 import lock
+import scheduler
 import scoring
 import toolset
 import trace
@@ -157,6 +158,7 @@ async def health() -> dict:
         ),
         "read_only": True,
         "tools_allowed": len(toolset.READ_TOOLS),
+        "scheduler": scheduler.running(),
     }
 
 
@@ -220,9 +222,12 @@ async def _check_toolset() -> None:
 async def _lifespan(_app: FastAPI):
     """What runs once at start and once at stop."""
     _open_database()
+    job_runs.close_orphans()
     await _check_definitions()
     await _check_toolset()
+    scheduler.start()
     yield
+    await scheduler.stop()
     lock.release()
 
 
@@ -437,6 +442,26 @@ async def runs(job: str | None = None,
     return {"runs": rows,
             "cost_usd": round(sum(r["cost_usd"] or 0 for r in rows), 4),
             "failed": sum(r["status"] == "failed" for r in rows)}
+
+
+@app.get("/api/schedule")
+async def schedule() -> dict:
+    """What runs on its own, when it runs next, and whether the last run did
+    its job. `attention` is the sentence the front page shows when not."""
+    return scheduler.status()
+
+
+@app.post("/api/schedule/{name}/run")
+async def run_scheduled(name: str) -> dict:
+    """Run a scheduled job now, by hand. Answers when it is done."""
+    try:
+        j = scheduler.job(name)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    try:
+        return await scheduler.run(j, triggered_by="user")
+    except scheduler.Busy as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.get("/api/presets")

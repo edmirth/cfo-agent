@@ -85,7 +85,7 @@ it yet. If only we know it, store it, and keep its history.**
 
 Three things call the record modules: the API routes the React app uses, the
 agent's local tools (`remember_finding`, `propose_card`, `score_forecast`…),
-and, once card 6 exists, the scheduler. None of them touch SQL. **`db.py` is
+and the scheduler (`scheduler.py`, card 6). None of them touch SQL. **`db.py` is
 the only file that opens a connection.** That one rule makes the later moves
 small: swapping SQLite for Postgres, adding the tenant filter, adding the
 audit log. Each one changes `db.py`, not forty call sites.
@@ -283,12 +283,16 @@ the company, and a query that runs without one fails instead of guessing.
 ### How it ran: `job_runs`
 
 One row per run of anything that does work: a chat turn, the summary, the
-industry decision, and later the forecast save, the watch and the brief. Each
+industry decision, the forecast save, the scheduler's `morning` run, and later
+the watch and the brief. Each
 row has the trigger (user, schedule, startup), start and finish times, the
 status (`running`, `ok`, `partial`, `failed`), the error, the model, tokens
 in, out and from cache, the cost, and how many figures `verify` could not
 trace. Card 3 asks for this per job and card 6 asks that a failed run be
-visible. The rows that jobs write (`findings`, `cards`, `forecast_runs`,
+visible: a scheduled run keeps what each step did in `details`, the work it
+causes (the forecast saved, the summary written) is filed with
+`triggered_by = 'schedule'`, and a run the server died in is closed as
+`failed` when the next server starts. The rows that jobs write (`findings`, `cards`, `forecast_runs`,
 `reports`, `messages`) carry `job_run_id`. "Where did this card come from?"
 then has an answer.
 
@@ -402,7 +406,7 @@ CREATE TABLE counters (
 CREATE TABLE job_runs (
   id                 INTEGER PRIMARY KEY,
   company_id         INTEGER NOT NULL REFERENCES companies(id),
-  job                TEXT NOT NULL,     -- chat | summary | industry | forecast | watch | weekly_brief
+  job                TEXT NOT NULL,     -- chat | summary | industry | forecast | morning | watch | weekly_brief
   triggered_by       TEXT NOT NULL,     -- user | schedule | startup
   status             TEXT NOT NULL DEFAULT 'running'
                      CHECK (status IN ('running', 'ok', 'partial', 'failed')),
