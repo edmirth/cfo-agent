@@ -32,6 +32,7 @@ kanban-plugin: board
 - [ ] Push urgent alerts to the CEO's phone @edmir #delivery
 - [ ] We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 - [ ] Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
+- [ ] Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
 
 
 ## Next
@@ -47,11 +48,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 9. Send the Monday brief by email @either #delivery
 
 
 ## Done
 
+- [x] 9. Send the Monday brief by email @either #delivery ✓ 2026-10-08
 - [x] 8. Add login and authentication in front of every API route @either #platform ✓ 2026-10-08
 - [x] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent ✓ 2026-10-08
 - [x] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops ✓ 2026-10-08
