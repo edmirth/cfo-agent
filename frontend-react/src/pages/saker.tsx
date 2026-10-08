@@ -33,7 +33,14 @@ type Deck = { as_of: string; open: DeckCard[]; snoozed: DeckCard[]; recent: Deck
 const edge = (u: string) =>
   u === "high" ? "var(--destructive)" : u === "medium" ? "var(--chart-expected)" : "var(--border)"
 
-export function Saker({ onCount }: { onCount?: (n: number) => void }) {
+export function Saker({
+  onCount,
+  focus,
+}: {
+  onCount?: (n: number) => void
+  /** En sak å vise fram, fra en lenke i mandagsbrevet (#saker/K016). */
+  focus?: string | null
+}) {
   const [deck, setDeck] = useState<Deck | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -73,6 +80,13 @@ export function Saker({ onCount }: { onCount?: (n: number) => void }) {
     })
   }
 
+  // Når saken lenken peker på er lastet, ruller siden dit. Er den avgjort
+  // siden brevet ble skrevet, står den ikke blant de åpne, og ingenting skjer.
+  useEffect(() => {
+    if (!focus || !deck) return
+    document.getElementById(`sak-${focus}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [focus, deck])
+
   const open = deck?.open || []
   const later = deck?.snoozed || []
 
@@ -94,7 +108,12 @@ export function Saker({ onCount }: { onCount?: (n: number) => void }) {
 
       <div className="grid gap-4">
         {open.map((c) => (
-          <Card key={c.id} className="border-l-4 gap-3" style={{ borderLeftColor: edge(c.urgency) }}>
+          <Card
+            key={c.id}
+            id={`sak-${c.id}`}
+            className={`border-l-4 gap-3 ${focus === c.id ? "ring-ring ring-2" : ""}`}
+            style={{ borderLeftColor: edge(c.urgency) }}
+          >
             <CardHeader className="gap-1">
               <CardTitle className="text-base">{c.title}</CardTitle>
             </CardHeader>
