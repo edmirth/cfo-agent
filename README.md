@@ -97,7 +97,8 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/mcp_client.py` | Direct JSON-RPC to Tripletex for the computed blocks; raises on rejected calls |
 | `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token written back to `.env` atomically |
 | `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
-| `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00, caught up after sleep, retried, and said when it fails |
+| `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00 and the Monday brief after it, caught up after sleep, retried, and said when it fails |
+| `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |
 | `frontend/brief.js` | The front page: brief, cash chart, signals, KPIs, and the Saker deck |

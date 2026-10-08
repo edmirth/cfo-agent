@@ -108,6 +108,30 @@ export type Summary = {
   error?: string
 }
 
+/** Mandagsbrevet. Fargen og alle tall er regnet ut av motoren; CFO-en har
+ * bare skrevet setningen etter fargen og ordene om hva som har endret seg. */
+export type WeeklyBrief = {
+  id: number
+  period: string
+  made_on: string
+  written_at: string
+  current: boolean
+  light: "green" | "yellow" | "red"
+  why: string
+  sentence: string
+  low_point: { week: string; start: string; amount: number; floor: number; under_floor: boolean; text: string }
+  changed: string[]
+  decisions: {
+    count: number
+    more: number
+    top: { id: string; title: string; urgency?: string; amount?: number | null; link: string }[]
+  }
+  books: { condition: string; lines: string[]; text: string }
+  accuracy: { scored: boolean; text: string }
+  written_by: "model" | "engine"
+  body: string
+}
+
 export type Preflight = {
   condition: string
   checks: { id: string; label: string; status: string; headline: string; detail?: string }[]
@@ -159,4 +183,5 @@ export const api = {
   summary: () => get<Summary>("/api/summary"),
   presets: () => get<{ presets: Preset[] }>("/api/presets"),
   schedule: () => get<Schedule>("/api/schedule"),
+  brief: () => get<{ brief: WeeklyBrief | null }>("/api/brief"),
 }

@@ -16,6 +16,7 @@ import config
 from agent import run_turn
 from mcp_client import McpError
 from overview import cached as overview_cached
+import brief
 import cards
 import company
 import conversations
@@ -301,6 +302,17 @@ async def summary(refresh: bool = False) -> dict:
     except Exception as exc:  # noqa: BLE001
         log.exception("Summary failed")
         return _panel(exc, "Oppsummeringen")
+
+
+@app.get("/api/brief")
+async def weekly_brief() -> dict:
+    """Mandagsbrevet: det siste som ble skrevet, og om det er denne ukas.
+    Skrives av planleggeren; for hånd med POST /api/schedule/weekly_brief/run."""
+    try:
+        return {"brief": brief.latest()}
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Mandagsbrevet kunne ikke leses")
+        return _panel(exc, "Mandagsbrevet")
 
 
 @app.get("/api/dashboard")

@@ -52,7 +52,7 @@ function Shell() {
   return (
     <SidebarProvider>
       <AppSidebar
-        route={hash}
+        route={hash.startsWith("#saker/") ? "#saker" : hash}
         company={company}
         sakerCount={sakerCount}
         conversations={convs}
@@ -69,8 +69,8 @@ function Shell() {
         >
           {onChat ? (
             <Chat conv={conv} />
-          ) : hash === "#saker" ? (
-            <Saker onCount={setSakerCount} />
+          ) : hash === "#saker" || hash.startsWith("#saker/") ? (
+            <Saker onCount={setSakerCount} focus={hash.slice("#saker/".length) || null} />
           ) : hash === "#selskapet" ? (
             <Selskapet />
           ) : (

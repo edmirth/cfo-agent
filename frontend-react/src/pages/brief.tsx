@@ -5,6 +5,7 @@ import { MetricCard } from "@/components/metric-card"
 import type { Point } from "@/components/metric-card"
 import { SignalList } from "@/components/signal-list"
 import { SummaryCard } from "@/components/summary-card"
+import { WeeklyBriefCard } from "@/components/weekly-brief-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -41,6 +42,7 @@ import type {
   Rules,
   Schedule,
   Summary,
+  WeeklyBrief,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
 import { rank } from "@/lib/signals"
@@ -73,6 +75,7 @@ type Data = {
   dash?: Dashboard
   pre?: Preflight
   sum?: Summary
+  weekly?: WeeklyBrief | null
   rules?: Rules
   sched?: Schedule
 }
@@ -561,6 +564,11 @@ export function Brief() {
       .catch((e: unknown) =>
         setD((s) => ({ ...s, sum: { error: e instanceof Error ? e.message : String(e) } })),
       )
+    // Mandagsbrevet står også for seg: det er lagret, ikke regnet ut nå.
+    api
+      .brief()
+      .then((r) => setD((s) => ({ ...s, weekly: r.brief })))
+      .catch(() => setD((s) => ({ ...s, weekly: null })))
     // Om morgenkjøringen gjorde jobben sin. Står for seg, som oppsummeringen.
     api
       .schedule()
@@ -657,6 +665,16 @@ export function Brief() {
           </Card>
         )}
       </header>
+
+      {/* Mandagsbrevet først: er jeg ok, når er det tynnest, hva vil du ha av meg. */}
+      <section>
+        <WeeklyBriefCard
+          data={d.weekly}
+          loading={d.weekly === undefined}
+          writing={runningNow}
+          onWrite={() => runNow("weekly_brief")}
+        />
+      </section>
 
       {/* Slik driften har sett ut de siste månedene. */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
