@@ -163,7 +163,7 @@ export function AppSidebar({
         {authEnabled() && (
           <button
             type="button"
-            onClick={() => signOut()}
+            onClick={() => signOut(undefined, true)}
             className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-2 text-[11px]"
           >
             <LogOut className="size-3" /> Logg ut

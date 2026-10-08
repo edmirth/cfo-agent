@@ -48,8 +48,11 @@ export function onLoggedOut(fn: (why?: string) => void) {
   }
 }
 
-export async function signOut(why?: string) {
-  await client?.auth.signOut()
+/** Logg ut. `everywhere` bare når daglig leder selv trykker «Logg ut»: et
+ * avvist kall fra én fane skal ikke kaste ut økten i en annen. Supabase sin
+ * standard er å logge ut overalt, også øktene i andre faner og nettlesere. */
+export async function signOut(why?: string, everywhere = false) {
+  await client?.auth.signOut({ scope: everywhere ? "global" : "local" })
   listeners.forEach((fn) => fn(why))
 }
 
