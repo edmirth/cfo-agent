@@ -36,7 +36,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 8. Add login and authentication in front of every API route @either #platform
 - [ ] 9. Send the Monday brief by email @either #delivery
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email @agent #delivery
@@ -53,6 +52,7 @@ kanban-plugin: board
 
 ## Done
 
+- [x] 8. Add login and authentication in front of every API route @either #platform ✓ 2026-10-08
 - [x] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent ✓ 2026-10-08
 - [x] 6. Add a scheduler so the daily brief and checks run unprompted @either #ops ✓ 2026-10-08
 - [x] 5. Save every weekly forecast and score it against the real balance @agent #forecast ✓ 2026-10-08

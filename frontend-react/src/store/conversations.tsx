@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import type { Conversation, Message } from "@/lib/conversations"
 import { MAX_CONVS, clip, load, newId, save } from "@/lib/conversations"
 import { runTurn } from "@/lib/stream"
+import { authFetch } from "@/lib/auth"
 
 /* Samtalene ligger i en ref, ikke i state.
  * Et svar strømmer inn token for token; å lage en ny React-state for hver av
@@ -50,7 +51,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       convs.current = convs.current.filter((x) => x.id !== id)
       save(convs.current)
       if (c.sessionId) {
-        fetch("/api/session/reset?session_id=" + encodeURIComponent(c.sessionId), {
+        authFetch("/api/session/reset?session_id=" + encodeURIComponent(c.sessionId), {
           method: "POST",
         }).catch(() => {})
       }

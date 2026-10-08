@@ -16,6 +16,7 @@ import config
 from agent import run_turn
 from mcp_client import McpError
 from overview import cached as overview_cached
+import auth
 import brief
 import cards
 import company
@@ -53,7 +54,13 @@ except lock.AlreadyRunning as exc:
     print(f"\n! {exc}\n", flush=True)
     raise SystemExit(1) from None
 
+# Also before anything binds: a server that would answer anyone stops here.
+auth.check_config()
+
 app = FastAPI(title="CFO Agent", version="0.1.0")
+# In front of every route, so a route added later is covered without anyone
+# remembering to. Only /api/auth/config answers without a login.
+app.middleware("http")(auth.middleware)
 
 DAILY_BRIEF = (
     "Hvordan går det med selskapet akkurat nå? Hent ferske tall. Start med "
@@ -144,6 +151,12 @@ def _panel(exc: Exception, what: str) -> dict:
         cause = "Noe feilet i beregningen."
     return {"error": f"{what} kunne ikke hentes nå. {cause} "
                      f"Detaljene ligger i serverloggen."}
+
+
+@app.get("/api/auth/config")
+async def auth_config() -> dict:
+    """Det nettleseren trenger for å logge inn. Den eneste ruten uten innlogging."""
+    return auth.public_config()
 
 
 @app.get("/api/health")

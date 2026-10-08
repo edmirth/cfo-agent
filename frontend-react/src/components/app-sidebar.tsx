@@ -1,4 +1,4 @@
-import { BarChart3, Building2, ListFilter, MessageSquare, Plus } from "lucide-react"
+import { BarChart3, Building2, ListFilter, LogOut, MessageSquare, Plus } from "lucide-react"
 
 import {
   Sidebar,
@@ -14,6 +14,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { authEnabled, signOut } from "@/lib/auth"
 import type { Conversation } from "@/lib/conversations"
 import { bucket } from "@/lib/conversations"
 
@@ -159,6 +160,15 @@ export function AppSidebar({
         <p className="text-muted-foreground px-2 text-[11px]">
           Leser regnskapet deres. Endrer ingenting.
         </p>
+        {authEnabled() && (
+          <button
+            type="button"
+            onClick={() => signOut(undefined, true)}
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-2 text-[11px]"
+          >
+            <LogOut className="size-3" /> Logg ut
+          </button>
+        )}
       </SidebarFooter>
     </Sidebar>
   )

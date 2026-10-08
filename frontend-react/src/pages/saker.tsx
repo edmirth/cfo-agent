@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/collapsible"
 import { get } from "@/lib/api"
 import { dateNo } from "@/lib/format"
+import { authFetch } from "@/lib/auth"
 
 type Option = { id: string; label: string; effect: string; days?: number }
 
@@ -62,7 +63,7 @@ export function Saker({
   const decide = async (cardId: string, option: string) => {
     setBusy(cardId)
     try {
-      await fetch(`/api/cards/${cardId}/decide`, {
+      await authFetch(`/api/cards/${cardId}/decide`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ option }),

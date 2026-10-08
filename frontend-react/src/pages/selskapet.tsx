@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, get } from "@/lib/api"
 import type { Rule, Rules } from "@/lib/api"
 import { kr, pct } from "@/lib/format"
+import { authFetch } from "@/lib/auth"
 
 type Company = {
   exists: boolean
@@ -58,7 +59,7 @@ export function Selskapet() {
     setSaving(true)
     setStatus({ msg: "Lagrer …", tone: "" })
     try {
-      const r = await fetch("/api/company", {
+      const r = await authFetch("/api/company", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
