@@ -198,7 +198,7 @@ def _log_run(job: Job, run_id: int | None, run: dict, status: str) -> None:
 
 
 async def stream(job: Job, messages: list[dict], *, raise_errors: bool = False,
-                 triggered_by: str = "user") -> AsyncIterator[dict]:
+                 triggered_by: str | None = None) -> AsyncIterator[dict]:
     """Run one turn of `job`, yielding UI events.
 
     Mutates `messages` in place with the assistant turns it produces, so the
@@ -211,7 +211,8 @@ async def stream(job: Job, messages: list[dict], *, raise_errors: bool = False,
     Every run is recorded in `job_runs` — opened as running, closed with what
     it cost — and its id is in `db.job_run` while it works, so what it writes
     carries it. The `done` event carries it too, for the caller to file the
-    turn under.
+    turn under. Without `triggered_by` the run is filed under whoever set
+    `job_runs.trigger` — the scheduler, or else the user.
     """
     # Everything the agent is given this turn, so the figures in its answer can
     # be traced back to a source afterwards.
@@ -400,7 +401,7 @@ def parse_json(text: str, what: str) -> dict:
 
 
 async def complete(job: Job, prompt: str | list[dict],
-                   triggered_by: str = "user") -> Result:
+                   triggered_by: str | None = None) -> Result:
     """Run `job` to the end and return what it produced.
 
     For jobs that are not a conversation: the summary, the classification, and

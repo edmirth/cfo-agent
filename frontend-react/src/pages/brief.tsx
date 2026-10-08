@@ -39,6 +39,7 @@ import type {
   Overview,
   Preflight,
   Rules,
+  Schedule,
   Summary,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
@@ -73,6 +74,20 @@ type Data = {
   pre?: Preflight
   sum?: Summary
   rules?: Rules
+  sched?: Schedule
+}
+
+/* ── morgenkjøringen ──────────────────────────────────────────── */
+// «Klargjort 07:01» når morgenkjøringen gikk som den skulle i dag, så det
+// synes at forsiden var klar før noen spurte. En kjøring for hånd teller ikke.
+function preparedAt(sched?: Schedule): string | null {
+  const last = sched?.jobs.find((j) => j.name === "morning")?.last_run
+  if (!last || last.status !== "ok" || last.triggered_by !== "schedule" || !last.finished_at) {
+    return null
+  }
+  const done = new Date(last.finished_at)
+  if (done.toDateString() !== new Date().toDateString()) return null
+  return done.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })
 }
 
 /* ── gulvet ───────────────────────────────────────────────────── */
@@ -546,9 +561,27 @@ export function Brief() {
       .catch((e: unknown) =>
         setD((s) => ({ ...s, sum: { error: e instanceof Error ? e.message : String(e) } })),
       )
+    // Om morgenkjøringen gjorde jobben sin. Står for seg, som oppsummeringen.
+    api
+      .schedule()
+      .then((sched) => setD((s) => ({ ...s, sched })))
+      .catch(() => {})
   }
 
   useEffect(loadAll, [])
+
+  // Kjører morgenjobben på nytt for hånd, og laster forsiden når den er ferdig.
+  // Tar et minutt eller to: den henter alt og skriver oppsummeringen.
+  const [runningNow, setRunningNow] = useState(false)
+  const runNow = (name: string) => {
+    setRunningNow(true)
+    fetch(`/api/schedule/${name}/run`, { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        setRunningNow(false)
+        loadAll()
+      })
+  }
 
   const rewrite = () => {
     setRewriting(true)
@@ -565,6 +598,8 @@ export function Brief() {
 
   const asOf = d.cash?.as_of || d.ov?.generated_at || new Date().toISOString().slice(0, 10)
   const fresh = signals.filter((s) => !had.has(s.id)).length
+  const prepared = preparedAt(d.sched)
+  const attention = (d.sched?.jobs || []).filter((j) => j.attention)
 
   // «Grav i dette» åpner en ny samtale med spørsmålet allerede stilt.
   const { ask: askCfo } = useConversations()
@@ -577,6 +612,7 @@ export function Brief() {
           <span>
             Brief · {dayNo(asOf)} {dateNo(asOf)}
           </span>
+          {prepared && <span>Klargjort {prepared}</span>}
           <Button
             variant="link"
             size="sm"
@@ -597,6 +633,28 @@ export function Brief() {
           <h1 className="font-heading text-[30px] leading-tight font-semibold tracking-tight text-pretty">
             {headline(d, signals)}
           </h1>
+        )}
+        {attention.length > 0 && (
+          <Card
+            className="mt-5 max-w-2xl gap-2 border-l-4 py-3"
+            style={{ borderLeftColor: "var(--chart-expected)" }}
+          >
+            <CardContent className="grid gap-2 px-4">
+              {attention.map((j) => (
+                <div key={j.name} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <p className="text-sm leading-relaxed">{j.attention}</p>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => runNow(j.name)}
+                    disabled={runningNow}
+                  >
+                    {runningNow ? "Kjører …" : "Kjør nå"}
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         )}
       </header>
 

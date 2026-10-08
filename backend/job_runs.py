@@ -1,9 +1,10 @@
 """Every run of anything that does work: what it was, what it cost, how it went.
 
-One row in `job_runs` per chat turn, summary, industry decision — and later
-the forecast save, the watch and the brief. The row is inserted as `running`
-when the job starts and closed when it ends, so a job that dies half-way is
-still visible as one that never finished (card 6 asks for exactly that).
+One row in `job_runs` per chat turn, summary, industry decision, forecast
+save and scheduled run — and later the watch and the brief. The row is
+inserted as `running` when the job starts and closed when it ends. A job the
+server dies in the middle of is closed as failed when the next server starts
+(`close_orphans`), so it shows as one that never finished (card 6).
 
 While a job runs, its id is in `db.job_run`, and the rows it writes —
 findings, predictions, cards, messages — carry it. "Where did this card come
@@ -13,16 +14,26 @@ Recording must never cost the job itself: a failure to write here is logged
 and the work goes on.
 """
 import logging
+from contextvars import ContextVar
 
 import db
 
 log = logging.getLogger("cfo.job_runs")
 
 STATUSES = ("ok", "partial", "failed")
+ORPHANED = "Serveren stoppet før jobben ble ferdig."
+
+# Who set the work in progress going: the scheduler sets "schedule" for the
+# length of its run, so the forecast and the summary it causes are filed as
+# the schedule's without every function in between passing it down. A
+# ContextVar, like `db.job_run`, so a chat at the same time stays "user".
+trigger: ContextVar[str] = ContextVar("trigger", default="user")
 
 
-def start(job: str, triggered_by: str = "user", model: str | None = None) -> int | None:
+def start(job: str, triggered_by: str | None = None,
+          model: str | None = None) -> int | None:
     """Open a run. Returns its id, or None when it could not be recorded."""
+    triggered_by = triggered_by or trigger.get()
     try:
         with db.tx() as conn:
             return conn.execute(
@@ -55,6 +66,38 @@ def finish(run_id: int | None, status: str, usage: dict | None = None,
                  run_id, db.company_id()))
     except Exception:  # noqa: BLE001
         log.exception("Kunne ikke avslutte jobbregistreringen %s", run_id)
+
+
+def close_orphans() -> int:
+    """Close the runs a previous server left open, as failed.
+
+    Called once at startup. `lock.py` guarantees no other server is running,
+    so every run still marked running belongs to one that stopped — killed,
+    restarted by `--reload`, or the Mac shut down mid-run.
+    """
+    try:
+        with db.tx() as conn:
+            n = conn.execute(
+                "UPDATE job_runs SET status = 'failed', finished_at = ?, error = ? "
+                "WHERE company_id = ? AND status = 'running'",
+                (db.now(), ORPHANED, db.company_id())).rowcount
+    except Exception:  # noqa: BLE001
+        log.exception("Kunne ikke lukke jobber som ble stående")
+        return 0
+    if n:
+        log.warning("%d jobb(er) ble stående da serveren sist stoppet — "
+                    "lukket som feilet", n)
+    return n
+
+
+def since(job: str, after: str) -> list[dict]:
+    """The runs of `job` started at or after `after` (UTC, as `db.now()`
+    writes it), oldest first: the attempts at one scheduled slot."""
+    with db.read() as conn:
+        rows = conn.execute(
+            "SELECT * FROM job_runs WHERE company_id = ? AND job = ? "
+            "AND started_at >= ? ORDER BY id", (db.company_id(), job, after)).fetchall()
+    return [dict(r, details=db.loads(r["details"], {})) for r in rows]
 
 
 def recent(job: str | None = None, limit: int = 50) -> list[dict]:

@@ -23,6 +23,16 @@ cp .env.example .env      # add ANTHROPIC_API_KEY and TRIPLETEX_MCP_TOKEN
 Needs Python 3.10+ (`brew install python@3.13` — macOS ships 3.9, which the SDK
 does not support). `run.sh` builds the venv on first run.
 
+**The morning runs itself while the server does.** Every Norwegian working day
+at 07:00 (Oslo time) the server checks the books, keeps today's forecast,
+rebuilds the deck and writes the day's summary, so the front page is ready
+before anyone asks. It runs inside the server, so on a Mac it runs only while
+the Mac is awake with `run.sh` going. A Mac that slept through seven catches up
+as soon as it wakes, the same day. A run that failed, or a morning missed
+because the server was off, is said at the top of the front page with a
+**Kjør nå** button. `CFO_SCHEDULER=off` turns it off; `CFO_MORNING_AT=06:30`
+moves it.
+
 ## How it works
 
 **The agent definition is one file.** `.claude/agents/cfo.md` holds the CFO
@@ -87,6 +97,8 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/mcp_client.py` | Direct JSON-RPC to Tripletex for the computed blocks; raises on rejected calls |
 | `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token written back to `.env` atomically |
 | `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
+| `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00, caught up after sleep, retried, and said when it fails |
+| `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |
 | `frontend/brief.js` | The front page: brief, cash chart, signals, KPIs, and the Saker deck |
 | `frontend/app.js` | Shell, routing, conversations, chat, the Selskapet editor |
@@ -115,6 +127,8 @@ Anthropic credits.
 | `GET` | `/api/toolset` | Allowed tools audited against the server |
 | `GET` | `/api/forecast-accuracy` | Each Monday's forecast against the bank 1, 2 and 4 weeks later, and the streak |
 | `GET` | `/api/job-runs` | `?job=chat&limit=50` — what ran, how it ended, tokens and cost |
+| `GET` | `/api/schedule` | What runs on its own, when next, how the last run went; `attention` when it did not do its job |
+| `POST` | `/api/schedule/morning/run` | Run the morning now, by hand; answers when it is done |
 | `GET` | `/api/presets` | The suggested questions |
 | `POST` | `/api/chat` | Chat turn, streamed as SSE; emits a `check` event tracing the figures |
 | `POST` | `/api/session/reset?session_id=…` | Clear a conversation |
@@ -125,8 +139,9 @@ Sending a preset id (`daily`, `money`, `ar`, `margin`, `forecast`, `weeks`,
 ## Before this goes to a customer
 
 - **No auth on the app itself.** Anyone who reaches the port gets the CFO.
-- **The daily brief runs on request.** A cron or a scheduled deployment is what
-  makes it arrive unasked.
+- **The morning runs only while the server does.** On a Mac that means while
+  it is awake with `run.sh` going. Hosted, it runs every working day; the
+  scheduler moves with the server and needs no cron.
 
 ### Sources
 
