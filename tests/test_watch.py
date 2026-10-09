@@ -235,3 +235,37 @@ def _async_fail():
     async def get():
         raise RuntimeError("Tripletex svarte ikke")
     return get
+
+
+def test_without_the_model_the_warnings_are_still_raised_as_plain_cards():
+    with _morning() as (said, called):
+        async def no_credit(job, prompt, triggered_by=None):
+            raise core.JobError("Your credit balance is too low to access the Anthropic API.")
+        core.complete = no_credit
+        out = _run()
+        deck = cards.deck(TODAY)
+    keys = {c["key"]: c for c in deck["open"]}
+    vat = keys["watch:vat:2026-10-12"]
+    assert vat["title"] == ("Momsen og skattene er brukt i driften: det mangler "
+                            "150 000 kr de neste 30 dagene")
+    assert vat["urgency"] == "high" and vat["amount"] == 150_000.0
+    assert keys["watch:cost:6300:2026-09"]["title"] == (
+        "Konto 6300 Leie lokale: 52 000 kr i 2026-09, mot vanlig 20 000 kr")
+    assert len(out["cards"]) == 2 and "credit balance" in out["problem"]
+    assert out["left"] == []
+
+
+def test_the_step_says_partial_when_the_model_did_not_run():
+    import scheduler
+    with _morning():
+        async def no_credit(job, prompt, triggered_by=None):
+            raise core.JobError("Your credit balance is too low to access the Anthropic API.")
+        core.complete = no_credit
+        real = watch.run
+        watch.run = lambda: real(TODAY)
+        try:
+            out = asyncio.run(scheduler._watch())
+        finally:
+            watch.run = real
+    assert out["partial"] and "kreditt på Anthropic-kontoen" in out["cause"]
+    assert "enkle kort" in out["cause"]

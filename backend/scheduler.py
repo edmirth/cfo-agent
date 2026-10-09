@@ -167,6 +167,10 @@ async def _watch() -> dict:
         return {**found, "partial": True,
                 "cause": f"Vakten fikk ikke lest {', '.join(out['failed'])}, så "
                          f"den så ikke over alt."}
+    if out.get("problem"):
+        return {**found, "partial": True,
+                "cause": f"{_cause(RuntimeError(out['problem']))} Varslene ble lagt "
+                         f"på som enkle kort, og funnene ble ikke gått gjennom."}
     return found
 
 

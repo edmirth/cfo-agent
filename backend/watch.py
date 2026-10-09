@@ -311,6 +311,48 @@ norsk, uten fagord, til en daglig leder som ikke er regnskapsfører. Når du er 
 ferdig, svar med én linje om hva du gjorde."""
 
 
+def _plain_card(cand: dict) -> dict:
+    """A candidate's card in the engine's own words, from its figures only:
+    what the deck gets when the model cannot write. Plainer than the model's,
+    but a warning that is never raised is worse than a plain one."""
+    f = cand.get("figures") or {}
+    if cand["kind"] == "vat":
+        title = (f"Momsen og skattene er brukt i driften: det mangler "
+                 f"{_kr(f['mangler_kr'])} kr de neste 30 dagene")
+        body = (f"Banken har {_kr(f['bank_kr'])} kr, men "
+                f"{_kr(f['forfaller_innen_30_dager_kr'])} kr skal betales til "
+                f"staten og de ansatte innen 30 dager. Pengene som mangler er "
+                f"brukt til noe annet, og må inn før forfall.")
+    else:
+        title = (f"Konto {f['konto']} {f.get('navn') or ''}: {_kr(f['forrige_maned_kr'])} kr "
+                 f"i {f['maned']}, mot vanlig {_kr(f['vanlig_niva_kr'])} kr").replace("  ", " ")
+        body = (f"Det er {_kr(f['over_vanlig_kr'])} kr mer enn snittet for månedene "
+                f"før i år. Sjekk om det er en engangsregning, en feilføring "
+                f"eller en kostnad som har økt for godt.")
+    return {"title": title, "body": body}
+
+
+def _fallback(candidates: dict[str, dict]) -> list[str]:
+    """Raise the candidates the model did not get to as plain cards."""
+    made = []
+    for key, cand in list(candidates.items()):
+        words = _plain_card(cand)
+        figures = cand.get("figures") or {}
+        evidence = [{"label": k.replace("_", " "), "value": str(v)}
+                    for k, v in figures.items()
+                    if not isinstance(v, (list, dict)) and v is not None]
+        evidence.append({"label": "Regel", "value": cand["rule"]})
+        rec = cards.propose(title=words["title"], body=words["body"],
+                            urgency="high" if cand["kind"] == "vat" else "medium",
+                            kind=cand["kind"], evidence=evidence, key=key,
+                            amount=cand.get("amount"))
+        _record(key, "card", ref=rec["id"] if rec else None)
+        candidates.pop(key)
+        if rec:
+            made.append(rec["id"])
+    return made
+
+
 VAKT = core.Job(name=JOB, tools=TOOLS, max_tokens=MAX_TOKENS,
                 prompt_source="grunnlaget")
 
@@ -390,6 +432,10 @@ async def run(today: date | None = None) -> dict:
     try:
         await core.complete(VAKT, PROMPT.format(company=config.COMPANY_NAME,
                                                 facts=text, max_findings=MAX_FINDINGS))
+    except Exception as exc:  # noqa: BLE001 — the warnings are the point
+        log.exception("Morgenvakten fikk ikke kalt modellen; kortene skrives av motoren")
+        out["problem"] = str(exc)
+        state.done["cards"] += _fallback(state.candidates)
     finally:
         _run.reset(token)
     out.update({k: v for k, v in state.done.items()},

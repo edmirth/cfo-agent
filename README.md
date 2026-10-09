@@ -144,6 +144,7 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/auth.py` | The login gate: every `/api` route checks the Supabase token and the owner list; fail closed |
 | `backend/mailer.py` | Sending email: the one module that knows Resend. Idempotency key on every send |
 | `backend/brief_email.py` | The Monday brief as a phone-width email, complete on its own; sent once a week to `brev_mottakere` |
+| `backend/watch.py` | The morning watch: VAT money in use and unusual costs become candidates; the model raises cards, opens or closes findings, only for those, with every number checked; plain cards when the model cannot run |
 | `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |

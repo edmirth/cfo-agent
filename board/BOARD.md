@@ -47,11 +47,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent
 
 
 ## Done
 
+- [x] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent ✓ 2026-10-09
 - [x] 9. Send the Monday brief by email @either #delivery ✓ 2026-10-08
 - [x] 8. Add login and authentication in front of every API route @either #platform ✓ 2026-10-08
 - [x] 7. Write the Monday cash brief: traffic light, low point against the floor, what changed, up to three decisions @agent #agent ✓ 2026-10-08
