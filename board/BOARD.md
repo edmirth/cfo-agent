@@ -37,9 +37,8 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 10. Choose a PSD2 partner and read the balance from the bank @edmir #liquidity
-- [ ] 11. Open and approve a card with one tap from the email @agent #delivery
-- [ ] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent
+- [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
+- [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
 - [ ] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding
 - [ ] 14. Measure what the playbook says matters @agent #metrics
 - [ ] 15. Hold the agent's output for human review while a customer is new @either #review
@@ -48,6 +47,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent
 
 
 ## Done
