@@ -12,7 +12,8 @@ from prompt import system_blocks
 CHAT = core.Job(
     name="chat",
     system=system_blocks,
-    tools=tools.NAMES,
+    # Everything but the morning watch's tools, which act only inside a watch run.
+    tools=tools.NAMES - tools.WATCH,
     tripletex=True,
     thinking={"type": "adaptive", "display": "summarized"},
     effort=config.CFO_EFFORT,

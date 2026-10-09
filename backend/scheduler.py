@@ -57,6 +57,7 @@ import mailer
 import overview
 import preflight
 import summary
+import watch
 import workdays
 from mcp_client import McpError
 from tlx_oauth import OAuthError
@@ -155,6 +156,20 @@ async def _cards() -> dict:
     return {"open": len(deck.get("open") or [])}
 
 
+async def _watch() -> dict:
+    out = await watch.run()
+    found = {"candidates": out["candidates"], "new": out["new"],
+             "quiet": out["quiet"], "closed_cards": out["closed_cards"]}
+    for k in ("cards", "findings", "closed", "skipped", "refused"):
+        if k in out:
+            found[k] = out[k]
+    if out["failed"]:
+        return {**found, "partial": True,
+                "cause": f"Vakten fikk ikke lest {', '.join(out['failed'])}, så "
+                         f"den så ikke over alt."}
+    return found
+
+
 async def _summary() -> dict:
     s = await summary.cached()
     if s.get("error"):
@@ -215,6 +230,9 @@ MORNING = Scheduled(
            Step("forecast", "Prognosen", _forecast),
            Step("figures", "Nøkkeltallene", _figures),
            Step("cards", "Sakene", _cards),
+           # After the deck, so it never raises what the deck already has; before
+           # the summary, so the summary reads the findings it opened or closed.
+           Step("watch", "Morgenvakten", _watch),
            Step("summary", "Oppsummeringen", _summary)))
 
 # After the morning, in the same minute: `tick` runs jobs in this order, so the

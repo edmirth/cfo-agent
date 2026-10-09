@@ -326,6 +326,6 @@ def test_the_summary_step_fails_when_todays_text_was_not_written():
 
 def test_the_morning_checks_before_it_writes():
     names = [s.name for s in scheduler.MORNING.steps]
-    assert names == ["checks", "forecast", "figures", "cards", "summary"]
+    assert names == ["checks", "forecast", "figures", "cards", "watch", "summary"]
     assert scheduler.MORNING.at == time(7, 0)
     assert scheduler.job("morning") is scheduler.MORNING

@@ -180,6 +180,20 @@ async def build(today: date | None = None) -> dict:
             prev = v
         return out
 
+    # Each cost account month by month, for the morning watch's unusual-cost
+    # check (card 12). From the report already fetched: no extra call.
+    cost_accounts = {
+        "months": [MONTHS.index(cols[i]) + 1 if cols[i] in MONTHS else None
+                   for i, _ in months],
+        "accounts": [{"account": account_number(r),
+                      "name": (r.get("path") or "").split(" ", 1)[-1].strip(),
+                      "flows": _flow([r])}
+                     for r in _in_range(4000, 7999)]}
+    # The last column may be "Utgående saldo" standing in for the current
+    # month; it is still that month.
+    if cost_accounts["months"] and cost_accounts["months"][-1] is None:
+        cost_accounts["months"][-1] = today.month
+
     bank_rows = [r for r in m if (r.get("path") or "").startswith("1920")]
     ar_row_1500 = [r for r in m if (r.get("path") or "").startswith("1500")]
 
@@ -245,6 +259,7 @@ async def build(today: date | None = None) -> dict:
         # which figures are missing, and the cache uses it to retry sooner.
         "partial": failed or None,
         "monthly": series,
+        "cost_accounts": cost_accounts,
         "top_debtor": ({"name": top_customer[0], "amount": top_customer[1],
                         # samme nevner som tallet vi viser, ellers spriker de
                         "share_pct": _pct(top_customer[1],

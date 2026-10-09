@@ -29,7 +29,8 @@ def _company(block: str = ""):
 
 
 SET = ("likviditetsgulv_kr: 2 000 000\npurring_etter_dager: 30\n"
-       "varsel_minimum_kr: 20k\nlonnsandel_mal_pct: 75 %")
+       "varsel_minimum_kr: 20k\nlonnsandel_mal_pct: 75 %\n"
+       "kostnadsavvik_pct: 40")
 
 
 # ------------------------------------------------------------------ reading
@@ -68,6 +69,7 @@ def test_a_set_rule_is_the_companys():
     assert r["purring_etter_dager"]["value"] == 30
     assert r["varsel_minimum_kr"]["value"] == 20_000
     assert r["lonnsandel_mal_pct"]["value"] == 75
+    assert r["kostnadsavvik_pct"]["value"] == 40
     assert not any(rule["assumed"] for rule in r.values())
     assert company.said(r["likviditetsgulv_kr"]) == "satt i Selskapet"
 

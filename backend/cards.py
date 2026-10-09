@@ -647,6 +647,28 @@ def reconcile(candidates: list[dict], sources_ok: bool,
         add({**card, "source": "auto"})
 
 
+def resolve_gone(prefix: str, live: set[str]) -> list[str]:
+    """Close the open cards under `prefix` whose key is no longer live: what
+    `reconcile` does for the derived cards, for cards the morning watch raised.
+    Returns the ids closed."""
+    closed = []
+    with _editing() as (conn, data):
+        for card in data["cards"]:
+            key = card.get("key") or ""
+            if (not key.startswith(prefix) or key in live
+                    or card.get("status") not in ("open", "snoozed")):
+                continue
+            card["status"] = "resolved"
+            card["closed"] = _now()
+            card["decided"] = {"at": datetime.now().isoformat(timespec="seconds"),
+                               "effect": "resolved", "label": "Løste seg selv",
+                               "note": "Morgenvakten finner ikke lenger det som "
+                                       "laget kortet."}
+            closed.append(card["id"])
+            log.info("Kort %s lukket av morgenvakten: forholdet er borte", card["id"])
+    return closed
+
+
 # ------------------------------------------------- cards the agent proposes
 
 MAX_OPTIONS = 4
@@ -655,7 +677,8 @@ MAX_OPTIONS = 4
 def propose(title: str, body: str, urgency: str = "medium",
             kind: str = "other", options: list[dict] | None = None,
             draft_subject: str = "", draft_text: str = "",
-            evidence: list[dict] | None = None, key: str = "") -> dict | None:
+            evidence: list[dict] | None = None, key: str = "",
+            amount: float | None = None) -> dict | None:
     """Validate and store a card the agent has prepared.
 
     The agent writes the words; it does not get to invent what a button does.
@@ -683,7 +706,7 @@ def propose(title: str, body: str, urgency: str = "medium",
 
     card = {"key": key or f"agent:{title[:60]}", "kind": kind,
             "urgency": urgency if urgency in ("high", "medium", "low") else "medium",
-            "amount": None, "title": title, "body": body,
+            "amount": amount, "title": title, "body": body,
             "evidence": evidence or [], "options": clean, "source": "agent"}
     if draft_text:
         card["draft"] = {"kind": "e-post", "to": "",
