@@ -131,6 +131,8 @@ export type WeeklyBrief = {
   accuracy: { scored: boolean; text: string }
   written_by: "model" | "engine"
   body: string
+  status: string
+  sent?: { at: string; to: string[]; id: string }
 }
 
 export type Preflight = {

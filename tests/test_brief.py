@@ -256,7 +256,7 @@ def test_a_rewrite_is_a_new_row_and_the_latest_is_shown():
 
 # ---------------------------------------------------------------- the schedule
 def test_written_on_the_first_working_day_of_the_week_after_the_morning():
-    assert scheduler.JOBS == (scheduler.MORNING, scheduler.WEEKLY)
+    assert scheduler.JOBS[:2] == (scheduler.MORNING, scheduler.WEEKLY)
     on = scheduler.WEEKLY.runs_on
     assert on(date(2026, 10, 12)) and not on(date(2026, 10, 13))
     # Easter Monday 2027 and Whit Monday 2026: the Tuesday instead.

@@ -50,3 +50,9 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") or ""
 OWNER_EMAILS = frozenset(e.strip().lower()
                          for e in (os.getenv("CFO_OWNER_EMAIL") or "").split(",")
                          if e.strip())
+
+# Email (backend/mailer.py). Resend, until the product has its own domain:
+# without one, Resend sends only from onboarding@resend.dev and only to the
+# account's own address — enough while the CEO is the one recipient.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY") or ""
+MAIL_FROM = os.getenv("CFO_MAIL_FROM", "CFO <onboarding@resend.dev>")
