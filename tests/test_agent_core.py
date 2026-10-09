@@ -117,12 +117,13 @@ def test_an_unknown_tool_name_fails_when_the_job_is_defined():
         raise AssertionError("a job naming a tool that does not exist was accepted")
 
 
-def test_chat_keeps_the_whole_kit():
-    assert CHAT.tools == tools.NAMES and CHAT.tripletex
+def test_chat_keeps_the_whole_kit_but_the_watchs_tools():
+    assert CHAT.tools == tools.NAMES - tools.WATCH and CHAT.tripletex
     sent = []
     _play(CHAT, [_final("end_turn", [NS(type="text", text="Ok.")])], sent=sent)
     names = {t.get("name") or t.get("mcp_server_name") for t in sent[0]["tools"]}
-    assert tools.NAMES <= names and "code_execution" in names
+    assert (tools.NAMES - tools.WATCH) <= names and "code_execution" in names
+    assert not (tools.WATCH & names)
     assert sent[0]["mcp_servers"][0]["authorization_token"] == "test-token"
 
 

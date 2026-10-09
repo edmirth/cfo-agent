@@ -225,7 +225,63 @@ LOCAL_TOOLS = [
     },
 ]
 
+# The morning watch's own tools (`watch.py`). Each acts only on what the
+# engine put in front of it that morning, and checks every number it is given
+# before storing anything, so they mean nothing outside a watch run and the
+# chat is not offered them.
+_OPTIONS = {
+    "type": "array",
+    "description": "Two or three buttons. Effects: 'approve' hands over the draft and closes it, 'snooze' brings it back after `days`, 'delegate' records that he is handling it himself, 'dismiss' closes it for good.",
+    "items": {"type": "object", "properties": {
+        "label": {"type": "string"},
+        "effect": {"type": "string", "enum": ["approve", "snooze", "delegate", "dismiss"]},
+        "days": {"type": "number"}}, "required": ["label", "effect"]},
+}
+WATCH_TOOLS = [
+    {
+        "name": "watch_card",
+        "description": "Raise a card for one of this morning's candidates: something the CEO should do, with the suggested action and, when the action is a message, the draft written.",
+        "input_schema": {"type": "object", "properties": {
+            "candidate": {"type": "string", "description": "The candidate's id, exactly as in grunnlaget."},
+            "title": {"type": "string", "description": "One line with the figure in it, as he would say it."},
+            "body": {"type": "string", "description": "Two or three sentences: what it means for him and why now. No accounting terms."},
+            "urgency": {"type": "string", "enum": ["high", "medium", "low"]},
+            "draft_subject": {"type": "string"},
+            "draft_text": {"type": "string", "description": "The message, ready to send, when the action is one."},
+            "options": _OPTIONS,
+        }, "required": ["candidate", "title", "body", "urgency"]},
+    },
+    {
+        "name": "watch_finding",
+        "description": "Open a finding for one of this morning's candidates: worth following, with nothing to do yet. Two a morning at most.",
+        "input_schema": {"type": "object", "properties": {
+            "candidate": {"type": "string", "description": "The candidate's id, exactly as in grunnlaget."},
+            "topic": {"type": "string", "description": "Three or four words."},
+            "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+            "statement": {"type": "string", "description": "One sentence: what is wrong and why it matters, with the figure."},
+        }, "required": ["candidate", "topic", "severity", "statement"]},
+    },
+    {
+        "name": "watch_skip",
+        "description": "Set one of this morning's candidates aside: it needs nothing, for the reason given. It is not put to you again.",
+        "input_schema": {"type": "object", "properties": {
+            "candidate": {"type": "string"},
+            "reason": {"type": "string", "description": "Why it needs nothing, e.g. a quarterly bill that lands in this month."},
+        }, "required": ["candidate", "reason"]},
+    },
+    {
+        "name": "watch_close_finding",
+        "description": "Close an open finding that today's figures show no longer holds.",
+        "input_schema": {"type": "object", "properties": {
+            "finding_id": {"type": "string", "description": "As in grunnlaget, e.g. F012."},
+            "outcome": {"type": "string", "description": "One sentence on how it ended, with the figure from grunnlaget that settles it."},
+        }, "required": ["finding_id", "outcome"]},
+    },
+]
+LOCAL_TOOLS += WATCH_TOOLS
+
 NAMES = frozenset(t["name"] for t in LOCAL_TOOLS)
+WATCH = frozenset(t["name"] for t in WATCH_TOOLS)
 
 
 async def run(name: str, args: dict) -> str:
@@ -237,6 +293,13 @@ async def run(name: str, args: dict) -> str:
     import cards
     import memory
     import trace
+    if name in WATCH:
+        import watch
+        try:
+            return watch.tool(name, args)
+        except Exception as exc:  # noqa: BLE001 — a bad call must not end the watch
+            log.exception("Vaktverktøyet %s feilet", name)
+            return f"Could not do that: {exc}"
     try:
         if name == "remember_finding":
             rec = memory.add_finding(

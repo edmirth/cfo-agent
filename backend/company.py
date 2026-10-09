@@ -56,6 +56,9 @@ KNOWN = {
     "varsel_minimum_kr": ("kr", "beløp under dette gir ingen sak eller varsel"),
     "lonnsandel_mal_pct": ("pct", "målet for lønn som andel av omsetningen, "
                            "i prosent"),
+    "kostnadsavvik_pct": ("pct", "hvor mye over sitt vanlige nivå en "
+                          "kostnadskonto må ligge en måned før CFO-en sier "
+                          "fra, i prosent"),
     "brev_mottakere": ("emails", "hvem mandagsbrevet sendes til på e-post, "
                        "skilt med komma; står den ikke, går det til den som "
                        "logger inn"),
@@ -68,13 +71,16 @@ KNOWN = {
 # card is raised under some floor, so each has a default, and whatever uses one
 # says when it is ours rather than theirs.
 RULES = ("likviditetsgulv_kr", "purring_etter_dager", "varsel_minimum_kr",
-         "lonnsandel_mal_pct")
+         "lonnsandel_mal_pct", "kostnadsavvik_pct")
 RULE_DEFAULTS = {
     "purring_etter_dager": 14,
     "varsel_minimum_kr": 10_000,
     # No target is better than one we made up: a payroll share is only "too
     # high" against a number someone in the company chose.
     "lonnsandel_mal_pct": None,
+    # A cost account half again above its usual month is worth a look; less
+    # than that is ordinary month-to-month noise in a small company.
+    "kostnadsavvik_pct": 50,
 }
 # The floor defaults to one month's wages, which is what the Brief has always
 # drawn: whether the account covers the next payroll. This is only for when the
