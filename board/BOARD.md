@@ -46,11 +46,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding
 
 
 ## Done
 
+- [x] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding ✓ 2026-10-10
 - [x] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent ✓ 2026-10-09
 - [x] 9. Send the Monday brief by email @either #delivery ✓ 2026-10-08
 - [x] 8. Add login and authentication in front of every API route @either #platform ✓ 2026-10-08
