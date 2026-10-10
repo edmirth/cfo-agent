@@ -20,6 +20,7 @@ import auth
 import brief
 import cards
 import company
+import health as health_report  # not `health`: that name is the /api/health route
 import conversations
 import db
 import definitions
@@ -326,6 +327,17 @@ async def weekly_brief() -> dict:
     except Exception as exc:  # noqa: BLE001
         log.exception("Mandagsbrevet kunne ikke leses")
         return _panel(exc, "Mandagsbrevet")
+
+
+@app.get("/api/helsesjekk")
+async def health_check() -> dict:
+    """Den siste helsesjekken og oppryddingslisten som ble laget med den.
+    Lages på knappen (POST /api/schedule/health_check/run) og en gang i måneden."""
+    try:
+        return {"health": health_report.latest()}
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Helsesjekken kunne ikke leses")
+        return _panel(exc, "Helsesjekken")
 
 
 @app.get("/api/dashboard")

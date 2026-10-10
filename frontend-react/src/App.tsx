@@ -6,6 +6,7 @@ import { api, get } from "@/lib/api"
 import { authEnabled, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
+import { Helsesjekk } from "@/pages/helsesjekk"
 import { Login } from "@/pages/login"
 import { Saker } from "@/pages/saker"
 import { Selskapet } from "@/pages/selskapet"
@@ -73,6 +74,8 @@ function Shell() {
             <Chat conv={conv} />
           ) : hash === "#saker" || hash.startsWith("#saker/") ? (
             <Saker onCount={setSakerCount} focus={hash.slice("#saker/".length) || null} />
+          ) : hash === "#helsesjekk" ? (
+            <Helsesjekk />
           ) : hash === "#selskapet" ? (
             <Selskapet />
           ) : (
