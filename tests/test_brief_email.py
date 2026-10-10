@@ -176,7 +176,7 @@ def test_last_weeks_brief_is_not_sent_as_this_weeks():
 
 
 def test_the_mail_step_fails_out_loud_and_runs_after_the_brief():
-    assert scheduler.JOBS == (scheduler.MORNING, scheduler.WEEKLY, scheduler.MAIL)
+    assert scheduler.JOBS[:3] == (scheduler.MORNING, scheduler.WEEKLY, scheduler.MAIL)
     assert scheduler.MAIL.runs_on is scheduler.WEEKLY.runs_on
     _tmp.db()
     try:

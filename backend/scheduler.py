@@ -52,6 +52,7 @@ import commitments
 import config
 import db
 import forecasts
+import health
 import job_runs
 import mailer
 import overview
@@ -212,6 +213,35 @@ async def _mail() -> dict:
     return {"period": out["period"], "to": out["to"], "id": out["id"]}
 
 
+async def _health() -> dict:
+    try:
+        out = await health.write()
+    except health.HealthError as exc:
+        raise StepFailed(str(exc)) from exc
+    found = {"made_on": out["made_on"], "cleanup": out["cleanup"], "card": out["card"],
+             "written_by": out["written_by"]}
+    if out["written_by"] != "model":
+        return {**found, "partial": True,
+                "cause": f"{_cause(RuntimeError(out['problem'] or ''))} Helsesjekken "
+                         f"ble skrevet ut fra tallene alene."}
+    return found
+
+
+HEALTH_DAY = 6        # the 6th working day: last month posted, invoicing included
+
+
+def health_day(d: date) -> bool:
+    """The month's 6th working day. Earlier, last month is rarely posted yet,
+    and the health check would open on a month that only looks bad."""
+    if not workdays.is_working_day(d):
+        return False
+    n, day = 0, d.replace(day=1)
+    while day <= d:
+        n += workdays.is_working_day(day)
+        day += timedelta(days=1)
+    return n == HEALTH_DAY
+
+
 def first_working_day_of_week(d: date) -> bool:
     """Monday, or the day after when Monday is a holiday (Easter, Whit)."""
     monday = d - timedelta(days=d.weekday())
@@ -254,7 +284,12 @@ MAIL = Scheduled(
     runs_on=first_working_day_of_week, days="første virkedag i uka",
     steps=(Step("mail", "E-posten", _mail),))
 
-JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY, MAIL)
+HEALTH = Scheduled(
+    name="health_check", label="Helsesjekken", at=MORNING.at,
+    runs_on=health_day, days=f"{HEALTH_DAY}. virkedag i måneden",
+    steps=(Step("health", "Helsesjekken", _health),))
+
+JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY, MAIL, HEALTH)
 
 
 def job(name: str) -> Scheduled:
