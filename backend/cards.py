@@ -117,11 +117,13 @@ def insert_row(conn, cid: int, card: dict, event: str = "created",
 def _event(conn, cid: int, card_id: int, event: str, actor: str = "system",
            at: str | None = None, decided: dict | None = None) -> None:
     d = decided or {}
+    edited = d.get("draft_edited")
     conn.execute(
         "INSERT INTO card_events (company_id, card_id, at, event, option_id, "
-        "effect, label, note, actor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "effect, label, note, actor, draft_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (cid, card_id, at or db.now(), event, d.get("option"), d.get("effect"),
-         d.get("label"), d.get("note"), actor))
+         d.get("label"), d.get("note"), actor,
+         None if edited is None else int(bool(edited))))
 
 
 def _events_for(before: dict, after: dict) -> list[tuple[str, str, dict | None]]:
@@ -296,8 +298,15 @@ def add(card: dict) -> dict | None:
     return card
 
 
-def decide(card_id: str, option_id: str, note: str = "") -> dict:
-    """Record what the CEO chose, and do what that choice actually means."""
+def decide(card_id: str, option_id: str, note: str = "",
+           draft_text: str | None = None) -> dict:
+    """Record what the CEO chose, and do what that choice actually means.
+
+    `draft_text` is the draft as it stood when he chose: changed, it replaces
+    the card's draft and the decision is marked as edited. That mark is the
+    playbook's "approved without edits" (card 14), and the human review
+    (card 15) reads it too. A card with no draft has nothing to edit, and is
+    marked neither way."""
     with _editing() as (conn, data):
         card = next((c for c in data["cards"]
                      if c["id"].upper() == card_id.upper()), None)
@@ -309,9 +318,16 @@ def decide(card_id: str, option_id: str, note: str = "") -> dict:
             raise KeyError(f"Kortet {card['id']} har ikke valget {option_id}")
 
         effect = option.get("effect")
+        edited = None
+        draft = card.get("draft")
+        if draft:
+            edited = (draft_text is not None
+                      and draft_text.strip() != (draft.get("text") or "").strip())
+            if edited:
+                card["draft"] = {**draft, "text": draft_text}
         card["decided"] = {"at": datetime.now().isoformat(timespec="seconds"),
                            "option": option_id, "label": option.get("label"),
-                           "effect": effect, "note": note}
+                           "effect": effect, "note": note, "draft_edited": edited}
         if effect == "snooze":
             days = int(option.get("days") or 7)
             card["status"] = "snoozed"

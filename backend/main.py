@@ -7,7 +7,7 @@ from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ import conversations
 import db
 import definitions
 import job_runs
+import metrics
 import lock
 import scheduler
 import scoring
@@ -127,6 +128,8 @@ PRESETS = [
 class DecisionRequest(BaseModel):
     option: str = Field(min_length=1, max_length=64)
     note: str = Field(default="", max_length=2000)
+    # The draft as it stood when he chose; changed, it is recorded as edited.
+    draft_text: str | None = Field(default=None, max_length=20000)
 
 
 class ChatRequest(BaseModel):
@@ -340,6 +343,25 @@ async def health_check() -> dict:
         return _panel(exc, "Helsesjekken")
 
 
+@app.post("/api/activity")
+async def activity(request: Request) -> dict:
+    """Appen er åpen og i fokus dette minuttet. Bare det, ikke hva som leses."""
+    user = getattr(request.state, "user", None)
+    metrics.ping(user.email if user else "local")
+    return {"ok": True}
+
+
+@app.get("/api/metrics")
+async def service_metrics() -> dict:
+    """For produkteieren: tid i appen, beslutninger, fall i banken og kostnad
+    per uke. Ikke for kunden; bak en admin-rolle når kundene logger inn."""
+    try:
+        return metrics.report()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Målingene kunne ikke regnes ut")
+        return _panel(exc, "Målingene")
+
+
 @app.get("/api/dashboard")
 async def dashboard(refresh: bool = False) -> dict:
     """Bransjen selskapet er i, og nøkkeltallene som betyr noe i den bransjen.
@@ -370,7 +392,7 @@ async def get_cards(refresh: bool = True) -> dict:
 async def decide_card(card_id: str, req: DecisionRequest) -> dict:
     """Registrer hva daglig leder valgte, og gjør det valget faktisk betyr."""
     try:
-        return {"card": cards.decide(card_id, req.option, req.note)}
+        return {"card": cards.decide(card_id, req.option, req.note, req.draft_text)}
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
