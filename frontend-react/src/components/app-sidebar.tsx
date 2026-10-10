@@ -1,4 +1,12 @@
-import { BarChart3, Building2, ListFilter, LogOut, MessageSquare, Plus } from "lucide-react"
+import {
+  BarChart3,
+  Building2,
+  HeartPulse,
+  ListFilter,
+  LogOut,
+  MessageSquare,
+  Plus,
+} from "lucide-react"
 
 import {
   Sidebar,
@@ -32,6 +40,7 @@ type Props = {
 const NAV = [
   { href: "#", key: "home", label: "Brief", icon: BarChart3 },
   { href: "#saker", key: "saker", label: "Saker", icon: ListFilter },
+  { href: "#helsesjekk", key: "helsesjekk", label: "Helsesjekk", icon: HeartPulse },
   { href: "#selskapet", key: "selskapet", label: "Selskapet", icon: Building2 },
 ]
 

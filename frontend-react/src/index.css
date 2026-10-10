@@ -226,3 +226,21 @@
 .cfo-md td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--border); }
 .cfo-md td:not(:first-child), .cfo-md th:not(:first-child) { text-align: right; }
 .cfo-md td:not(:first-child) { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
+
+/* Utskrift: bare dokumentet. Helsesjekken skal kunne lagres som PDF fra
+   nettleseren uten menyen ved siden av og uten den flytende rammen rundt. */
+@media print {
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"] {
+    display: none !important;
+  }
+  [data-slot="sidebar-inset"] {
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+  body {
+    background: #fff !important;
+  }
+}
