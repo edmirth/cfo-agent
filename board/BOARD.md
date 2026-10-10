@@ -33,6 +33,7 @@ kanban-plugin: board
 - [ ] We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 - [ ] Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
 - [ ] Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
+- [ ] Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 
 
 ## Next
@@ -45,11 +46,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 14. Measure what the playbook says matters @agent #metrics
 
 
 ## Done
 
+- [x] 14. Measure what the playbook says matters @agent #metrics ✓ 2026-10-10
 - [x] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding ✓ 2026-10-10
 - [x] 12. Run a morning watch that raises and closes findings and cards unasked @agent #agent ✓ 2026-10-09
 - [x] 9. Send the Monday brief by email @either #delivery ✓ 2026-10-08
