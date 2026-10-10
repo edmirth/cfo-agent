@@ -146,6 +146,7 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/brief_email.py` | The Monday brief as a phone-width email, complete on its own; sent once a week to `brev_mottakere` |
 | `backend/watch.py` | The morning watch: VAT money in use and unusual costs become candidates; the model raises cards, opens or closes findings, only for those, with every number checked; plain cards when the model cannot run |
 | `backend/health.py` | The health check and the clean-up list for the regnskapsfører: facts per section with no model, written by the `helsesjekk` job, kept in `reports`; on a button and the 6th working day of each month |
+| `backend/metrics.py` | For the product owner (`#maling`, not in the menu): minutes in the app, decisions and the share approved unedited, cash dips with their weeks of warning, agent cost — per week |
 | `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
 | `backend/main.py` | FastAPI routes and the in-memory session store |

@@ -3,11 +3,12 @@ import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { api, get } from "@/lib/api"
-import { authEnabled, initAuth, onLoggedOut, supabase } from "@/lib/auth"
+import { authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
 import { Helsesjekk } from "@/pages/helsesjekk"
 import { Login } from "@/pages/login"
+import { Maling } from "@/pages/maling"
 import { Saker } from "@/pages/saker"
 import { Selskapet } from "@/pages/selskapet"
 import { ConversationsProvider, useConversations } from "@/store/conversations"
@@ -34,9 +35,25 @@ function useTheme() {
   }, [])
 }
 
+/** Tid i appen, for produkteieren (#maling): ett signal i minuttet mens
+ * appen er synlig og i fokus. Bare at den er i bruk, ikke hva som leses. */
+function useActiveMinutes() {
+  useEffect(() => {
+    const ping = () => {
+      if (document.visibilityState === "visible" && document.hasFocus()) {
+        authFetch("/api/activity", { method: "POST" }).catch(() => {})
+      }
+    }
+    ping()
+    const id = window.setInterval(ping, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+}
+
 function Shell() {
   const hash = useHash()
   useTheme()
+  useActiveMinutes()
   const [company, setCompany] = useState("CFO")
   const [sakerCount, setSakerCount] = useState(0)
   const { convs, remove } = useConversations()
@@ -74,6 +91,10 @@ function Shell() {
             <Chat conv={conv} />
           ) : hash === "#saker" || hash.startsWith("#saker/") ? (
             <Saker onCount={setSakerCount} focus={hash.slice("#saker/".length) || null} />
+          ) : hash === "#maling" ? (
+            // For produkteieren. Ikke i menyen; bak en admin-rolle når kundene
+            // logger inn.
+            <Maling />
           ) : hash === "#helsesjekk" ? (
             <Helsesjekk />
           ) : hash === "#selskapet" ? (

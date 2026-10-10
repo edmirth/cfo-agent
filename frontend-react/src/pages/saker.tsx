@@ -4,6 +4,7 @@ import { Copy } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Collapsible,
   CollapsibleContent,
@@ -45,6 +46,10 @@ export function Saker({
   const [deck, setDeck] = useState<Deck | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  // Utkastet slik det står i boksen, når det er endret. Sendes med valget, så
+  // det huskes at teksten ble endret før den ble godkjent.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const draftOf = (c: DeckCard) => drafts[c.id] ?? c.draft?.text ?? ""
 
   // Hentes hver gang: en sak kan ha løst seg siden sist man så på den.
   const load = () =>
@@ -61,12 +66,16 @@ export function Saker({
   }, [])
 
   const decide = async (cardId: string, option: string) => {
+    const card = deck?.open.find((x) => x.id === cardId)
     setBusy(cardId)
     try {
       await authFetch(`/api/cards/${cardId}/decide`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ option }),
+        body: JSON.stringify({
+          option,
+          ...(card?.draft ? { draft_text: draftOf(card) } : {}),
+        }),
       })
       await load()
     } finally {
@@ -75,7 +84,7 @@ export function Saker({
   }
 
   const copy = (c: DeckCard) => {
-    navigator.clipboard?.writeText(c.draft?.text || "").then(() => {
+    navigator.clipboard?.writeText(draftOf(c)).then(() => {
       setCopied(c.id)
       setTimeout(() => setCopied(null), 2000)
     })
@@ -141,17 +150,37 @@ export function Saker({
                     {c.draft.subject && (
                       <p className="mb-2 text-sm font-medium">{c.draft.subject}</p>
                     )}
-                    <pre className="text-muted-foreground font-sans text-sm whitespace-pre-wrap">
-                      {c.draft.text}
-                    </pre>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => copy(c)}
-                    >
-                      <Copy /> {copied === c.id ? "Kopiert" : "Kopier teksten"}
-                    </Button>
+                    <Textarea
+                      value={draftOf(c)}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                      rows={Math.min(14, Math.max(4, draftOf(c).split("\n").length + 1))}
+                      className="bg-background text-sm"
+                      aria-label="Utkastet, kan endres før du sender"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Button variant="outline" size="sm" onClick={() => copy(c)}>
+                        <Copy /> {copied === c.id ? "Kopiert" : "Kopier teksten"}
+                      </Button>
+                      {drafts[c.id] !== undefined && drafts[c.id] !== c.draft.text && (
+                        <>
+                          <span className="text-muted-foreground text-xs">Endret av deg</span>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-xs"
+                            onClick={() =>
+                              setDrafts((d) => {
+                                const rest = { ...d }
+                                delete rest[c.id]
+                                return rest
+                              })
+                            }
+                          >
+                            Tilbake til CFO-ens tekst
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </CollapsibleContent>
                 </Collapsible>
               )}
