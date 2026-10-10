@@ -39,13 +39,13 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
-- [ ] 14. Measure what the playbook says matters @agent #metrics
 - [ ] 15. Hold the agent's output for human review while a customer is new @either #review
 - [ ] 16. Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings
 
 
 ## Doing
 
+- [ ] 14. Measure what the playbook says matters @agent #metrics
 
 
 ## Done
