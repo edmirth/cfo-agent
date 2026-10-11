@@ -170,6 +170,23 @@ def test_a_part_invoiced_month_forecasts_only_the_remainder():
     assert left and round(left[0]["amount"]) == 300_000
 
 
+def test_an_invoice_already_paid_this_month_is_not_forecast_again():
+    """Invoiced on the 1st and paid on the 3rd: its money is in the opening
+    balance. The open list leaves a paid invoice out, so it was not netted
+    off, and the month's invoicing collected the same 200 000 kr again."""
+    paid = [{**_invoice(0.0, "2026-10-01", "2026-10-31"), "amount": 200_000.0}]
+    left = _october_sales(_forecast([REVENUE], ar=paid))
+    assert left and round(left[0]["amount"]) == 300_000
+
+
+def test_a_cancelled_invoice_and_its_credit_note_net_to_nothing():
+    rows = [{**_invoice(0.0, "2026-10-01", "2026-10-31", 1), "amount": 100_000.0,
+             "isCredited": True},
+            {**_invoice(0.0, "2026-10-02", "2026-10-02", 2), "amount": -100_000.0}]
+    left = _october_sales(_forecast([REVENUE], ar=rows))
+    assert left and round(left[0]["amount"]) == 500_000
+
+
 def test_last_months_invoices_do_not_reduce_this_month():
     """September's invoicing is collected in the committed line and says
     nothing about what October will bill."""
