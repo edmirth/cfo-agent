@@ -212,18 +212,36 @@ def _answered(payload, key: str) -> bool:
 def _frozen_months(row: dict, columns: list[str]) -> int:
     """How many month-ends in a row this account has closed on the same figure.
 
-    Pair each cell with its column *before* dropping non-numeric ones: filtering
-    first and zipping after would shift every month by one the moment a single
-    cell reads #AUTH!, and a moving account would be called frozen.
+    The report leaves a cell blank when the account did not move that month —
+    blank means unchanged, as `_monthly` says. Dropping blanks before counting
+    left an account frozen for four months with nothing to compare, and the
+    stall and stale-accrual checks could not fire on the very accounts they
+    are for. So a blank carries the month before it forward, the opening
+    balance standing before January. A cell that is there but unreadable
+    (#AUTH!) is unknown, not unchanged, and stops the count.
+
+    Each cell is paired with its column before anything is read: filtering
+    first and zipping after would shift every month by one.
     """
     raw = row.get("cells") or []
-    months = [float(c) for c, col in zip(raw, columns)
-              if col in MONTHS and isinstance(c, (int, float))]
-    if not months:
+    prev: float | None = None
+    months: list[float | None] = []
+    for i, col in enumerate(columns):
+        c = raw[i] if i < len(raw) else None
+        if col not in MONTHS:
+            if not months and isinstance(c, (int, float)):
+                prev = float(c)                  # the opening balance
+            continue
+        if isinstance(c, (int, float)):
+            prev = float(c)
+        elif c is not None and c != "":
+            prev = None                          # unreadable: unknown
+        months.append(prev)
+    if not months or months[-1] is None:
         return 0
     frozen = 0
     for value in reversed(months[:-1]):
-        if abs(value - months[-1]) < 0.01:
+        if value is not None and abs(value - months[-1]) < 0.01:
             frozen += 1
         else:
             break
