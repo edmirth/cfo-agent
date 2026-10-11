@@ -160,6 +160,41 @@ def test_complete_fails_on_a_cut_off_answer():
         raise AssertionError("a cut-off answer was returned as finished")
 
 
+def test_a_cut_off_answer_is_kept_in_the_run_log():
+    """Thrown away, the only trace of a cut-off answer was "700 out": nobody
+    could tell a cap set too low from an answer that ran on."""
+    finished = []
+    original = core.job_runs.finish
+    core.job_runs.finish = lambda run_id, status, **kw: finished.append((status, kw))
+    try:
+        job = core.Job(name="t", output="json")
+        try:
+            _play(job, [_final("max_tokens", [NS(type="thinking", thinking="…"),
+                                              NS(type="text", text='{"text": "Halv')])],
+                  method="complete")
+        except core.JobError:
+            pass
+    finally:
+        core.job_runs.finish = original
+    status, kw = finished[-1]
+    assert status == "partial"
+    assert kw["details"]["cut_off"] == {"blocks": ["thinking", "text"], "text": '{"text": "Halv'}
+
+
+def test_the_written_jobs_have_room_to_finish():
+    """A ceiling, not a budget: only what is written is paid for. The summary
+    at 700 and the brief at 600 were cut off on every run once the model wrote
+    longer Norwegian than they were sized for, so the front page kept a text
+    from a week before."""
+    import brief
+    import health
+    import summary
+    import watch
+    for job in (summary.SUMMARY, brief.TEXT, health.HELSESJEKK):
+        assert job.max_tokens >= 4000, job.name
+    assert watch.VAKT.max_tokens >= 8000
+
+
 # ---------------------------------------------------------- what it cost
 def test_every_run_logs_tokens_cost_and_unverified_figures_over_all_rounds():
     records = []

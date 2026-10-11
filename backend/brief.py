@@ -55,7 +55,7 @@ SAFE_WEEKS = 6           # committed line must hold the floor this long for gree
 MAX_DECISIONS = 3
 MAX_CHANGES = 3
 MAX_BOOK_LINES = 3
-MAX_TOKENS = 600
+MAX_TOKENS = 4000         # a ceiling, not a budget: only what is written is paid for
 
 LIGHTS = {"green": "GRØNN", "yellow": "GUL", "red": "RØD"}
 MONTHS = ("januar", "februar", "mars", "april", "mai", "juni", "juli",

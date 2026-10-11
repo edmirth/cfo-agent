@@ -36,7 +36,7 @@ kanban-plugin: board
 - [ ] Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 - [ ] 15. Hold the agent's output for human review while a customer is new (Wait until the first customer outside the pilot is onboarded) @either #review
 - [ ] Flag suppliers with bankruptcy or dissolution notices too, where we have prepaid or depend on them @edmir #warnings
-- [ ] The daily summary is cut off for being too long (since 10 Oct), so the front page shows an old one @edmir #agent
+- [ ] Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 
 
 ## Next
@@ -51,6 +51,8 @@ kanban-plugin: board
 
 ## Done
 
+- [x] The daily summary is cut off for being too long (since 10 Oct), so the front page shows an old one @edmir #agent ✓ 2026-10-11
+  - Caps raised (summary and Monday brief 4 000, morning watch 8 000); a cut-off answer is now kept in job_runs.details. Live: today's summary written, 1 156 tokens.
 - [x] 16. Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings ✓ 2026-10-11
 - [x] 14. Measure what the playbook says matters @agent #metrics ✓ 2026-10-10
 - [x] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding ✓ 2026-10-10
