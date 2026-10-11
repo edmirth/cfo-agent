@@ -34,6 +34,7 @@ kanban-plugin: board
 - [ ] Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
 - [ ] Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
 - [ ] Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
+- [ ] 15. Hold the agent's output for human review while a customer is new (Wait until the first customer outside the pilot is onboarded) @either #review
 - [ ] Flag suppliers with bankruptcy or dissolution notices too, where we have prepaid or depend on them @edmir #warnings
 - [ ] The daily summary is cut off for being too long (since 10 Oct), so the front page shows an old one @edmir #agent
 
@@ -42,7 +43,6 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
-- [ ] 15. Hold the agent's output for human review while a customer is new @either #review
 
 
 ## Doing
