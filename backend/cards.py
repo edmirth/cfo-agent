@@ -321,10 +321,16 @@ def decide(card_id: str, option_id: str, note: str = "",
         edited = None
         draft = card.get("draft")
         if draft:
-            edited = (draft_text is not None
-                      and draft_text.strip() != (draft.get("text") or "").strip())
-            if edited:
-                card["draft"] = {**draft, "text": draft_text}
+            # Measured against what the CFO wrote, kept as `original` the
+            # first time the text is changed. Against the last saved text, an
+            # edit saved with "Vent en uke" made the later approval read as
+            # one without edits.
+            original = draft.get("original", draft.get("text"))
+            if (draft_text is not None
+                    and draft_text.strip() != (draft.get("text") or "").strip()):
+                card["draft"] = {**draft, "text": draft_text, "original": original}
+            edited = ((card["draft"].get("text") or "").strip()
+                      != (original or "").strip())
         card["decided"] = {"at": datetime.now().isoformat(timespec="seconds"),
                            "option": option_id, "label": option.get("label"),
                            "effect": effect, "note": note, "draft_edited": edited}
@@ -696,6 +702,10 @@ def reconcile(candidates: list[dict], sources_ok: bool,
                     fresh = {**fresh, "body": _with_follow_up(card, fresh["body"])}
                 for field in ("title", "body", "amount", "urgency", "evidence",
                               "draft", "options"):
+                    # A draft the CEO has edited is his, not the check's to
+                    # rewrite each morning while the card waits.
+                    if field == "draft" and "original" in (card.get("draft") or {}):
+                        continue
                     if field in fresh and fresh[field] != card.get(field):
                         card[field] = fresh[field]
                 card["refreshed"] = _now()

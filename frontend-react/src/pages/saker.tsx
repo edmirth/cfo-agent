@@ -25,7 +25,8 @@ type DeckCard = {
   body: string
   amount?: number
   evidence?: { label: string; value: string }[]
-  draft?: { kind: string; subject?: string; text: string }
+  // `original` is the CFO's text, kept once the CEO has changed it.
+  draft?: { kind: string; subject?: string; text: string; original?: string }
   options?: Option[]
   snooze_until?: string
 }
@@ -168,7 +169,7 @@ export function Saker({
                       <Button variant="outline" size="sm" onClick={() => copy(c)}>
                         <Copy /> {copied === c.id ? "Kopiert" : "Kopier teksten"}
                       </Button>
-                      {drafts[c.id] !== undefined && drafts[c.id] !== c.draft.text && (
+                      {draftOf(c) !== (c.draft.original ?? c.draft.text) && (
                         <>
                           <span className="text-muted-foreground text-xs">Endret av deg</span>
                           <Button
@@ -176,11 +177,10 @@ export function Saker({
                             size="sm"
                             className="h-auto p-0 text-xs"
                             onClick={() =>
-                              setDrafts((d) => {
-                                const rest = { ...d }
-                                delete rest[c.id]
-                                return rest
-                              })
+                              setDrafts((d) => ({
+                                ...d,
+                                [c.id]: c.draft?.original ?? c.draft?.text ?? "",
+                              }))
                             }
                           >
                             Tilbake til CFO-ens tekst
