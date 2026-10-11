@@ -312,7 +312,7 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
     if running is None or term is None or paid:
         return
     month, due = term
-    at_end = _at_month(rows, MVA_RUNNING, columns, month)
+    at_end = _term_end_balance(rows, columns, month, today)
     if at_end is None:
         return
     completed = round(-at_end, 2)
@@ -369,7 +369,7 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date) -> bool
     if term is None:
         return False
     month, due = term
-    at_end = _at_month(rows, MVA_RUNNING, columns, month)
+    at_end = _term_end_balance(rows, columns, month, today)
     if at_end is None or -at_end < 0.5:
         return False
     owed = -at_end
@@ -448,6 +448,35 @@ def _at_month(rows: list[dict], ranges, columns: list[str], month: int) -> float
             total += float(cells[idx])
             found = True
     return total if found else None
+
+
+OPENING = "Inngående balanse"
+
+
+def _term_end_balance(rows: list[dict], columns: list[str], month: int,
+                      today: date) -> float | None:
+    """The VAT accounts' balance at the end of a completed term's last month.
+
+    The report covers this year only. A term that ended last year — November
+    and December, owed on 10 February — has no column of its own in it, so
+    the split never ran in January and the whole balance was dated to April.
+    Its month-end balance is this year's opening balance."""
+    if month > today.month:
+        try:
+            idx = columns.index(OPENING)
+        except ValueError:
+            return None
+        total, found = 0.0, False
+        for r in rows:
+            n = _account(r)
+            if n is None or not any(lo <= n <= hi for lo, hi in MVA_RUNNING):
+                continue
+            cells = r.get("cells") or []
+            if idx < len(cells) and isinstance(cells[idx], (int, float)):
+                total += float(cells[idx])
+                found = True
+        return total if found else None
+    return _at_month(rows, MVA_RUNNING, columns, month)
 
 
 def _completed_term(today: date) -> tuple[int, date] | None:
