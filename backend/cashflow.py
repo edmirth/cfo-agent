@@ -28,6 +28,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 
 import bankgap
+import brreg
 import commitments
 import company
 import forecasts
@@ -702,6 +703,16 @@ async def build(today: date | None = None) -> dict:
     ar_due, ar_paid = bankgap.settle(ar_open, unbooked, +1)
     ap_due, ap_paid = bankgap.settle(ap_open, unbooked, -1)
 
+    # Customers Enhetsregisteret has in trouble, as of the last morning check.
+    # A bankrupt customer's invoices are not money coming in: they leave the
+    # schedule and are carried beside it, for the card that says so. One under
+    # voluntary liquidation usually pays, and stays.
+    risky = brreg.at_risk()
+    # Said on the customer's card, not among the warnings: those are what the
+    # regnskapsfører has to fix, and this is nothing in the books.
+    ar_at_risk = [{**i, "register": risky[i["name"]]} for i in ar_due if i["name"] in risky]
+    ar_due = [i for i in ar_due if not risky.get(i["name"], {}).get("excluded")]
+
     # The open ledger should agree with the invoice list. Where it does not,
     # the forecast is built on the invoices and the gap is declared.
     # Read with the same carry-forward the rest of the module uses. Requiring
@@ -881,6 +892,10 @@ async def build(today: date | None = None) -> dict:
     # What is still owed after the bank's unbooked receipts: a customer who
     # has paid must not be sent a reminder because the books are behind.
     data["ar_open"] = ar_due
+    # Invoices to customers in trouble, held out or not, for their cards; and
+    # what could not be checked, for the clean-up list.
+    data["ar_at_risk"] = ar_at_risk
+    data["register"] = brreg.loose_ends({i["name"] for i in ar_open})
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
     # collections card on the strength of it unless told otherwise.

@@ -163,6 +163,20 @@ def cleanup_items(pf: dict | None, cf: dict | None) -> list[dict]:
     for n, sentence in enumerate(bank.get("unknown") or [], 1):
         items.append({"id": f"reconciliation_{n}", "tema": "Bankavstemming",
                       "funnet": sentence, "detalj": "", "alvor": "warn"})
+    reg = (cf or {}).get("register") or {}
+    if reg.get("no_org"):
+        names = reg["no_org"]
+        items.append({"id": "register_no_org", "tema": "Kunder uten organisasjonsnummer",
+                      "funnet": f"{len(names)} kunde(r) med åpne fakturaer har ikke "
+                                f"organisasjonsnummer i Tripletex, og kan derfor ikke "
+                                f"sjekkes mot konkurs i Brønnøysund: {', '.join(names)}.",
+                      "detalj": "", "alvor": "note"})
+    for n, u in enumerate(reg.get("unclear") or [], 1):
+        items.append({"id": f"register_{n}", "tema": "Kunde i Enhetsregisteret",
+                      "funnet": f"{u['name']} (org.nr. {u['org']}) {u['said']}. Sjekk om "
+                                f"kunden er fusjonert eller har fått nytt nummer, og rett "
+                                f"kundekortet i Tripletex.",
+                      "detalj": "", "alvor": "note"})
     for n, warning in enumerate((cf or {}).get("warnings") or [], 1):
         items.append({"id": f"forecast_{n}", "tema": "Fakturaer i fremmed valuta",
                       "funnet": warning, "detalj": "", "alvor": "note"})

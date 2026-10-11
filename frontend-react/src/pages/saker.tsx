@@ -135,7 +135,14 @@ export function Saker({
                   {c.evidence.map((e, i) => (
                     <li key={i} className="flex justify-between gap-6 py-2">
                       <span className="text-muted-foreground">{e.label}</span>
-                      <b className="font-mono font-medium tabular-nums">{e.value}</b>
+                      {e.value.startsWith("https://") ? (
+                        <a href={e.value} target="_blank" rel="noreferrer"
+                           className="font-medium underline underline-offset-4">
+                          Åpne
+                        </a>
+                      ) : (
+                        <b className="font-mono font-medium tabular-nums">{e.value}</b>
+                      )}
                     </li>
                   ))}
                 </ul>

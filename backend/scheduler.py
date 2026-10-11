@@ -46,6 +46,7 @@ from zoneinfo import ZoneInfo
 
 import brief
 import brief_email
+import brreg
 import cards
 import cashflow
 import commitments
@@ -139,6 +140,30 @@ async def _forecast() -> dict:
         return {**out, "partial": True,
                 "cause": "Prognosen ble regnet ut, men ikke lagret."}
     return out
+
+
+async def _register() -> dict:
+    """Every customer with money owing, against Enhetsregisteret."""
+    cf = await cashflow.cached()
+    names = {i["name"] for i in (cf.get("ar_open") or []) + (cf.get("ar_at_risk") or [])}
+    before = set(brreg.at_risk())
+    out = await brreg.check(names)
+    found = {k: out[k] for k in ("customers", "checked", "at_risk", "new_risk",
+                                 "unclear", "no_org")}
+    # The forecast was built on yesterday's statuses. A customer newly in
+    # trouble (or out of it) changes what money is coming in, so it is built
+    # again before the cards and the summary read it.
+    if set(brreg.at_risk()) != before:
+        cashflow._flight.clear()
+    causes = list(out["failed"])
+    if not cf.get("ar_complete", True):
+        causes.append("Kundefakturaene ble ikke hentet helt, så noen kunder kan mangle.")
+    if out["not_checked"] and not out["failed"]:
+        causes.append(f"{len(out['not_checked'])} kunder ble ikke sjekket.")
+    if causes:
+        return {**found, "not_checked": out["not_checked"], "partial": True,
+                "cause": " ".join(causes)}
+    return found
 
 
 async def _figures() -> dict:
@@ -262,6 +287,9 @@ MORNING = Scheduled(
     runs_on=workdays.is_working_day, days="virkedager",
     steps=(Step("checks", "Kontrollene", _checks),
            Step("forecast", "Prognosen", _forecast),
+           # After the forecast, which fetched the open invoices it reads;
+           # before the cards, which raise one per customer in trouble.
+           Step("register", "Brønnøysund", _register),
            Step("figures", "Nøkkeltallene", _figures),
            Step("cards", "Sakene", _cards),
            # After the deck, so it never raises what the deck already has; before
