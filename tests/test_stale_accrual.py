@@ -50,3 +50,28 @@ def test_a_quiet_quarter_is_not_long_enough():
                [-100000, -200000, -300000, -400000, -500000, -600000,
                 -700000, -700000, -700000])
     assert preflight._frozen_months(row, COLUMNS) == 2 < preflight.STALE_MONTHS
+
+
+def test_an_account_left_blank_because_it_did_not_move_is_frozen():
+    """The report leaves a cell blank when the account did not move that
+    month. Dropping the blanks left nothing to compare, and an accrual
+    untouched since January was never flagged."""
+    row = {"path": "2945 Periodisering av lønn",
+           "cells": [-986108, -986108] + [None] * 8 + [-986108]}
+    assert preflight._frozen_months(row, COLUMNS) == 8
+    # Untouched all year: the opening balance stands before January.
+    row = {"path": "2945 Periodisering av lønn", "cells": [-986108] + [None] * 10}
+    assert preflight._frozen_months(row, COLUMNS) == 8
+
+
+def test_a_blank_after_a_move_carries_the_new_figure():
+    row = {"path": "2400 Leverandørgjeld",
+           "cells": [0, -100, -200, -300, -400, -500, -600, None, None, None, -600]}
+    # Moved in June, then still through September: three months frozen.
+    assert preflight._frozen_months(row, COLUMNS) == 3
+
+
+def test_an_unreadable_cell_is_not_counted_as_unchanged():
+    row = {"path": "2945 Periodisering av lønn",
+           "cells": [-500, -500, -500, -500, -500, -500, "#AUTH!", -500, -500, -500, -500]}
+    assert preflight._frozen_months(row, COLUMNS) == 2
