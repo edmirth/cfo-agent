@@ -239,3 +239,18 @@ def test_booked_tax_due_on_a_weekend_is_owed_on_the_monday():
     # 15 February 2026 is a Sunday.
     assert commitments._tax_due(date(2026, 2, 16)) == date(2026, 2, 15)
     assert commitments._tax_due(date(2026, 2, 17)) == date(2026, 4, 15)
+
+
+def test_in_january_last_years_closing_term_is_dated_to_february():
+    """November and December's VAT is owed 10 February. The report covers
+    this year only, so there was no December column to read the term from,
+    and the whole balance was dated to the running term's 10 April."""
+    columns = ["Inngående balanse", "Jan", "Utgående saldo"]
+    rows = [{"path": "2700 Utgående merverdiavgift, høy sats",
+             "cells": [-400_000.0, -500_000.0, -500_000.0]}]
+    items = [{**_running(500_000.0), "due": "2027-04-12"}]
+    commitments._split_vat(items, rows, columns, date(2027, 1, 20))
+    done = next(i for i in items if i["id"] == "mva_forrige_termin")
+    run = next(i for i in items if i["id"] == "mva_lopende")
+    assert done["due"] == "2027-02-10" and done["amount"] == 400_000.0
+    assert run["amount"] == 100_000.0
