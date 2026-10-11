@@ -9,6 +9,7 @@ finne på et tall som ikke står i grunnlaget.
 import asyncio
 import json
 import logging
+import time
 from datetime import date
 
 import cashflow
@@ -40,6 +41,16 @@ SUMMARY = core.Job(name="oppsummering", max_tokens=MAX_TOKENS, output="json",
 # Ett kall om gangen. Uten dette skriver fem samtidige sidelaster den samme
 # teksten fem ganger den første morgenen noen åpner forsiden.
 _lock = asyncio.Lock()
+
+# A failed attempt is remembered for this long. Only success was remembered,
+# so while the text could not be written every front-page load and every
+# "Oppdater" paid for another try: four cut-off answers at $0.044 each on
+# 10–11 October, all from page loads. Half an hour is the scheduler's own
+# retry gap, so its retries still get a real attempt; the rewrite button
+# (refresh=true) always tries, being someone asking on purpose.
+RETRY_AFTER_S = 30 * 60
+_failed: dict = {}            # {"day", "at", "error"} of the last failed attempt
+_clock = time.monotonic
 
 PROMPT = """Du er finansdirektøren i {company}. Skriv dagens oppsummering til \
 daglig leder — den korte teksten øverst på forsiden som sier hvordan det går.
@@ -212,18 +223,33 @@ async def cached(refresh: bool = False) -> dict:
     stored = _read()
     if not refresh and stored and stored.get("written") == today:
         return stored
+    if not refresh and _resting(today):
+        return _after_failure(stored)
     async with _lock:
         stored = _read()          # en annen forespørsel kan ha rukket det
         if not refresh and stored and stored.get("written") == today:
             return stored
+        if not refresh and _resting(today):
+            return _after_failure(stored)
         try:
             fresh = await build()
         except Exception as exc:  # noqa: BLE001
-            # En gårsdagstekst med dato på er bedre enn et tomt kort. Er det
-            # ingenting på disk heller, sier kortet fra i stedet.
             log.exception("Kunne ikke skrive dagens oppsummering")
-            if stored:
-                return dict(stored, stale=True)
-            return {"error": _human_error(exc)}
+            _failed.update(day=today, at=_clock(), error=_human_error(exc))
+            return _after_failure(stored)
+        _failed.clear()
         _write(fresh)
         return fresh
+
+
+def _resting(today: str) -> bool:
+    """Whether today's last attempt failed too recently to try again."""
+    return _failed.get("day") == today and _clock() - _failed["at"] < RETRY_AFTER_S
+
+
+def _after_failure(stored: dict | None) -> dict:
+    # En gårsdagstekst med dato på er bedre enn et tomt kort. Er det
+    # ingenting på disk heller, sier kortet fra i stedet.
+    if stored:
+        return dict(stored, stale=True)
+    return {"error": _failed.get("error") or _human_error(RuntimeError())}
