@@ -550,6 +550,53 @@ def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
     }]
 
 
+REGISTER_ADVICE = {
+    "bankrupt": ("Fakturaene er tatt ut av prognosen: pengene kommer neppe, og i alle fall "
+                 "ikke i tide. Meld kravet til bostyreren innen fristen i kunngjøringen, og "
+                 "lever ikke mer på kreditt."),
+    "forced": ("Fakturaene er tatt ut av prognosen: et selskap under tvangsavvikling betaler "
+               "sjelden i tide. Meld kravet innen fristen i kunngjøringen, og lever ikke mer "
+               "på kreditt."),
+    "liquidation": ("En frivillig avvikling betaler som regel gjelden sin, så fakturaene står "
+                    "fortsatt i prognosen — men bare krav som meldes innen fristen i "
+                    "kunngjøringen er sikre. Meld kravet til avviklingsstyret."),
+}
+
+
+def _from_register(invoices: list[dict]) -> list[dict]:
+    """One card per customer Enhetsregisteret has in trouble, with what is owed."""
+    by: dict[str, list[dict]] = {}
+    for inv in invoices:
+        by.setdefault(inv["name"], []).append(inv)
+    out = []
+    for customer, items in by.items():
+        reg = items[0]["register"]
+        total = sum(i["amount"] for i in items)
+        overdue = [i for i in items if (i.get("due") or "9999") < date.today().isoformat()]
+        since = f" fra {reg['since']}" if reg.get("since") else ""
+        out.append({
+            "key": f"brreg:{reg['org']}",
+            "kind": "register", "urgency": "high", "amount": total,
+            "title": f"{customer} {reg['said']}: {_kr(total)} kr utestående",
+            "body": (f"Enhetsregisteret melder at {customer} {reg['said']}{since}. "
+                     f"{len(items)} faktura(er) står åpne"
+                     + (f", {len(overdue)} av dem forfalt" if overdue else "") + ". "
+                     + REGISTER_ADVICE[reg["status"]]),
+            "evidence": [{"label": f"Faktura {i.get('number') or '—'}",
+                          "value": f"{_kr(i['amount'])} kr, forfall {i.get('due') or '—'}"}
+                         for i in items[:6]]
+            + [{"label": "Organisasjonsnummer", "value": reg["org"]},
+               {"label": "Enhetsregisteret", "value": reg["url"]},
+               {"label": "Sjekket", "value": reg.get("checked_on") or "—"}],
+            "options": [
+                {"id": "claimed", "label": "Kravet er meldt", "effect": "approve"},
+                {"id": "accountant", "label": "Regnskapsfører tar det", "effect": "delegate"},
+                {"id": "later", "label": "Følg opp om en uke", "effect": "snooze", "days": 7},
+            ],
+        })
+    return out
+
+
 async def refresh(today: date | None = None) -> dict:
     """Rebuild the derived cards, then return the deck.
 
@@ -580,6 +627,7 @@ async def refresh(today: date | None = None) -> dict:
         # The forecast already fetched the open invoices; reusing them keeps
         # the deck and the forecast on the same figures.
         candidates += _collections(cf.get("ar_open") or [], today, rules)
+        candidates += _from_register(cf.get("ar_at_risk") or [])
 
     reconcile(candidates, sources_ok=True, unknown=_unknown(pf, cf))
     return deck(today)
@@ -601,9 +649,9 @@ def _unknown(pf: dict | None, cf: dict | None) -> set[str]:
         unknown |= {CHECK_KEYS[c["id"]] for c in pf.get("checks", [])
                     if c["status"] == "unavailable" and c["id"] in CHECK_KEYS}
     if not cf:
-        unknown |= {"cash:", "collections:"}
+        unknown |= {"cash:", "collections:", "brreg:"}
     elif not cf.get("ar_complete", True):
-        unknown.add("collections:")
+        unknown |= {"collections:", "brreg:"}
     return unknown
 
 
