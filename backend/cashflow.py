@@ -149,7 +149,8 @@ def _kr(v) -> str:
 
 
 async def _open_invoices(today: date, tool: str, what: str, id_key: str,
-                         outstanding_key: str, name_key: str) -> tuple[list, list, bool]:
+                         outstanding_key: str, name_key: str,
+                         in_kroner: bool = False) -> tuple[list, list, bool]:
     """Open invoices with their due dates, the warnings, and whether every
     window answered — an empty list from failed calls is not an empty book.
 
@@ -165,6 +166,10 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     before it reached the forecast — silently, because the call itself
     succeeded. `what` names the register in the warnings, since two sources
     sharing one sentence left nobody able to tell which one was short.
+
+    `in_kroner` says the outstanding amount is already in kroner whatever
+    the invoice's currency, as the customer register's `amountOutstanding`
+    is. The supplier register's `outstandingAmount` is in the invoice's own.
     """
     calls = []
     for back in range(AR_MONTHS_BACK):
@@ -214,7 +219,7 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             # would understate what leaves — and the shortfall is declared
             # instead of quietly standing in for kroner.
             currency = (row.get("currency") or "NOK").upper()
-            if currency != "NOK":
+            if currency != "NOK" and not in_kroner:
                 warnings.append(
                     f"{row.get(name_key) or 'En faktura'} står i {currency}, "
                     f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
@@ -622,7 +627,9 @@ async def build(today: date | None = None) -> dict:
                                   "period_end": today.isoformat(), "limit": 0}),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
-                       "amountOutstanding", "customerName"),
+                       "amountOutstanding", "customerName",
+                       # Kroner already, for a foreign-currency invoice too.
+                       in_kroner=True),
         # Supplier rows are keyed by voucherId, not id.
         _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
                        "voucherId", "outstandingAmount", "supplierName"),
