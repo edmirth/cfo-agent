@@ -233,7 +233,63 @@ async def build(today: date, moves: dict, balances: dict, client=None) -> dict:
     for (n, s), a in zip(keys, answers):
         if isinstance(a, Exception):
             log.warning("Bankgap: %s %s feilet: %s", n, s, a)
-    return measure(periods, dict(zip(keys, answers)), moves, balances)
+    gap = measure(periods, dict(zip(keys, answers)), moves, balances)
+    # How far the feed reaches is its newest line, booked or not. The newest
+    # *unbooked* line is only that while the bookkeeper is behind: one who
+    # matches every morning leaves an older line as the newest unbooked, and
+    # the feed was then said to have stopped there — and the day's balance
+    # was filed under that old date, over the one already kept for it.
+    reach, undated = await _feed_reach(client, keys, today)
+    # Kept beside the result, so how the date was found can be checked.
+    gap["booked_latest"], gap["booked_undated"] = reach, undated
+    if reach and (gap["latest"] is None or reach > gap["latest"]):
+        gap["latest"] = reach
+    return gap
+
+
+FEED_PERIODS = 2             # the latest periods per account read for booked lines
+DATE_KEYS = ("postedDate", "date", "transactionDate", "bookingDate")
+
+
+def _line_date(entry: dict) -> str | None:
+    """The bank date of one matched pair: on the entry itself, or on the bank
+    line it carries."""
+    for where in [entry] + [v for v in entry.values() if isinstance(v, dict)]:
+        for k in DATE_KEYS:
+            v = where.get(k)
+            if isinstance(v, str) and len(v) >= 10:
+                return v[:10]
+    return None
+
+
+async def _feed_reach(client, keys: list, today: date) -> tuple[str | None, int]:
+    """The newest bank line among the booked ones of each account's latest
+    periods, no later than today (None when nothing could be read), and how
+    many booked lines carried no date this could read."""
+    latest: dict[str, list[str]] = {}
+    for n, s in keys:
+        latest.setdefault(n, []).append(s)
+    wanted = [(n, s) for n, starts in latest.items()
+              for s in sorted(starts)[-FEED_PERIODS:]]
+    answers = await asyncio.gather(
+        *(client.call("get_unmatched_bank_transactions",
+                      {"accountNumber": n, "date": s, "matchStatus": "matched"})
+          for n, s in wanted),
+        return_exceptions=True)
+    dates, undated = [], 0
+    for (n, s), a in zip(wanted, answers):
+        if isinstance(a, Exception):
+            log.warning("Bankgap: bokførte banklinjer %s %s feilet: %s", n, s, a)
+            continue
+        for entry in a.get("matched") or []:
+            d = _line_date(entry) if isinstance(entry, dict) else None
+            if d is None:
+                undated += 1
+            elif d <= today.isoformat():
+                dates.append(d)
+    if undated and not dates:
+        log.warning("Bankgap: fant ingen dato på de bokførte banklinjene (%d)", undated)
+    return max(dates, default=None), undated
 
 
 def feed_is_stale(latest: str | None, today: date) -> bool:

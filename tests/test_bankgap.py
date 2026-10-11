@@ -308,3 +308,49 @@ def test_the_opening_note_names_the_day_the_feed_stops():
             "lines": 129, "in": 746662.72, "out": -328279.68, "postings": 0,
             "postings_sum": 0.0, "latest": "2026-10-01", "stale": True}
     assert "stopper 2026-10-01" in cashflow._opening_note(bank)
+
+
+# ------------------------------------------------ how far the feed reaches
+class _Feed:
+    """The reconciliation with its booked lines as well: `matched` answers the
+    calls that ask for them, `fail` makes those calls fail."""
+    def __init__(self, unmatched, matched, fail=False):
+        self.unmatched, self.matched, self.fail = unmatched, matched, fail
+        self.asked = []
+
+    async def call(self, tool, args=None):
+        if tool == "get_bank_reconciliation_periods":
+            return {"accounts": [], "periods": [_period("1920", "2026-09-01"),
+                                                _period("1920", "2026-10-01")]}
+        self.asked.append(args)
+        if args.get("matchStatus") == "matched":
+            if self.fail:
+                raise RuntimeError("Tripletex svarte ikke")
+            return {"matched": self.matched.get(args["date"], [])}
+        return _answer(unmatched=1000.0, lines=self.unmatched.get(args["date"], []))
+
+
+def _reach(feed, today=date(2026, 10, 5)):
+    return asyncio.run(bankgap.measured(today, [], COLUMNS, client=feed))
+
+
+def test_the_feed_reaches_its_newest_line_booked_or_not():
+    """A bookkeeper who matches every morning leaves an older line as the
+    newest unbooked one. The feed was said to stop there — "nothing after
+    1 October" on a Monday with Friday's lines in — and the day's balance was
+    filed under that old date, over the one already kept for it."""
+    old = {"2026-10-01": [{"postedDate": "2026-10-01", "amountCurrency": 1000.0}]}
+    booked = {"2026-10-01": [{"bankTransaction": {"postedDate": "2026-10-02"},
+                              "postings": []}]}
+    feed = _Feed(old, booked)
+    gap = _reach(feed)
+    assert gap["latest"] == "2026-10-02" and gap["stale"] is False
+    assert gap["booked_latest"] == "2026-10-02" and gap["booked_undated"] == 0
+    assert {a["date"] for a in feed.asked if a.get("matchStatus")} == {"2026-09-01",
+                                                                       "2026-10-01"}
+
+
+def test_without_the_booked_lines_the_unbooked_ones_still_date_the_feed():
+    old = {"2026-10-01": [{"postedDate": "2026-10-01", "amountCurrency": 1000.0}]}
+    gap = _reach(_Feed(old, {}, fail=True))
+    assert gap["latest"] == "2026-10-01" and gap["stale"] is True
