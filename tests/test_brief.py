@@ -184,6 +184,20 @@ def test_what_changed_comes_from_the_figures_kept_a_week_ago():
     assert lines[-1] == "Omsetning hittil i år økte med 300 000 kr siste uke."
 
 
+def test_the_first_brief_of_the_year_does_not_call_new_year_a_fall():
+    """Revenue since 1 January starts again at New Year. December's total
+    against a week of January read as revenue falling by most of a year's."""
+    _tmp.db()
+    memory.snapshot({"bank": 800000.0, "omsetning": 15_000_000.0},
+                    on="2026-12-28")
+    memory.snapshot({"bank": 700000.0, "omsetning": 300_000.0}, on="2027-01-04")
+    ch = brief.changes(date(2027, 1, 4))
+    assert [k["kpi"] for k in ch["kpis"]] == ["bank"]
+    table = memory.briefing(date(2027, 1, 4))
+    row = next(line for line in table.splitlines() if line.startswith("| Omsetning"))
+    assert row == "| Omsetning hittil i år | 300 000 | — |"
+
+
 def test_no_record_yet_is_said_and_no_accuracy_is_claimed():
     _tmp.db()
     acc = brief.accuracy(MON)
