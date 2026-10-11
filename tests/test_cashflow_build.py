@@ -274,6 +274,17 @@ def test_a_foreign_currency_invoice_is_declared_not_silently_taken_as_kroner():
     assert _kinds(data, "ap"), "the money must not be dropped either"
 
 
+def test_a_customer_invoice_in_euro_is_already_in_kroner():
+    """The customer register's amountOutstanding is in kroner even for an
+    invoice in euro. Warning that it was not told the CEO, and the
+    regnskapsfører through the clean-up list, that a correct forecast was
+    wrong by the exchange rate."""
+    ar = [{**_invoice(115_000.0, "2026-09-20", "2026-10-20"), "currency": "EUR"}]
+    data = _forecast([REVENUE], ar=ar)
+    assert not any("EUR" in w for w in data["warnings"])
+    assert round(sum(i["amount"] for i in _kinds(data, "ar"))) == 115_000
+
+
 # ------------------------------- the employer's contribution, exactly once
 def test_a_payroll_already_on_2770_owes_no_forecast_contribution():
     """2770 is credited when the payroll is journalised, not when the
