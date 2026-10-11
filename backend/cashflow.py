@@ -149,7 +149,9 @@ def _kr(v) -> str:
 
 
 async def _open_invoices(today: date, tool: str, what: str, id_key: str,
-                         outstanding_key: str, name_key: str) -> tuple[list, list, bool]:
+                         outstanding_key: str, name_key: str,
+                         issued: dict | None = None,
+                         in_kroner: bool = False) -> tuple[list, list, bool]:
     """Open invoices with their due dates, the warnings, and whether every
     window answered — an empty list from failed calls is not an empty book.
 
@@ -165,6 +167,14 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     before it reached the forecast — silently, because the call itself
     succeeded. `what` names the register in the warnings, since two sources
     sharing one sentence left nobody able to tell which one was short.
+
+    `issued`, when given, gets `this_month`: everything invoiced this month,
+    paid or not, from the same rows. The open list leaves out what is paid,
+    and what was invoiced and paid this month is invoicing all the same.
+
+    `in_kroner` says the outstanding amount is already in kroner whatever
+    the invoice's currency, as the customer register's `amountOutstanding`
+    is. The supplier register's `outstandingAmount` is in the invoice's own.
     """
     calls = []
     for back in range(AR_MONTHS_BACK):
@@ -194,6 +204,14 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             warnings.append(f"{what} for {when} ble bare delvis lest "
                             f"({note}). Tallene under er ufullstendige.")
         rows = r.get("rows") or []
+        if back == 0 and issued is not None:
+            # In kroner: `amount` is the base currency, 0 for an invoice in
+            # another currency not yet converted, which then counts at face.
+            # A cancelled invoice and its credit note are both rows, and net
+            # to nothing together.
+            issued["this_month"] = sum(
+                float(row.get("amount") or row.get("amountCurrency") or 0)
+                for row in rows)
         if len(rows) >= 100:
             warnings.append(f"Det er minst 100 {what.lower()} i {when}; lista "
                             f"kan være avkortet.")
@@ -214,7 +232,7 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             # would understate what leaves — and the shortfall is declared
             # instead of quietly standing in for kroner.
             currency = (row.get("currency") or "NOK").upper()
-            if currency != "NOK":
+            if currency != "NOK" and not in_kroner:
                 warnings.append(
                     f"{row.get(name_key) or 'En faktura'} står i {currency}, "
                     f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
@@ -616,13 +634,16 @@ async def build(today: date | None = None) -> dict:
             "period_start": f"{last_year}-01-01",
             "period_end": f"{last_year}-12-31", "limit": 0})
 
+    issued: dict = {}
     balance, com, ar, ap, prior = await asyncio.gather(
         mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
                                   "period_start": start_year,
                                   "period_end": today.isoformat(), "limit": 0}),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
-                       "amountOutstanding", "customerName"),
+                       "amountOutstanding", "customerName", issued,
+                       # Kroner already, for a foreign-currency invoice too.
+                       in_kroner=True),
         # Supplier rows are keyed by voucherId, not id.
         _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
                        "voucherId", "outstandingAmount", "supplierName"),
@@ -835,11 +856,17 @@ async def build(today: date | None = None) -> dict:
     invoiced_this_month = 0.0
     for i in ar_open:
         try:
-            issued = date.fromisoformat(i["invoiced"])
+            issued_on = date.fromisoformat(i["invoiced"])
         except (ValueError, TypeError, KeyError):
             continue
-        if (issued.year, issued.month) == (today.year, today.month):
+        if (issued_on.year, issued_on.month) == (today.year, today.month):
             invoiced_this_month += i["amount"]
+    # Everything invoiced this month, paid ones included. The open list above
+    # has only what is still owed, so an invoice sent on the 2nd and paid on
+    # the 9th was not netted off: its money was in the opening balance and
+    # collected again at month end. The open list stays the floor, for a
+    # month whose invoices could not be read.
+    invoiced_this_month = max(invoiced_this_month, issued.get("this_month", 0.0))
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])

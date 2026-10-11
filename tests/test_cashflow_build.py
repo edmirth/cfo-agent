@@ -170,6 +170,23 @@ def test_a_part_invoiced_month_forecasts_only_the_remainder():
     assert left and round(left[0]["amount"]) == 300_000
 
 
+def test_an_invoice_already_paid_this_month_is_not_forecast_again():
+    """Invoiced on the 1st and paid on the 3rd: its money is in the opening
+    balance. The open list leaves a paid invoice out, so it was not netted
+    off, and the month's invoicing collected the same 200 000 kr again."""
+    paid = [{**_invoice(0.0, "2026-10-01", "2026-10-31"), "amount": 200_000.0}]
+    left = _october_sales(_forecast([REVENUE], ar=paid))
+    assert left and round(left[0]["amount"]) == 300_000
+
+
+def test_a_cancelled_invoice_and_its_credit_note_net_to_nothing():
+    rows = [{**_invoice(0.0, "2026-10-01", "2026-10-31", 1), "amount": 100_000.0,
+             "isCredited": True},
+            {**_invoice(0.0, "2026-10-02", "2026-10-02", 2), "amount": -100_000.0}]
+    left = _october_sales(_forecast([REVENUE], ar=rows))
+    assert left and round(left[0]["amount"]) == 500_000
+
+
 def test_last_months_invoices_do_not_reduce_this_month():
     """September's invoicing is collected in the committed line and says
     nothing about what October will bill."""
@@ -255,6 +272,17 @@ def test_a_foreign_currency_invoice_is_declared_not_silently_taken_as_kroner():
     data = _forecast([REVENUE], ap=ap)
     assert any("EUR" in w and "ikke kroner" in w for w in data["warnings"])
     assert _kinds(data, "ap"), "the money must not be dropped either"
+
+
+def test_a_customer_invoice_in_euro_is_already_in_kroner():
+    """The customer register's amountOutstanding is in kroner even for an
+    invoice in euro. Warning that it was not told the CEO, and the
+    regnskapsfører through the clean-up list, that a correct forecast was
+    wrong by the exchange rate."""
+    ar = [{**_invoice(115_000.0, "2026-09-20", "2026-10-20"), "currency": "EUR"}]
+    data = _forecast([REVENUE], ar=ar)
+    assert not any("EUR" in w for w in data["warnings"])
+    assert round(sum(i["amount"] for i in _kinds(data, "ar"))) == 115_000
 
 
 # ------------------------------- the employer's contribution, exactly once
