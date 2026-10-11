@@ -172,7 +172,13 @@ def changes(today: date) -> dict:
     if now and then and then["date"] != now["date"]:
         out["since"] = then["date"]
         same_defs = now.get("definitions_hash") == then.get("definitions_hash")
+        # A sum since 1 January starts again at New Year: December's total
+        # against a week of January is not a change, and the first brief of
+        # the year said revenue had fallen by most of a year's.
+        new_year = then["date"][:4] != now["date"][:4]
         for key, label, unit in memory.TRENDED:
+            if new_year and key in memory.CUMULATIVE:
+                continue
             a, b = then["kpis"].get(key), now["kpis"].get(key)
             if a is None or b is None or round(b - a, 2) == 0:
                 continue

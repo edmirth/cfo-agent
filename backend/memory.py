@@ -284,7 +284,11 @@ def briefing(today: date | None = None) -> str:
             value = now["kpis"].get(key)
             if value is None:
                 continue
-            cells = [_fmt(value, unit)] + [_fmt(c["kpis"].get(key), unit) for c in cols]
+            # A sum since 1 January from last year is not comparable with
+            # this year's: shown as missing rather than as a fall.
+            cells = [_fmt(value, unit)] + [
+                "—" if key in CUMULATIVE and c["date"][:4] != now["date"][:4]
+                else _fmt(c["kpis"].get(key), unit) for c in cols]
             lines.append(f"| {label_} | " + " | ".join(cells) + " |")
         if len(lines) > 4:
             parts.append("\n".join(lines))
