@@ -75,12 +75,19 @@ def term_due(year: int, month: int, terms: list) -> date:
 
 
 def _next_due(today: date, terms: list) -> date:
-    """The first settlement date on or after today."""
+    """The first settlement on or after today, by the day it is actually due.
+
+    A deadline on a weekend or holiday is due the next working day, so it is
+    still ahead on that Monday. Compared on the literal date, 15 November 2026
+    (a Sunday) had already passed on Monday the 16th, and the employer's
+    contribution due that very day was dated to 15 January instead. The
+    literal date is returned; the caller rolls it forward as before.
+    """
     candidates = []
     for _, (month, day) in terms:
         for year in (today.year, today.year + 1):
             due = date(year, month, day)
-            if due >= today:
+            if workdays.forward(due) >= today:
                 candidates.append(due)
     return min(candidates)
 
@@ -124,7 +131,10 @@ def _next_ferie(today: date) -> date:
     """
     month = ferie_month()
     year = today.year
-    if today.month > month or (today.month == month and today > payday(year, month)):
+    # Gone once the run has been paid, which on a weekend pay day is the
+    # Friday before it.
+    if today.month > month or (today.month == month
+                               and today > workdays.backward(payday(year, month))):
         # This year's run has gone. What is left on 2940 is next year's
         # accrual building up, and it is due at next year's run.
         year += 1
@@ -159,7 +169,8 @@ def payday_is_stated() -> bool:
 def _next_payroll(today: date) -> date:
     """Wages already earned are paid with the next run."""
     run = payday(today.year, today.month)
-    if run < today:                          # this month's run has gone
+    # Gone once paid — the Friday before, when the pay day is a weekend.
+    if workdays.backward(run) < today:       # this month's run has gone
         year, month = ((today.year + 1, 1) if today.month == 12
                        else (today.year, today.month + 1))
         run = payday(year, month)
@@ -185,7 +196,7 @@ def _tax_due(today: date) -> date:
     further out: see `_this_years_tax_due`."""
     for year, month in ((today.year, 2), (today.year, 4), (today.year + 1, 2)):
         due = date(year, month, 15)
-        if due >= today:
+        if workdays.forward(due) >= today:   # the working day it moves to
             return due
     return date(today.year + 1, 2, 15)
 

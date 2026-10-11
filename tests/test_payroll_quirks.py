@@ -224,3 +224,24 @@ def test_a_window_that_only_clips_december_gets_no_december_note():
         assert "Halv skatt i desember" not in cashflow.briefing(data)
     finally:
         company.setting = original
+
+
+def test_wages_paid_the_friday_before_a_weekend_pay_day_are_gone_on_the_saturday():
+    """Month end 31 October 2026 is a Saturday, so the run goes Friday the
+    30th. On the Saturday it has been paid; what is owed waits for November."""
+    original = _with_settings()
+    try:
+        assert commitments._next_payroll(date(2026, 10, 30)) == date(2026, 10, 31)
+        assert commitments._next_payroll(date(2026, 10, 31)) == date(2026, 11, 30)
+    finally:
+        company.setting = original
+
+
+def test_holiday_pay_run_on_the_friday_is_next_years_by_the_weekend():
+    # 31 May 2026 is a Sunday: May's run, with the feriepenger, goes Friday 29th.
+    original = _with_settings(ferie_utbetalingsmnd=5)
+    try:
+        assert commitments._next_ferie(date(2026, 5, 29)) == date(2026, 5, 31)
+        assert commitments._next_ferie(date(2026, 5, 30)) == date(2027, 5, 31)
+    finally:
+        company.setting = original
