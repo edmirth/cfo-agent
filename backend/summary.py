@@ -27,7 +27,9 @@ from overview import cached as overview_cached
 log = logging.getLogger("cfo.summary")
 
 STORE = config.ROOT / "state" / "summary.json"
-MAX_TOKENS = 700
+# A ceiling, not a budget: only what is written is paid for. 700 cut every
+# answer off once the model in use wrote longer Norwegian than it was sized for.
+MAX_TOKENS = 4000
 
 # No tools: it is given the figures and asked to phrase them, not fetch them.
 # Through the core so `verify` reads it like every other answer — a figure in

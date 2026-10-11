@@ -108,6 +108,8 @@ class Result:
     usage: dict = field(default_factory=dict)
 
 
+CUT_KEEP_CHARS = 4000           # of a cut-off answer, kept in job_runs.details
+
 # Stop reasons that end the answer before the model meant to. Without these
 # the turn went straight to "done", and the CEO read half an answer as a whole.
 CUT_OFF = {
@@ -194,7 +196,8 @@ def _log_run(job: Job, run_id: int | None, run: dict, status: str) -> None:
                     unverified=run["unverified"], error=run.get("error"),
                     details={"rounds": run["rounds"],
                              "cache_write_tokens": usage["cache_write"],
-                             "stop_reason": run.get("stop_reason")})
+                             "stop_reason": run.get("stop_reason"),
+                             **({"cut_off": run["cut_off"]} if run.get("cut_off") else {})})
 
 
 async def stream(job: Job, messages: list[dict], *, raise_errors: bool = False,
@@ -331,6 +334,17 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
 
         run["stop_reason"] = final.stop_reason
         cut = CUT_OFF.get(final.stop_reason)
+        if cut:
+            # Kept so a cut-off answer can be read afterwards: what it had
+            # written, and what else spent the budget (thinking, tool calls).
+            # Thrown away, the only trace was "700 out", and no way to tell a
+            # cap set too low from an answer that ran on.
+            run["cut_off"] = {
+                "blocks": [b.type for b in final.content],
+                "text": "".join(getattr(b, "text", "") or "" for b in final.content
+                                if b.type == "text")[:CUT_KEEP_CHARS]}
+            log.warning("jobb %s kuttet ved %s: %s", job.name, final.stop_reason,
+                        run["cut_off"]["text"][:300])
         messages.append({"role": "assistant",
                          "content": _answered_only(final.content) if cut
                          else final.content})

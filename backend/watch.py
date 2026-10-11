@@ -64,7 +64,7 @@ MAX_FINDINGS = 2              # a morning; agreed with the CEO
 REVIEW_EVERY_DAYS = 7         # open findings are looked at again at least weekly
 PRIOR_MONTHS = 6              # the usual level of a cost is its average over these
 MIN_PRIOR_MONTHS = 3          # fewer than this, and there is no usual level yet
-MAX_TOKENS = 4000
+MAX_TOKENS = 8000              # a ceiling; one morning used 3 700 of the old 4 000
 
 TOOLS = frozenset({"watch_card", "watch_finding", "watch_skip", "watch_close_finding"})
 
