@@ -218,3 +218,24 @@ def test_unbooked_profit_tax_is_not_in_the_forecast_in_january():
     tax = next(i for i in out["items"] if i["id"] == "arets_skatt")
     assert tax["due"] == "2028-02-15" and tax["amount"] == 110000.0
     assert out["totals"]["within_90"] == 0 and out["totals"]["later"] == 110000.0
+
+
+# ------------------------------------------- a deadline on a weekend
+def test_a_weekend_deadline_is_still_owed_on_the_monday_it_moves_to():
+    """15 November 2026 is a Sunday, so the employer's contribution is due
+    Monday the 16th. Compared on the literal date it had passed by then, and
+    the money due that day was dated two months on, to 15 January."""
+    due = commitments._next_due(date(2026, 11, 16), commitments.SKATT_TERMS)
+    assert commitments._shift("aga", due) == date(2026, 11, 16)
+    # 10 October 2026 is a Saturday: settled VAT is due Monday the 12th.
+    due = commitments._next_due(date(2026, 10, 12), commitments.MVA_TERMS)
+    assert commitments._shift("mva_oppgjor", due) == date(2026, 10, 12)
+    # The day after, it has gone and the next term is the one owed.
+    assert commitments._next_due(date(2026, 10, 13), commitments.MVA_TERMS) \
+        == date(2026, 12, 10)
+
+
+def test_booked_tax_due_on_a_weekend_is_owed_on_the_monday():
+    # 15 February 2026 is a Sunday.
+    assert commitments._tax_due(date(2026, 2, 16)) == date(2026, 2, 15)
+    assert commitments._tax_due(date(2026, 2, 17)) == date(2026, 4, 15)
