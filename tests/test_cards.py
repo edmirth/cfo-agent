@@ -186,3 +186,19 @@ def test_refresh_keeps_cards_when_tripletex_fails():
     assert sorted(c["key"] for c in d["open"]) == ["collections:Skanska",
                                                    "reconcile:ap_tie"]
     assert not any(c.get("status") == "resolved" for c in d["recent"])
+
+
+def test_a_refused_choice_says_why_in_plain_words():
+    """The cards page shows the server's reason on the card. str() of a
+    KeyError wrapped it in quotes: «'Fant ikke kort K999'»."""
+    import asyncio
+
+    from fastapi import HTTPException
+
+    import main
+    _tmp.db()
+    try:
+        asyncio.run(main.decide_card("K999", main.DecisionRequest(option="send")))
+        raise AssertionError("a card that does not exist was decided")
+    except HTTPException as exc:
+        assert exc.status_code == 404 and exc.detail == "Fant ikke kort K999"

@@ -394,10 +394,12 @@ async def decide_card(card_id: str, req: DecisionRequest) -> dict:
     try:
         return {"card": cards.decide(card_id, req.option, req.note, req.draft_text)}
     except KeyError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        # The message alone: str() of a KeyError wraps it in quotes.
+        raise HTTPException(404, str(exc.args[0]) if exc.args else "Fant ikke kortet.") from exc
     except Exception as exc:  # noqa: BLE001
         log.exception("Decision failed")
-        raise HTTPException(500, str(exc)) from exc
+        raise HTTPException(500, "Valget ble ikke lagret. Detaljene ligger i "
+                                 "serverloggen.") from exc
 
 
 @app.get("/api/definitions")
