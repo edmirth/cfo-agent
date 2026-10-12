@@ -65,11 +65,16 @@ export function Saker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Why the last choice on a card did not go through, shown on that card. A
+  // refused choice used to look exactly like one that had not been made yet.
+  const [failed, setFailed] = useState<{ id: string; msg: string } | null>(null)
+
   const decide = async (cardId: string, option: string) => {
     const card = deck?.open.find((x) => x.id === cardId)
     setBusy(cardId)
+    setFailed(null)
     try {
-      await authFetch(`/api/cards/${cardId}/decide`, {
+      const res = await authFetch(`/api/cards/${cardId}/decide`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -77,8 +82,19 @@ export function Saker({
           ...(card?.draft ? { draft_text: draftOf(card) } : {}),
         }),
       })
-      await load()
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setFailed({
+          id: cardId,
+          msg: typeof body?.detail === "string" ? body.detail : "Valget ble ikke lagret.",
+        })
+      }
+    } catch {
+      setFailed({ id: cardId, msg: "Fikk ikke kontakt med serveren. Valget ble ikke lagret." })
     } finally {
+      // Reloaded either way: a card closed in the meantime should go, not
+      // stay on the page with buttons that are refused.
+      await load()
       setBusy(null)
     }
   }
@@ -190,6 +206,10 @@ export function Saker({
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
+              )}
+
+              {failed?.id === c.id && (
+                <p className="text-destructive text-sm" role="alert">{failed.msg}</p>
               )}
 
               <div className="flex flex-wrap gap-2">
