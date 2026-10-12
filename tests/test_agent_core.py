@@ -241,3 +241,70 @@ def test_summary_and_classification_are_jobs_on_the_core():
     assert not summary.SUMMARY.tools and not summary.SUMMARY.tripletex
     assert isinstance(industry.CLASSIFY, core.Job) and industry.CLASSIFY.output == "json"
     assert not hasattr(summary, "client") and not hasattr(industry, "client")
+
+
+# ------------------------------------------------- the provider failing
+def _failing(exc):
+    """A client whose request fails with `exc` before anything streams."""
+    class _Broken:
+        async def __aenter__(self):
+            raise exc
+
+        async def __aexit__(self, *a):
+            return False
+    return NS(beta=NS(messages=NS(stream=lambda **kw: _Broken())))
+
+
+def _provider_errors():
+    import anthropic
+    import httpx2 as httpx
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+    def status(cls, code, text):
+        return cls(text, response=httpx.Response(code, request=req), body=None)
+    return {
+        "overloaded": status(anthropic.OverloadedError, 529,
+                             "Overloaded (request_id req_011Secret)"),
+        "rate": status(anthropic.RateLimitError, 429, "rate_limit_error req_011Secret"),
+        "connection": anthropic.APIConnectionError(request=req),
+        "key": status(anthropic.AuthenticationError, 401, "invalid x-api-key req_011Secret"),
+    }
+
+
+def test_a_provider_failure_reaches_the_ceo_in_plain_words():
+    """Only the bad request was caught. Busy, a dropped connection or a dead
+    key reached the chat as the provider's own text, request id and all."""
+    said = {}
+    for name, exc in _provider_errors().items():
+        original = core.client
+        core.client = _failing(exc)
+        try:
+            events = asyncio.run(_collect(core.Job(name="t"), [
+                {"role": "user", "content": "Hei"}]))
+        finally:
+            core.client = original
+        errors = [e["message"] for e in events if e["type"] == "error"]
+        assert len(errors) == 1 and "req_" not in errors[0], (name, errors)
+        said[name] = errors[0]
+    assert "travel" in said["overloaded"] and "travel" in said["rate"]
+    assert "kontakt" in said["connection"] and "Nøkkelen" in said["key"]
+
+
+def test_a_job_gets_the_provider_failure_as_a_job_error():
+    original = core.client
+    core.client = _failing(_provider_errors()["overloaded"])
+    try:
+        asyncio.run(core.complete(core.Job(name="t", output="json"), "Hei"))
+        raise AssertionError("a failed request returned a result")
+    except core.JobError as exc:
+        assert "Overloaded" in str(exc)
+    finally:
+        core.client = original
+
+
+async def _gather(job, messages):
+    return [e async for e in core.stream(job, messages)]
+
+
+def _collect(job, messages):
+    return _gather(job, messages)

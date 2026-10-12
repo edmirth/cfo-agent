@@ -568,9 +568,12 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                     except Exception:  # noqa: BLE001 — he has the answer
                         log.exception("Kunne ikke lagre samtalen %s", session_id)
                 yield f"data: {json.dumps(event, default=str)}\n\n"
-        except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
+        except Exception:  # noqa: BLE001 — surface any failure to the UI
             log.exception("Turn failed")
-            payload = {"type": "error", "message": f"Uventet feil: {exc}"}
+            # The exception stays in the log: its text is the provider's or
+            # the database's, not something the CEO can act on.
+            payload = {"type": "error", "message": "Noe gikk galt underveis, så svaret "
+                                                   "ble ikke ferdig. Prøv igjen."}
             yield f"data: {json.dumps(payload)}\n\n"
 
     return StreamingResponse(

@@ -23,7 +23,9 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
-from anthropic import AsyncAnthropic, BadRequestError
+from anthropic import (APIConnectionError, APIError, AsyncAnthropic,
+                       AuthenticationError, BadRequestError, OverloadedError,
+                       PermissionDeniedError, RateLimitError)
 
 import config
 import db
@@ -317,6 +319,16 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
                          "serverloggen.")
             yield {"type": "error", "message": shown}
             return
+        except APIError as exc:
+            # Everything else the provider can answer with: busy, a dropped
+            # connection, a key that no longer works. Only the bad request was
+            # caught before, and the rest reached the CEO's screen as the
+            # provider's own text, request id and all.
+            log.exception("Modellkallet feilet (%s)", job.name)
+            if raise_errors:
+                raise JobError(str(exc)) from exc
+            yield {"type": "error", "message": _plain_error(exc)}
+            return
 
         if final is None:
             yield {"type": "error", "message": "Tomt svar fra modellen."}
@@ -401,6 +413,19 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
         return
 
     yield {"type": "error", "message": "Turen ble avbrutt etter for mange verktøyrunder."}
+
+
+def _plain_error(exc: APIError) -> str:
+    """What the CEO is told when the model could not be reached. The
+    provider's words stay in the log."""
+    if isinstance(exc, (OverloadedError, RateLimitError)) or "overloaded" in str(exc).lower():
+        return "Modellen er travel akkurat nå. Prøv igjen om et par minutter."
+    if isinstance(exc, APIConnectionError):
+        return "Fikk ikke kontakt med modellen. Prøv igjen om litt."
+    if isinstance(exc, (AuthenticationError, PermissionDeniedError)):
+        return ("Nøkkelen til Anthropic virker ikke lenger, så modellen svarer "
+                "ikke. Tallene på forsiden virker fortsatt.")
+    return "Modellen svarte med en feil. Detaljene ligger i serverloggen."
 
 
 def parse_json(text: str, what: str) -> dict:
