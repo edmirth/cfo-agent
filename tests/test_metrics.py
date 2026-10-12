@@ -133,3 +133,45 @@ def test_the_report_has_eight_weeks_newest_first_and_the_floor_it_used():
     assert [w["week"] for w in out["weeks"]][:2] == ["2026-W42", "2026-W41"]
     assert len(out["weeks"]) == 8 and out["target_minutes"] == 10
     assert out["floor"]["said"].startswith("antatt")
+
+
+def test_an_edit_saved_with_wait_a_week_still_counts_when_approved():
+    """Edited, then "Vent en uke": the edit was saved as the draft, and the
+    approval a week later compared against it and read as unedited."""
+    _fresh()
+    card = _card("a")
+    cards.decide(card["id"], "wait", draft_text="Hei! Fakturaen er forfalt, kan dere betale?")
+    cards.decide(card["id"], "send", draft_text="Hei! Fakturaen er forfalt, kan dere betale?")
+    with db.read() as conn:
+        marks = [r[0] for r in conn.execute(
+            "SELECT e.draft_edited FROM card_events e JOIN cards c ON c.id = e.card_id "
+            "WHERE c.ref = ? AND e.event = 'decided' ORDER BY e.id", (card["id"],))]
+    assert marks == [1, 1]
+    # Set back to the CFO's own words, it is unedited again.
+    other = _card("b")
+    cards.decide(other["id"], "wait", draft_text="Endret.")
+    cards.decide(other["id"], "send", draft_text="Hei, fakturaen er forfalt.")
+    with db.read() as conn:
+        last = conn.execute(
+            "SELECT e.draft_edited FROM card_events e JOIN cards c ON c.id = e.card_id "
+            "WHERE c.ref = ? AND e.event = 'decided' ORDER BY e.id DESC", (other["id"],)
+        ).fetchone()[0]
+    assert last == 0
+
+
+def test_the_morning_rebuild_leaves_an_edited_draft_alone():
+    _fresh()
+    card = cards.add({"key": "collections:Kunde", "kind": "collections", "source": "auto",
+                      "title": "Kunde er sen", "body": "…",
+                      "draft": {"kind": "e-post", "to": "", "subject": "Purring",
+                                "text": "CFO-ens tekst."},
+                      "options": [{"id": "wait", "label": "Vent", "effect": "snooze",
+                                   "days": 7}]})
+    cards.decide(card["id"], "wait", draft_text="Min egen tekst.")
+    fresh = {"key": "collections:Kunde", "title": "Kunde er sen", "body": "…",
+             "draft": {"kind": "e-post", "to": "", "subject": "Purring",
+                       "text": "Ny CFO-tekst."}}
+    cards.reconcile([fresh], sources_ok=True)
+    kept = next(c for c in cards._load()["cards"] if c["id"] == card["id"])
+    assert kept["draft"]["text"] == "Min egen tekst."
+    assert kept["draft"]["original"] == "CFO-ens tekst."
