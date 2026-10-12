@@ -460,7 +460,8 @@ def _company_payload(d: dict) -> dict:
         "settings": d["settings"],
         "notes": d.get("notes", []),
         "used_in_calculations": sorted(
-            k for k in d["settings"] if k in company.KNOWN),
+            k for k in d["settings"]
+            if k in company.KNOWN and k not in company.AGENT_ONLY),
         "known_settings": {k: v[1] for k, v in company.KNOWN.items()},
     }
 

@@ -833,7 +833,15 @@ async def build(today: date | None = None) -> dict:
     # in the payables above.
     terms = [(date.fromisoformat(i["due"]) - date.fromisoformat(i["invoiced"])).days
              for i in ar_open if i.get("invoiced") and i.get("due")]
-    credit_days = int(statistics.median(terms)) if terms else 30
+    # What the customers' own invoices say first; the company's stated terms
+    # where there are none to measure; 30 days only where neither exists.
+    stated_terms = company.setting("kredittid_dager")
+    if terms:
+        credit_days, credit_source = int(statistics.median(terms)), "målt på fakturaene"
+    elif stated_terms and 0 < int(stated_terms) <= 365:
+        credit_days, credit_source = int(stated_terms), "fra company.md"
+    else:
+        credit_days, credit_source = 30, "antatt"
     vat_share, vat_measured = _vat_input_share(rows)
     # What this month has already accrued. commitments dates the whole
     # 2700-2739 balance to the running term's deadline, and the loop below
@@ -914,6 +922,7 @@ async def build(today: date | None = None) -> dict:
                      rates, credit_days, warnings, ar_due, ap_due,
                      vat_share, vat_measured, booked_vat,
                      invoiced_this_month, payroll_months)
+    data["assumptions"]["credit_days_source"] = credit_source
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
     data["items"] = _expected_items(ar_due, ap_due, today)
     # What is still owed after the bank's unbooked receipts: a customer who

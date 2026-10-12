@@ -316,3 +316,17 @@ def test_the_withholding_is_not_paid_on_pay_day_and_again_at_the_term():
     data = _forecast([REVENUE], items=items)
     assert not [i for i in _kinds(data, "statutory")
                 if "rskuddstrekk" in i["label"]]
+
+
+# ---------------------------------------------- the company's stated terms
+def test_stated_payment_terms_are_used_when_no_invoice_shows_them():
+    """kredittid_dager was listed as a setting that moves numbers, and moved
+    none: the forecast measured the terms from the invoices, or assumed 30."""
+    a = _forecast([REVENUE], settings={"kredittid_dager": 45})["assumptions"]
+    assert (a["credit_days"], a["credit_days_source"]) == (45, "fra company.md")
+    a = _forecast([REVENUE])["assumptions"]
+    assert (a["credit_days"], a["credit_days_source"]) == (30, "antatt")
+    # What the invoices show wins over what is written down.
+    ar = [_invoice(100_000.0, "2026-09-20", "2026-10-04")]
+    a = _forecast([REVENUE], ar=ar, settings={"kredittid_dager": 45})["assumptions"]
+    assert (a["credit_days"], a["credit_days_source"]) == (14, "målt på fakturaene")

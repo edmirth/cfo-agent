@@ -39,14 +39,18 @@ TEMPLATE = config.ROOT / "company.md"        # seeded on first use, then ignored
 MAX_CHARS = 20_000
 KEEP_VERSIONS = 10
 
-# Only these are read by code. Anything else in the block is passed to the
-# agent as a stated fact but changes no arithmetic — said plainly so nobody
-# expects a number to move because they wrote a line here.
+# Only these are read by code, and all but AGENT_ONLY in arithmetic. Anything
+# else in the block is passed to the agent as a stated fact but changes no
+# arithmetic — said plainly so nobody expects a number to move because they
+# wrote a line here.
 KNOWN = {
     "lonn_etterskuddsvis_mnd": ("int", "hvor mange måneder etter arbeidet "
-                                "lønnen utbetales"),
+                                "lønnen utbetales; CFO-en leser månedstallene "
+                                "med det, men det flytter ingen tall"),
     "lonn_utbetalingsdag": ("int", "dag i måneden lønnen kjøres (1–31)"),
-    "kredittid_dager": ("int", "standard betalingsfrist på fakturaene deres"),
+    "kredittid_dager": ("int", "standard betalingsfrist på fakturaene deres; "
+                        "prognosen bruker den når fakturaene ikke viser "
+                        "betalingstiden selv"),
     "ferie_utbetalingsmnd": ("int", "måneden feriepengene utbetales (1-12)"),
     "ferie_uker": ("int", "hvor mange uker ferie de ansatte har"),
     # The rulebook: thresholds every card, alert and brief is measured against.
@@ -63,6 +67,10 @@ KNOWN = {
                        "skilt med komma; står den ikke, går det til den som "
                        "logger inn"),
 }
+
+# Read by the CFO to explain the figures, never in a calculation. The page that
+# lists the settings must not say they move numbers.
+AGENT_ONLY = {"lonn_etterskuddsvis_mnd"}
 
 # The company's own rules. They decide when a card is raised and what the
 # brief calls tight, so they are settings the engine reads — a "2 MNOK floor"
