@@ -116,8 +116,8 @@ class _Tripletex:
             raise RuntimeError("503 fra Tripletex")
         if tool == "get_voucher_inbox_count":
             return {"count": 0}
-        if tool == "get_supplier_invoices_for_approval":
-            return {"invoices": []}
+        if tool == "list_pending_attestations":
+            return {"rows": [], "count": 0, "hasMore": False}
         return {"table": {"rows": [], "columns": []}}
 
 
@@ -150,3 +150,51 @@ def test_the_agent_is_told_what_could_not_be_checked():
     text = preflight.briefing(_build(fail={"Saldobalanse per måned"}))
     assert "Ikke alt kunne kontrolleres." in text
     assert "Periodiseringer som står stille" in text.split("Could not be checked")[1]
+
+
+# ------------------------------------------- the approval queue
+class _Queue(_Tripletex):
+    """The approval queue in pages, as list_pending_attestations gives it."""
+
+    def __init__(self, pages):
+        super().__init__()
+        self.pages, self.asked = pages, []
+
+    async def call(self, tool, args=None):
+        if tool != "list_pending_attestations":
+            return await super().call(tool, args)
+        self.asked.append(args)
+        assert args["scope"] == "all"
+        i = args["from"] // args["count"]
+        return {"rows": self.pages[i], "hasMore": i + 1 < len(self.pages)}
+
+
+def _with_queue(pages):
+    original, stub = preflight.mcp, _Queue(pages)
+    preflight.mcp = balance_sheet(stub)
+    try:
+        pf = asyncio.run(preflight.build(date(2026, 10, 15)))
+    finally:
+        preflight.mcp = original
+    return {c["id"]: c for c in pf["checks"]}["approval"], stub
+
+
+def test_every_page_of_the_approval_queue_is_read():
+    check, stub = _with_queue([[{"supplier": "Tools AS"}] * 100,
+                               [{"supplier": {"name": "Byggmakker"}}] * 3])
+    assert len(stub.asked) == 2 and stub.asked[1]["from"] == 100
+    assert check["status"] == "note"
+    assert check["headline"] == "103 bilag venter på godkjenning (Byggmakker, Tools AS)."
+
+
+def test_an_empty_queue_is_only_what_the_user_may_see():
+    check, _ = _with_queue([[]])
+    assert check["status"] == "ok"
+    assert "synlige" in check["headline"] and "ikke bevis" in check["detail"]
+
+
+def test_an_unread_queue_is_unavailable_not_empty():
+    pf = _build(fail={"list_pending_attestations"})
+    checks = {c["id"]: c for c in pf["checks"]}
+    assert checks["approval"]["status"] == "unavailable"
+    assert "godkjenning" in pf["failed"]

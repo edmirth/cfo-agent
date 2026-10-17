@@ -19,7 +19,7 @@ LABELS = {
     "search_orders": "Henter ordrer",
     "search_reminders": "Henter purringer",
     "get_voucher_inbox_count": "Sjekker bilagsinnboks",
-    "get_supplier_invoices_for_approval": "Sjekker fakturaer til godkjenning",
+    "list_pending_attestations": "Sjekker fakturaer til godkjenning",
     "logged_in_user_info": "Bekrefter selskap",
     "list_active_companies": "Slår opp selskap",
     "get_current_datetime": "Sjekker dato",

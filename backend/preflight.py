@@ -263,6 +263,37 @@ def _tie(gl: float, sub: float) -> float:
     return gl - sub
 
 
+# The approval queue, every page of it. Tripletex removed
+# get_supplier_invoices_for_approval in October 2026; list_pending_attestations
+# is the one queue now (the attestation flows, the new supplier invoice flow
+# and the legacy voucher approval). scope=all: the company's queue, not only
+# the vouchers where it is this user's turn.
+APPROVAL_PAGE = 100
+APPROVAL_PAGES = 10
+
+
+async def _approvals() -> dict:
+    rows: list = []
+    for page in range(APPROVAL_PAGES):
+        r = await mcp.call("list_pending_attestations",
+                           {"scope": "all", "from": page * APPROVAL_PAGE,
+                            "count": APPROVAL_PAGE})
+        if not isinstance(r, dict) or "rows" not in r:
+            raise RuntimeError("list_pending_attestations svarte uten rader")
+        rows += r.get("rows") or []
+        if not r.get("hasMore"):
+            return {"invoices": rows}
+    # More than a thousand waiting is a finding in itself, but not a whole one.
+    raise RuntimeError(f"Godkjenningskøen har mer enn {len(rows)} bilag")
+
+
+def _supplier(row: dict) -> str:
+    s = row.get("supplier") or row.get("supplierName") or ""
+    if isinstance(s, dict):
+        s = s.get("name") or ""
+    return str(s).strip()
+
+
 def _check(cid, label, status, headline, detail="") -> dict:
     return {"id": cid, "label": label, "status": status,
             "headline": headline, "detail": detail}
@@ -275,7 +306,7 @@ async def build(today: date | None = None) -> dict:
 
     inbox, approvals, balance, ar, ap = await asyncio.gather(
         mcp.call("get_voucher_inbox_count"),
-        mcp.call("get_supplier_invoices_for_approval"),
+        _approvals(),
         saldobalanse.monthly(mcp, start, end),
         mcp.call("fetch_report", {"report_name": "Kundereskontro",
                                   "period_start": start, "period_end": end, "limit": 0}),
@@ -322,14 +353,21 @@ async def build(today: date | None = None) -> dict:
         checks.append(_check("approval", "Til godkjenning", "unavailable",
                              "Kunne ikke lese fakturaer til godkjenning."))
     else:
+        # No total in kroner: Tripletex gives the amount as the approval view
+        # shows it, not necessarily NOK. And an empty queue is only what this
+        # user may see, so it is said as that, not as "nothing waits".
         pending = approvals.get("invoices") or []
-        total = sum(float(i.get("amount") or 0) for i in pending)
+        who = sorted({s for i in pending if (s := _supplier(i))})
         checks.append(_check(
             "approval", "Til godkjenning",
             "note" if pending else "ok",
-            f"{len(pending)} leverandørfaktura(er) venter på godkjenning"
-            + (f", {_kr(total)} kr." if total else ".") if pending
-            else "Ingen fakturaer venter på godkjenning."))
+            f"{len(pending)} bilag venter på godkjenning"
+            + (f" ({', '.join(who[:3])}{' m.fl.' if len(who) > 3 else ''})." if who else ".")
+            if pending
+            else "Ingen bilag til godkjenning er synlige for Arvaka.",
+            "" if pending else
+            "Tripletex viser bare bilag brukeren har tilgang til, så en tom kø "
+            "er ikke bevis på at ingenting venter."))
 
     # 3. A payables account that has stopped moving, or sits on the wrong side.
     ap_row = next((r for r in rows if _account(r) == 2400), None)

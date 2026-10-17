@@ -43,7 +43,7 @@ READ_TOOLS: frozenset[str] = frozenset({
 
     # Payables and the voucher backlog — what the pre-flight reads.
     "search_supplier_invoices", "get_supplier_invoice",
-    "get_supplier_invoices_for_approval", "search_suppliers", "list_suppliers",
+    "list_pending_attestations", "search_suppliers", "list_suppliers",
     "get_supplier", "get_voucher_inbox_count", "get_voucher_document",
     "search_expenses", "get_expense",
 
