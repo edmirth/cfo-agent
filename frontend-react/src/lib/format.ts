@@ -42,3 +42,38 @@ export const dayNo = (iso: string) => DAYS[new Date(iso).getDay()]
 
 /** Setningen skal ende på punktum, men aldri to. */
 export const stop = (t: string) => t + (/[.!?]$/.test(t.trim()) ? "" : ".")
+
+/** «1,6 MNOK» for store beløp, ellers kroner med tusenskille. */
+export const mnok = (n: number | null | undefined) => {
+  if (n == null) return "–"
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1).replace(".", ",") + " MNOK"
+  return kr(n) + " kr"
+}
+
+const ISO = /\b(\d{4})-(\d{2})-(\d{2})\b/g
+
+/** ISO-datoer midt i en setning blir «24. juli», med år bare når det ikke er i år. */
+export const datesNo = (t: string) =>
+  t.replace(ISO, (_, y: string, m: string, d: string) => {
+    const at = new Date(Number(y), Number(m) - 1, Number(d))
+    const thisYear = at.getFullYear() === new Date().getFullYear()
+    return at.toLocaleDateString("nb-NO", {
+      day: "numeric",
+      month: "long",
+      ...(thisYear ? {} : { year: "numeric" }),
+    })
+  })
+
+/** Et faktum på en sak, slik backend sender det («bank kr», «3140405.87»),
+ *  gjort lesbart: «Bank», «3 140 406 kr». Ukjente former står som de er. */
+export function fact(label: string, value: string): { label: string; value: string } {
+  let l = label.trim().replace(/\bforste\b/g, "første")
+  const money = /\s+kr$/i.test(l)
+  if (money) l = l.replace(/\s+kr$/i, "")
+  l = l.charAt(0).toUpperCase() + l.slice(1)
+  const v = value.trim()
+  if (/^-?\d+(\.\d+)?$/.test(v)) {
+    return { label: l, value: kr(Number(v)) + (money ? " kr" : "") }
+  }
+  return { label: l, value: datesNo(v) }
+}

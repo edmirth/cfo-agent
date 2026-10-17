@@ -1,8 +1,8 @@
 /* Forsidekortene: ett tall, formen det har hatt, og én setning om hva det betyr.
  *
  * Hvert kort er én serie, så ingen av dem trenger tegnforklaring — overskriften
- * sier hva linja er. Fargen bærer bare fortegn: blå er en verdi over null, rød
- * er under. Selve tallet står i tekstfarge, slik at kortene leses som ett sett
+ * sier hva linja er. Fargen bærer bare fortegn: merkegrønt er en verdi over
+ * null, rød er under. Selve tallet står i tekstfarge, slik at kortene leses som ett sett
  * og ikke som fire forskjellige grafer. Paret er kjørt gjennom fargevalidatoren
  * i begge moduser. */
 import { Bar, BarChart, Line, LineChart, YAxis } from "recharts"
@@ -53,12 +53,12 @@ function Hover({ active, payload, suffix, partialMonth }: {
   const p = payload?.[0]?.payload
   if (!active || !p || p.value == null) return null
   return (
-    <div className="bg-background grid gap-0.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xs">
+    <div className="bg-popover grid gap-0.5 rounded-md border px-3 py-2 text-xs">
       <span className="text-muted-foreground">
         {p.month}
         {p.month === partialMonth && " · så langt"}
       </span>
-      <span className="font-mono font-medium tabular-nums">
+      <span className="font-medium tabular-nums">
         {kr(p.value)} {suffix}
       </span>
     </div>
@@ -91,16 +91,14 @@ export function MetricCard({
   const partialMonth = partial && data.length ? data[data.length - 1].month : undefined
 
   return (
-    <Card size="sm" className="gap-3">
-      <CardContent className="grid gap-3">
-        <div className="grid gap-1">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-[0.12em] uppercase">
-            {label}
-          </span>
+    <Card size="sm" className="gap-4 px-1">
+      <CardContent className="grid gap-4">
+        <div className="grid gap-2">
+          <span className="label">{label}</span>
           {loading ? (
-            <Skeleton className="h-7 w-24" />
+            <Skeleton className="h-9 w-28" />
           ) : (
-            <span className="font-mono text-2xl leading-none font-semibold tabular-nums">
+            <span className="text-[34px] leading-none font-light tracking-[-0.03em] tabular-nums">
               {value}
             </span>
           )}
@@ -139,18 +137,16 @@ export function MetricCard({
             )}
           </ChartContainer>
         ) : (
-          <div className="text-muted-foreground flex h-14 items-center text-xs italic">
-            For få måneder til å vise en utvikling
+          <div className="border-border flex h-14 items-end border-b border-dashed pb-2">
+            <span className="text-muted-foreground text-[13px]">
+              Utviklingen kommer når flere måneder er bokført
+            </span>
           </div>
         )}
 
         <div className="flex items-baseline justify-between gap-2">
-          <p className="text-muted-foreground min-w-0 text-xs leading-snug">{note}</p>
-          {span && (
-            <span className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
-              {span}
-            </span>
-          )}
+          <p className="text-muted-foreground min-w-0 text-[13px] leading-5">{note}</p>
+          {span && <span className="text-muted-foreground shrink-0 text-xs">{span}</span>}
         </div>
       </CardContent>
     </Card>
