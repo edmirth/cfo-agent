@@ -120,7 +120,15 @@ export type WeeklyBrief = {
   light: "green" | "yellow" | "red"
   why: string
   sentence: string
-  low_point: { week: string; start: string; amount: number; floor: number; under_floor: boolean; text: string }
+  low_point: {
+    week: string
+    start: string
+    amount: number
+    floor: number
+    floor_assumed?: boolean
+    under_floor: boolean
+    text: string
+  }
   changed: string[]
   decisions: {
     count: number

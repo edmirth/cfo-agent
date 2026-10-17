@@ -566,6 +566,43 @@ function sentLine(sent: NonNullable<WeeklyBrief["sent"]>) {
   return `Sendt på e-post til ${sent.to.join(", ")} ${when}.`
 }
 
+/** Det laveste punktet de neste tretten ukene, som ett tall med hva det
+ *  betyr under: hvor langt fra gulvet, og om gulvet er deres eget. */
+function LowPoint({ low }: { low: WeeklyBrief["low_point"] }) {
+  const gap = Math.abs(low.amount - low.floor)
+  return (
+    <aside className="border-border border-t pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pb-2 lg:pl-10">
+      <p className="label">Laveste punkt</p>
+      <p className="mt-3 text-[clamp(40px,4vw,52px)] leading-none font-light tracking-[-0.03em] whitespace-nowrap">
+        {kr(low.amount)}
+        <span className="text-muted-foreground ml-1.5 text-[0.4em] tracking-normal">kr</span>
+      </p>
+      <p className="text-muted-foreground mt-3 text-[15px]">
+        {low.week}
+        {low.start && ` · fra ${dateNo(low.start)}`}
+      </p>
+      {low.floor > 0 && (
+        <p className="border-border mt-5 border-t pt-4 text-[15px] leading-6">
+          <span className={low.under_floor ? "text-bad-text font-medium" : "text-good-text font-medium"}>
+            {kr(gap)} kr {low.under_floor ? "under" : "over"} gulvet
+          </span>
+          <span className="text-muted-foreground">
+            {" "}på {kr(low.floor)} kr
+            {low.floor_assumed && (
+              <>
+                {" "}— antatt, ikke satt av dere.{" "}
+                <a href="#selskapet" className="text-good-text hover:underline">
+                  Sett deres eget →
+                </a>
+              </>
+            )}
+          </span>
+        </p>
+      )}
+    </aside>
+  )
+}
+
 /* ── nøkkeltallene ────────────────────────────────────────────── */
 type Kpi = Dashboard["kpis"][number]
 
@@ -727,7 +764,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
   return (
     <div className="space-y-16 sm:space-y-20">
       {/* ── 1. Dommen: fargen, én setning og det ene tallet som betyr noe ── */}
-      <header className="arv-rise max-w-[760px] pt-8">
+      <header className="arv-rise pt-8">
         <div className="label mb-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span>{weekLine(d.weekly, asOf)}</span>
           {prepared && <span>· klargjort {prepared}</span>}
@@ -735,6 +772,11 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
             Oppdater
           </Button>
         </div>
+        {/* Dommen til venstre, det ene tallet den hviler på til høyre: på en
+            bred skjerm fyller de to bredden sammen i stedet for at setningen
+            står alene mot venstre kant. */}
+        <div className="grid gap-x-16 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:items-end">
+        <div className="min-w-0">
         {d.weekly && !failed && <Status light={d.weekly.light} className="mb-4" />}
         {loading && !d.cash && d.weekly === undefined ? (
           <div className="grid gap-3">
@@ -746,15 +788,21 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
             Får ikke tak i regnskapet akkurat nå. Spørsmålsfeltet virker fortsatt.
           </h1>
         ) : (
-          <h1 className="font-heading text-[clamp(34px,4.6vw,60px)] leading-[1.05] tracking-[-0.03em] text-pretty">
+          <h1 className="font-heading max-w-[18ch] text-[clamp(34px,4.4vw,58px)] leading-[1.05] tracking-[-0.03em] text-balance">
             {d.weekly ? stop(d.weekly.sentence) : headline(d, signals)}
           </h1>
         )}
-        {d.weekly?.low_point.text && !failed && (
+        {/* Uten et tall å stå på står forklaringen som ingress i stedet. */}
+        {d.weekly?.low_point.text && !failed && !(d.weekly.low_point.amount != null && d.weekly.low_point.week) && (
           <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] mt-5 max-w-[640px] text-[18px] leading-[28px] text-pretty">
             {d.weekly.low_point.text}
           </p>
         )}
+        </div>
+        {d.weekly && !failed && d.weekly.low_point.amount != null && d.weekly.low_point.week && (
+          <LowPoint low={d.weekly.low_point} />
+        )}
+        </div>
         {/* Uten brev er det ingen dom å vise, så det å få skrevet det står
             øverst. Alt annet som ikke kjørte, står nederst. */}
         {d.weekly === null && !failed && (
