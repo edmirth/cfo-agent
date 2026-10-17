@@ -11,6 +11,7 @@ from datetime import date
 import freshness
 import memory
 from mcp_client import mcp
+import saldobalanse
 
 log = logging.getLogger("cfo.overview")
 
@@ -91,8 +92,7 @@ async def build(today: date | None = None) -> dict:
                                   "period_start": start, "period_end": end}),
         mcp.call("fetch_report", {"report_name": "Kundereskontro",
                                   "period_start": start, "period_end": end, "limit": 0}),
-        mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
-                                  "period_start": start, "period_end": end, "limit": 0}),
+        saldobalanse.monthly(mcp, start, end),
         return_exceptions=True,
     )
     failed = []

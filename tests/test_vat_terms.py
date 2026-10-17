@@ -1,6 +1,7 @@
 from datetime import date
 
 import commitments
+from tests._legacy_balance import balance_sheet
 
 
 COLUMNS = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai", "Juni",
@@ -123,7 +124,7 @@ class _Postings:
 
 def _paid_early(stub, today=date(2026, 10, 8)):
     original = commitments.mcp
-    commitments.mcp = stub
+    commitments.mcp = balance_sheet(stub)
     try:
         return asyncio.run(commitments._paid_early(AUG_PAID_ROWS, AUG_PAID_COLS, today))
     finally:
@@ -210,7 +211,7 @@ def test_unbooked_profit_tax_is_not_in_the_forecast_in_january():
             return {"table": {"rows": [{"path": "1920 Bank", "cells": [2000000]}],
                               "columns": [{"name": "Utgående saldo"}]}}
     original = commitments.mcp
-    commitments.mcp = _Reports()
+    commitments.mcp = balance_sheet(_Reports())
     try:
         out = asyncio.run(commitments.build(date(2027, 1, 10)))
     finally:

@@ -36,6 +36,7 @@ import scoring
 import freshness
 import workdays
 from mcp_client import mcp
+import saldobalanse
 # Shared with the pre-flight rather than copied: two readings of the monthly
 # balance report that drift apart are worse than one import.
 from preflight import _account, _monthly, _rows
@@ -629,16 +630,11 @@ async def build(today: date | None = None) -> dict:
     async def _prior():
         if not keep:
             return None
-        return await mcp.call("fetch_report", {
-            "report_name": "Saldobalanse per måned",
-            "period_start": f"{last_year}-01-01",
-            "period_end": f"{last_year}-12-31", "limit": 0})
+        return await saldobalanse.monthly(mcp, f"{last_year}-01-01", f"{last_year}-12-31")
 
     issued: dict = {}
     balance, com, ar, ap, prior = await asyncio.gather(
-        mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
-                                  "period_start": start_year,
-                                  "period_end": today.isoformat(), "limit": 0}),
+        saldobalanse.monthly(mcp, start_year, today.isoformat()),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
                        "amountOutstanding", "customerName", issued,
