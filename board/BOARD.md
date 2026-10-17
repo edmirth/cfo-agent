@@ -43,6 +43,8 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
+- [ ] Make an "Mock Up" company, where we have their accountant data and use their numbers instead of using URT number, so that we can present the product without showing any confidential numbers. But we have all the numbers it needs so we can show the ability of the ai agent.
+- [ ] Lets add the new branding guidelines that we have made on to the frontend on our platform so we have the same style on it.
 
 
 ## Doing
@@ -52,7 +54,7 @@ kanban-plugin: board
 ## Done
 
 - [x] The daily summary is cut off for being too long (since 10 Oct), so the front page shows an old one @edmir #agent ✓ 2026-10-11
-  - Caps raised (summary and Monday brief 4 000, morning watch 8 000); a cut-off answer is now kept in job_runs.details. Live: today's summary written, 1 156 tokens.
+	  - Caps raised (summary and Monday brief 4 000, morning watch 8 000); a cut-off answer is now kept in job_runs.details. Live: today's summary written, 1 156 tokens.
 - [x] 16. Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings ✓ 2026-10-11
 - [x] 14. Measure what the playbook says matters @agent #metrics ✓ 2026-10-10
 - [x] 13. Produce the onboarding health check and the clean-up list for the regnskapsfører @agent #onboarding ✓ 2026-10-10
