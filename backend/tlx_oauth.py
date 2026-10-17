@@ -67,6 +67,10 @@ class TokenManager:
             log.error("Kunne ikke lagre det roterte refresh-tokenet: %s", exc)
 
     async def access_token(self) -> str:
+        if config.DEMO:
+            # Demo mode never holds a Tripletex token, so it can never renew
+            # (and rotate away) the real one.
+            raise OAuthError("Demomodus bruker ikke Tripletex.")
         if not self.configured:
             raise OAuthError(
                 "Mangler TRIPLETEX_CLIENT_ID / TRIPLETEX_REFRESH_TOKEN. "

@@ -33,7 +33,7 @@ log = logging.getLogger("cfo.db")
 
 # CFO_DB points the whole app at another file; the test runner sets it so no
 # test can reach the real database.
-PATH = Path(os.getenv("CFO_DB") or config.ROOT / "state" / "cfo.db")
+PATH = Path(os.getenv("CFO_DB") or config.STATE / "cfo.db")
 MIGRATIONS = Path(__file__).parent / "migrations"
 BUSY_TIMEOUT_S = 10.0
 

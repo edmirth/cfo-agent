@@ -67,6 +67,20 @@ CACHE_READ, CACHE_WRITE = 0.1, 1.25
 OUTCOMES = {"ok": "ferdig", "partial": "kuttet", "failed": "feilet"}
 
 
+def _demo_tools() -> frozenset:
+    from demo.tripletex import AGENT_TOOL_NAMES
+    return AGENT_TOOL_NAMES
+
+
+async def _demo_call(name: str, args: dict) -> str:
+    """A Tripletex tool in demo mode, answered from the demo's books."""
+    from mcp_client import mcp
+    try:
+        return json.dumps(await mcp.call(name, args), ensure_ascii=False, default=str)
+    except Exception as e:  # noqa: BLE001 — a refused call is the model's to read
+        return f"Error: {e}"
+
+
 @dataclass(frozen=True)
 class Job:
     """What a job is: its prompt, what it may use, and what it must produce.
@@ -147,7 +161,14 @@ async def _request_kwargs(job: Job, messages: list[dict]) -> dict:
         # repeats identically on every tool round.
         kwargs["system"] = await job.system()
     offered: list[dict] = []
-    if job.tripletex:
+    if job.tripletex and config.DEMO:
+        # Demo mode: the books are on this machine, which Anthropic's MCP
+        # connector cannot reach. The same read tools run here instead, as
+        # ordinary tools answered by the demo's Tripletex (backend/demo/).
+        from demo.tripletex import AGENT_TOOLS
+        betas += ["code-execution-2025-08-25"]
+        offered += AGENT_TOOLS + [CODE_TOOL]
+    elif job.tripletex:
         # The Tripletex toolset is closed by default and opened tool by tool
         # in toolset.py. A write tool is not offered to the model at all, so
         # read-only stops depending on the model choosing to obey.
@@ -384,6 +405,8 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
                     continue
                 if b.name in job.tools:
                     text = await tools.run(b.name, b.input or {})
+                elif config.DEMO and job.tripletex and b.name in _demo_tools():
+                    text = await _demo_call(b.name, b.input or {})
                 else:
                     log.error("Jobb %s kalte et verktøy den ikke har: %s",
                               job.name, b.name)

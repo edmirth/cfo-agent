@@ -32,7 +32,7 @@ import industry
 
 log = logging.getLogger("cfo.definitions")
 
-STORE = config.ROOT / "state" / "definitions.json"
+STORE = config.STATE / "definitions.json"
 
 # What each metric means, in words a person can check the code against. The
 # wording is part of the fingerprint: changing the sentence is changing the

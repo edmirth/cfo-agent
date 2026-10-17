@@ -34,7 +34,7 @@ log = logging.getLogger("cfo.company")
 # that deploying the product never ships one company's story to another, and
 # so the people who run the business can edit it in the app instead of asking
 # someone to change a file in a repository.
-COMPANY_FILE = config.ROOT / "state" / "company.md"
+COMPANY_FILE = config.STATE / "company.md"
 TEMPLATE = config.ROOT / "company.md"        # seeded on first use, then ignored
 MAX_CHARS = 20_000
 KEEP_VERSIONS = 10
@@ -212,7 +212,9 @@ def _parse(text: str) -> tuple[dict, str, list[str]]:
 def _seed() -> None:
     """First run: copy the starter in, so the editor opens on prompts rather
     than an empty box. Nobody writes a company description into a blank page."""
-    if COMPANY_FILE.exists() or not TEMPLATE.exists():
+    if COMPANY_FILE.exists() or not TEMPLATE.exists() or config.DEMO:
+        # A demo company brings its own description (demo/companies.py);
+        # the template is the real customer's.
         return
     try:
         COMPANY_FILE.parent.mkdir(parents=True, exist_ok=True)

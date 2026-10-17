@@ -38,7 +38,7 @@ from mcp_client import mcp
 
 log = logging.getLogger("cfo.industry")
 
-PROFILE_STORE = config.ROOT / "state" / "profile.json"
+PROFILE_STORE = config.STATE / "profile.json"
 VALUES_CACHE_SECONDS = 600
 _values_cache: dict = {}
 

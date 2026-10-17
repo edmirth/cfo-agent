@@ -26,7 +26,7 @@ import config
 
 log = logging.getLogger("cfo.lock")
 
-LOCKFILE = config.ROOT / "state" / "server.lock"
+LOCKFILE = config.STATE / "server.lock"
 
 _handle = None
 
