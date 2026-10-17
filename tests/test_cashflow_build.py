@@ -10,6 +10,7 @@ from datetime import date
 
 import cashflow
 import company
+from tests._legacy_balance import balance_sheet
 
 TODAY = date(2026, 10, 5)
 COLUMNS = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai", "Juni",
@@ -56,7 +57,7 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None):
     async def cached():
         return {"bank": bank, "items": list(items)}
 
-    cashflow.mcp = stub
+    cashflow.mcp = balance_sheet(stub)
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: conf.get(k, d)
     try:
@@ -216,7 +217,7 @@ def _forecast_with(stub):
     async def cached():
         return {"bank": 1_000_000.0, "items": []}
 
-    cashflow.mcp = stub
+    cashflow.mcp = balance_sheet(stub)
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:

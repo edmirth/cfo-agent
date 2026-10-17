@@ -30,6 +30,7 @@ from datetime import date
 import freshness
 import workdays
 from mcp_client import mcp
+import saldobalanse
 
 log = logging.getLogger("cfo.preflight")
 
@@ -275,8 +276,7 @@ async def build(today: date | None = None) -> dict:
     inbox, approvals, balance, ar, ap = await asyncio.gather(
         mcp.call("get_voucher_inbox_count"),
         mcp.call("get_supplier_invoices_for_approval"),
-        mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
-                                  "period_start": start, "period_end": end, "limit": 0}),
+        saldobalanse.monthly(mcp, start, end),
         mcp.call("fetch_report", {"report_name": "Kundereskontro",
                                   "period_start": start, "period_end": end, "limit": 0}),
         mcp.call("fetch_report", {"report_name": "Leverandørreskontro",

@@ -12,6 +12,7 @@ import cashflow
 import commitments
 import company
 from tests.test_cashflow_build import COLUMNS, TODAY, _Tripletex, _cum, _kinds, _row
+from tests._legacy_balance import balance_sheet
 
 
 def _period(account, start, status="open"):
@@ -189,7 +190,7 @@ def _build(rows, ar, bank, gap):
         return {"bank": bank + (gap["adjustment"] if gap else 0.0),
                 "bank_booked": bank, "bank_gap": gap, "items": []}
 
-    cashflow.mcp, cashflow.commitments.cached = stub, cached
+    cashflow.mcp, cashflow.commitments.cached = balance_sheet(stub), cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
         return asyncio.run(cashflow.build(TODAY))
@@ -258,7 +259,7 @@ class _Ledger:
 
 def _commitments(stub):
     old = commitments.mcp
-    commitments.mcp = stub
+    commitments.mcp = balance_sheet(stub)
     try:
         return asyncio.run(commitments.build(TODAY))
     finally:

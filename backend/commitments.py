@@ -36,6 +36,7 @@ import company
 import freshness
 import workdays
 from mcp_client import mcp
+import saldobalanse
 
 log = logging.getLogger("cfo.commitments")
 
@@ -537,8 +538,7 @@ async def build(today: date | None = None) -> dict:
     start, end = f"{today.year}-01-01", today.isoformat()
 
     balance, pnl = await asyncio.gather(
-        mcp.call("fetch_report", {"report_name": "Saldobalanse per måned",
-                                  "period_start": start, "period_end": end, "limit": 0}),
+        saldobalanse.monthly(mcp, start, end),
         mcp.call("fetch_report", {"report_name": "Resultatrapport",
                                   "period_start": start, "period_end": end, "limit": 0}),
         return_exceptions=True,

@@ -1,4 +1,5 @@
 import preflight
+from tests._legacy_balance import balance_sheet
 
 
 def test_payables_tie_on_their_own_side():
@@ -122,7 +123,7 @@ class _Tripletex:
 
 def _build(fail=()):
     original = preflight.mcp
-    preflight.mcp = _Tripletex(fail)
+    preflight.mcp = balance_sheet(_Tripletex(fail))
     try:
         return asyncio.run(preflight.build(date(2026, 10, 15)))
     finally:
