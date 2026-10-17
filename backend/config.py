@@ -14,6 +14,24 @@ TRIPLETEX_REFRESH_TOKEN = os.getenv("TRIPLETEX_REFRESH_TOKEN") or ""
 TRIPLETEX_MCP_URL = os.getenv("TRIPLETEX_MCP_URL", "https://mcp.tripletex.no")
 COMPANY_NAME = os.getenv("COMPANY_NAME", "Selskapet")
 
+# Demo mode (backend/demo/): CFO_DEMO names a made-up company, and the whole
+# server runs on its books instead of Tripletex. Nothing that reaches the real
+# ledger is created — no Tripletex client, no token, no mail, no Brønnøysund —
+# and everything the server keeps goes to its own folder, never to state/.
+DEMO = (os.getenv("CFO_DEMO") or "").strip().lower() or None
+STATE = ROOT / "state-demo" / DEMO if DEMO else ROOT / "state"
+# Tests point a demo at a throwaway folder instead.
+if DEMO and os.getenv("CFO_STATE"):
+    STATE = Path(os.environ["CFO_STATE"])
+if DEMO:
+    from demo.companies import SPECS as _DEMO_SPECS
+    if DEMO not in _DEMO_SPECS:
+        raise SystemExit(f"Ukjent demoselskap «{DEMO}». Velg et av: "
+                         + ", ".join(sorted(_DEMO_SPECS)))
+    COMPANY_NAME = _DEMO_SPECS[DEMO].name
+    TRIPLETEX_CLIENT_ID = TRIPLETEX_REFRESH_TOKEN = ""
+    TRIPLETEX_MCP_URL = "demo://ingen-tripletex"
+
 CFO_MODEL = os.getenv("CFO_MODEL", "claude-opus-5")
 CFO_EFFORT = os.getenv("CFO_EFFORT", "high")
 
@@ -54,5 +72,5 @@ OWNER_EMAILS = frozenset(e.strip().lower()
 # Email (backend/mailer.py). Resend, until the product has its own domain:
 # without one, Resend sends only from onboarding@resend.dev and only to the
 # account's own address — enough while the CEO is the one recipient.
-RESEND_API_KEY = os.getenv("RESEND_API_KEY") or ""
+RESEND_API_KEY = "" if DEMO else (os.getenv("RESEND_API_KEY") or "")
 MAIL_FROM = os.getenv("CFO_MAIL_FROM", "CFO <onboarding@resend.dev>")

@@ -32,6 +32,7 @@ from datetime import date, timedelta
 
 import httpx2 as httpx
 
+import config
 import db
 from mcp_client import mcp
 
@@ -136,6 +137,8 @@ async def lookup(orgs: list[str]) -> dict[str, dict]:
     left out of a search alike. Raises RegisterError if the register cannot be
     read at all.
     """
+    if config.DEMO:
+        return {}
     out: dict[str, dict] = {}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
@@ -191,6 +194,10 @@ async def check(names: set[str], today: date | None = None) -> dict:
     the unclear ones, those not checked, and what failed.
     """
     today = today or date.today()
+    if config.DEMO:
+        # The demo's customers are invented; the register knows none of them.
+        return {"customers": len(names), "checked": 0, "at_risk": [], "new_risk": [],
+                "unclear": [], "no_org": [], "not_checked": [], "failed": []}
     names = {n for n in names if n}
     cid = db.company_id()
     with db.read() as conn:

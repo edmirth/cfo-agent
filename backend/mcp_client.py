@@ -180,4 +180,11 @@ class McpClient:
         raise McpError(f"{tool}: kunne ikke etablere MCP-sesjon")
 
 
-mcp = McpClient()
+if config.DEMO:
+    # A made-up company's books, answered here. No session, no token, no
+    # request to Tripletex can come from this process (backend/demo/).
+    from demo.companies import SPECS
+    from demo.tripletex import FakeTripletex
+    mcp = FakeTripletex(SPECS[config.DEMO])
+else:
+    mcp = McpClient()
