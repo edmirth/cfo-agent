@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { Wordmark } from "@/components/brand"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { api, get } from "@/lib/api"
 import { authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { Brief } from "@/pages/brief"
@@ -54,7 +55,7 @@ function Shell() {
   const hash = useHash()
   useTheme()
   useActiveMinutes()
-  const [company, setCompany] = useState("CFO")
+  const [company, setCompany] = useState("")
   const [sakerCount, setSakerCount] = useState(0)
   const { convs, remove } = useConversations()
 
@@ -80,11 +81,19 @@ function Shell() {
         onDelete={remove}
       />
       <SidebarInset>
+        {/* På mobil ligger menyen bak en knapp; uten denne linja fantes det
+            ingen vei inn i den. */}
+        <div className="border-border bg-background/95 sticky top-0 z-20 flex h-14 items-center justify-between border-b px-5 backdrop-blur md:hidden">
+          <a href="#" aria-label="Til forsiden">
+            <Wordmark className="text-[22px]" />
+          </a>
+          <SidebarTrigger />
+        </div>
         {/* Forsiden er et oppslag med fire kort ved siden av hverandre og
             trenger bredden. Chatten er tekst og skal beholde lesebredden. */}
         <div
-          className={`mx-auto w-full px-6 pt-4 pb-20 ${
-            onChat ? "max-w-4xl" : "max-w-6xl"
+          className={`mx-auto w-full px-5 pt-4 pb-24 sm:px-10 ${
+            onChat ? "max-w-4xl" : "max-w-[1120px]"
           }`}
         >
           {onChat ? (
@@ -100,7 +109,7 @@ function Shell() {
           ) : hash === "#selskapet" ? (
             <Selskapet />
           ) : (
-            <Brief />
+            <Brief onCount={setSakerCount} />
           )}
         </div>
       </SidebarInset>
@@ -153,9 +162,12 @@ export default function App() {
   if (gate === "loading") return null
   if (gate === "broken") {
     return (
-      <p className="text-muted-foreground p-10 text-sm">
-        Får ikke kontakt med serveren. Last siden på nytt om litt.
-      </p>
+      <div className="grid min-h-svh place-content-center gap-6 p-10 text-center">
+        <Wordmark className="text-[28px]" />
+        <p className="text-muted-foreground text-[15px]">
+          Får ikke kontakt med serveren. Last siden på nytt om litt.
+        </p>
+      </div>
     )
   }
   if (gate === "out" && authEnabled()) return <Login denied={denied} />

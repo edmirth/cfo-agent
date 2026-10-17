@@ -1,4 +1,4 @@
-"""Forsidens oppsummering: hvordan det går, skrevet av CFO-en selv.
+"""Forsidens oppsummering: hvordan det går, skrevet av Arvaka selv.
 
 Dette er den ene teksten på forsiden som koster et modellkall. Alt annet der er
 regnet ut. Derfor er den skrevet én gang per dag og lest fra disk resten av
@@ -166,11 +166,11 @@ def _human_error(exc: Exception) -> str:
     in the log — a billing URL and a request id are not news to a CEO."""
     detail = str(exc)
     if "credit balance is too low" in detail:
-        return ("Ingen kreditt på Anthropic-kontoen, så CFO-en får ikke skrevet "
+        return ("Ingen kreditt på Anthropic-kontoen, så Arvaka får ikke skrevet "
                 "oppsummeringen. Tallene under er uberørt.")
     if "Ingen tall å oppsummere" in detail:
         return "Ingen tall å oppsummere ennå."
-    return ("CFO-en fikk ikke skrevet oppsummeringen i dag. Detaljene ligger i "
+    return ("Arvaka fikk ikke skrevet oppsummeringen i dag. Detaljene ligger i "
             "serverloggen.")
 
 

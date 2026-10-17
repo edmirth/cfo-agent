@@ -282,7 +282,7 @@ def test_written_on_the_first_working_day_of_the_week_after_the_morning():
 def test_the_brief_step_says_partial_when_the_model_did_not_write_it():
     with _world(_cf(), _deck(0), answer=core.JobError("nope")):
         out = asyncio.run(scheduler._brief())
-    assert out["partial"] and "uten CFO-ens egne ord" in out["cause"]
+    assert out["partial"] and "uten Arvakas egne ord" in out["cause"]
     with _world({"weeks": []}, _deck(0)):
         try:
             asyncio.run(scheduler._brief())

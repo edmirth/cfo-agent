@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { PageHeader, SectionHead } from "@/components/brand"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api, get } from "@/lib/api"
@@ -67,7 +68,7 @@ export function Selskapet() {
       if (!r.ok) throw new Error((await r.text()).slice(0, 200))
       setCo(await r.json())
       loadRules()
-      setStatus({ msg: "Lagret. CFO-en bruker den fra neste spørsmål.", tone: "ok" })
+      setStatus({ msg: "Lagret. Arvaka bruker den fra neste spørsmål.", tone: "ok" })
     } catch (e) {
       setStatus({ msg: "Kunne ikke lagre: " + (e as Error).message, tone: "bad" })
     } finally {
@@ -76,20 +77,12 @@ export function Selskapet() {
   }
 
   return (
-    <div className="space-y-8 pt-6">
-      <header>
-        <p className="text-muted-foreground mb-3 font-mono text-[11px] tracking-[0.16em] uppercase">
-          Om selskapet
-        </p>
-        <h1 className="font-heading text-[30px] leading-tight font-semibold tracking-tight">
-          Det regnskapet ikke kan fortelle
-        </h1>
-        <p className="text-muted-foreground mt-2.5 max-w-[62ch] text-sm">
-          CFO-en leser dette hver gang den svarer. Skriv hvordan dere faktisk jobber — når
-          lønnen utbetales, hvem kundene er, hvilke måneder som alltid er tunge. Det avgjør
-          om et tall leses som et problem eller som en helt vanlig måned.
-        </p>
-      </header>
+    <div className="space-y-14">
+      <PageHeader
+        eyebrow="Om selskapet"
+        title="Det regnskapet ikke kan fortelle."
+        lead="Arvaka leser dette hver gang den svarer. Skriv hvordan dere faktisk jobber — når lønnen utbetales, hvem kundene er, hvilke måneder som alltid er tunge. Det avgjør om et tall leses som et problem eller som en helt vanlig måned."
+      />
 
       <section>
         <Textarea
@@ -98,9 +91,9 @@ export function Selskapet() {
           spellCheck={false}
           rows={24}
           aria-label="Om selskapet"
-          className="min-h-[60vh] resize-y p-4 font-mono text-[13px] leading-relaxed"
+          className="min-h-[60vh] resize-y p-5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px] leading-6"
         />
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-4">
           <Button onClick={save} disabled={saving}>
             Lagre
           </Button>
@@ -108,9 +101,9 @@ export function Selskapet() {
             className={
               "text-sm " +
               (status.tone === "ok"
-                ? "text-emerald-700 dark:text-emerald-500"
+                ? "text-good-text"
                 : status.tone === "bad"
-                  ? "text-destructive"
+                  ? "text-bad-text"
                   : "text-muted-foreground")
             }
           >
@@ -120,10 +113,10 @@ export function Selskapet() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-[17px] font-semibold">Innstillinger som flytter tall</h2>
-        <p className="text-muted-foreground mb-4 max-w-[62ch] text-sm">
-          Linjene mellom <code className="bg-muted rounded px-1 py-0.5 font-mono">---</code>{" "}
-          øverst i teksten. Alt annet leses av CFO-en, men endrer ingen regnestykker.
+        <SectionHead title="Innstillinger som flytter tall" />
+        <p className="text-muted-foreground -mt-2 mb-6 max-w-[62ch] text-[15px] leading-6">
+          Linjene mellom <code className="bg-muted rounded-sm px-1 py-0.5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">---</code>{" "}
+          øverst i teksten. Alt annet leses av Arvaka, men endrer ingen regnestykker.
         </p>
         <ul className="divide-border divide-y border-y text-sm">
           {Object.entries(co?.known_settings || {}).map(([key, what]) => {
@@ -131,10 +124,10 @@ export function Selskapet() {
             const rule = rules?.[key as keyof Rules]
             const used = rule && ruleValue(key, rule)
             return (
-              <li key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5">
-                <code className="font-mono text-[13px]">{key}</code>
+              <li key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3.5">
+                <code className="font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">{key}</code>
                 <span className="text-muted-foreground flex-1 text-[13px]">{what}</span>
-                <b className="font-mono tabular-nums">
+                <b className="font-medium tabular-nums">
                   {value != null ? (
                     // A rule the company set reads with its unit, «2 000 000 kr», not 2000000.
                     rule && !rule.assumed && used ? used : value
@@ -152,7 +145,7 @@ export function Selskapet() {
           })}
         </ul>
         {!!co?.notes?.length && (
-          <div className="border-destructive text-destructive mt-4 rounded border border-l-[3px] px-4 py-3 text-sm">
+          <div className="text-bad-text mt-5 rounded-md bg-[color-mix(in_oklab,var(--negative)_10%,transparent)] px-4 py-3 text-sm">
             {co.notes.map((n, i) => (
               <p key={i}>{n}</p>
             ))}

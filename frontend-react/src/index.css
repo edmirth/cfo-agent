@@ -2,12 +2,35 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/newsreader/opsz.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* Arvaka, merkevaren v1.0. Fargene, skriftene og formene kommer fra
+   merkeporteføljen: 60 % elfenben, 30 % blekk og varme gråtoner, høyst 10 %
+   grønt. Signalgrønt bare på grønt eller blekk, og høyst én gang per skjerm.
+   Ingen skygger; linjer, toner og luft skiller. */
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'Geist Variable', 'Inter Tight', system-ui, sans-serif;
+    --font-heading: 'Newsreader Variable', 'Times New Roman', serif;
+    --font-serif: 'Newsreader Variable', 'Times New Roman', serif;
+    /* Tall settes i Geist med tabellsifre, ikke i en monospace. */
+    --font-mono: 'Geist Variable', system-ui, sans-serif;
+    --color-brand-950: var(--brand-950);
+    --color-brand-900: var(--brand-900);
+    --color-brand-700: var(--brand-700);
+    --color-brand-100: var(--brand-100);
+    --color-brand-on: var(--brand-on);
+    --color-signal: var(--signal);
+    --color-positive: var(--positive);
+    --color-negative: var(--negative);
+    --color-warning: var(--warning);
+    --color-info: var(--info);
+    --color-good-text: var(--good-text);
+    --color-bad-text: var(--bad-text);
+    --color-warn-text: var(--warn-text);
+    --color-faint: var(--faint);
+    --color-tint: var(--tint);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,109 +62,206 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+    /* Én radiusfamilie: 4 px felt, 6 px kort, 8 px produktflater, piller. */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 6px;
+    --radius-xl: 8px;
+    --radius-2xl: 8px;
+    --radius-3xl: 12px;
+    --radius-4xl: 9999px;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.7, 0, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --ink: #0F0E0D;
+    --gray-900: #1F1D1A;
+    --gray-800: #33312C;
+    --gray-700: #524F49;
+    --gray-600: #706D66;
+    --gray-500: #8F8B85;
+    --gray-400: #ADABA5;
+    --gray-300: #CCCAC6;
+    --gray-200: #E5E5E3;
+    --gray-100: #F2F1F0;
+    --ivory: #FAFAF9;
+    --brand-950: #0B241C;
+    --brand-900: #0F362A;
+    --brand-700: #135B45;
+    --brand-100: #E6EEEA;
+    --brand-on: #B8C9C1;
+    --signal: #D0F289;
+    /* Funksjonsfarger: bare mening (gevinst, tap, status), aldri pynt. */
+    --positive: #16A34A;
+    --negative: #D94636;
+    --warning: #EAB308;
+    --info: #0071C1;
+    /* Som tekst er grønt og gult for svake mot elfenben (3,2 og 1,8:1).
+       Godt skrives i merkegrønt, dårlig i et trinn mørkere rødt (5,4:1). */
+    --good-text: var(--brand-700);
+    --bad-text: #B93A2C;
+    --warn-text: #8A6A00;
+    /* Grå 500: bare 18 px+ eller 14 px medium. */
+    --faint: var(--gray-500);
+    --tint: var(--gray-100);
+
+    --background: var(--ivory);
+    --foreground: var(--ink);
+    --card: #FFFFFF;
+    --card-foreground: var(--ink);
+    --popover: #FFFFFF;
+    --popover-foreground: var(--ink);
+    --primary: var(--brand-900);
+    --primary-foreground: var(--ivory);
+    --secondary: var(--gray-200);
+    --secondary-foreground: var(--ink);
+    --muted: var(--gray-100);
+    --muted-foreground: var(--gray-600);
+    --accent: var(--gray-100);
+    --accent-foreground: var(--ink);
+    --destructive: var(--bad-text);
+    --border: var(--gray-200);
+    --input: var(--gray-200);
+    --ring: var(--brand-700);
+    /* Grafene følger rekkefølgen i porteføljen. */
+    --chart-1: var(--brand-700);
+    --chart-2: var(--gray-800);
+    --chart-3: var(--gray-400);
+    --chart-4: var(--brand-on);
+    --chart-5: var(--info);
+    --radius: 6px;
+    --sidebar: var(--ivory);
+    --sidebar-foreground: var(--gray-800);
+    --sidebar-primary: var(--brand-900);
+    --sidebar-primary-foreground: var(--ivory);
+    --sidebar-accent: var(--brand-100);
+    --sidebar-accent-foreground: var(--brand-900);
+    --sidebar-border: var(--gray-200);
+    --sidebar-ring: var(--brand-700);
 }
 
+/* Mørk modus: blekk og grå 900, tekst i elfenben, aldri rent hvitt. Grønt
+   900 forsvinner mot blekk (1,45:1), så hovedknappen går et trinn opp. */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --good-text: var(--brand-on);
+    --bad-text: #E8705F;
+    --warn-text: var(--warning);
+    --faint: var(--gray-500);
+    --tint: var(--gray-900);
+
+    --background: var(--ink);
+    --foreground: var(--ivory);
+    --card: var(--gray-900);
+    --card-foreground: var(--ivory);
+    --popover: var(--gray-900);
+    --popover-foreground: var(--ivory);
+    --primary: var(--brand-700);
+    --primary-foreground: var(--ivory);
+    --secondary: var(--gray-800);
+    --secondary-foreground: var(--ivory);
+    --muted: var(--gray-900);
+    --muted-foreground: var(--gray-400);
+    --accent: var(--gray-800);
+    --accent-foreground: var(--ivory);
+    --destructive: var(--bad-text);
+    --border: var(--gray-800);
+    --input: var(--gray-800);
+    --ring: var(--brand-on);
+    --chart-1: var(--brand-on);
+    --chart-2: var(--gray-300);
+    --chart-3: var(--gray-600);
+    --chart-4: var(--brand-700);
+    --chart-5: #4FA3E0;
+    --sidebar: var(--ink);
+    --sidebar-foreground: var(--gray-300);
+    --sidebar-primary: var(--brand-700);
+    --sidebar-primary-foreground: var(--ivory);
+    --sidebar-accent: var(--brand-950);
+    --sidebar-accent-foreground: var(--ivory);
+    --sidebar-border: var(--gray-800);
+    --sidebar-ring: var(--brand-on);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
-    }
+    -webkit-font-smoothing: antialiased;
+    /* Tabellsifre alltid, så tall står under hverandre. */
+    font-variant-numeric: tabular-nums;
+  }
   html {
     @apply font-sans;
-    }
+  }
+  ::selection {
+    background: var(--brand-100);
+    color: var(--ink);
+  }
+  /* Newsreader for å si, Geist for å gjøre. Aldri over 400 i serifen. */
+  .font-heading, .font-serif {
+    font-weight: 400;
+    font-optical-sizing: auto;
+  }
 }
-/* Kontantgrafen. Paret er kjørt gjennom fargevalidatoren (lyshet, metning,
-   fargeblindhet og kontrast mot flaten) i begge moduser. */
+
+/* Etikett over en blokk: Geist 13/500 i grått, ikke versaler med sperring. */
+@utility label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+/* Ordmerket: Newsreader 400, −4 % sperring, og prikken framover. */
+.arv-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.08em;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.arv-wordmark > i {
+  display: inline-block;
+  width: 0.23em;
+  height: 0.23em;
+  border-radius: 9999px;
+  background: var(--brand-700);
+}
+.dark .arv-wordmark > i { background: var(--signal); }
+
+/* Bevegelse som en side som blas: tone inn og stige 16 px, 80 ms forskjøvet. */
+@keyframes arv-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+.arv-rise {
+  opacity: 0;
+  animation: arv-rise 600ms var(--ease-out) forwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .arv-rise { animation: none; opacity: 1; }
+}
+
+/* Kontantgrafen: bundet i merkegrønt, forventet i varm grå, minus i rødt. */
 :root {
-    --chart-committed: #1B4FD8;
-    --chart-expected: #A35A00;
-    --chart-negative: #e7000b;
+    --chart-committed: var(--brand-700);
+    --chart-expected: var(--gray-500);
+    --chart-negative: var(--negative);
+    --chart-floor: var(--gray-800);
 }
 
 .dark {
-    --chart-committed: #4E7FE0;
-    --chart-expected: #B87C22;
-    /* Ikke --destructive: den er en tekstfarge og ligger utenfor lyshetsbåndet
-       for flatemerker i mørk modus. Dette er samme rødt, trinnet inn i båndet. */
-    --chart-negative: #e54b52;
+    --chart-committed: var(--brand-on);
+    --chart-expected: var(--gray-500);
+    --chart-negative: #E8705F;
+    --chart-floor: var(--gray-300);
 }
 
 /* Arbeidssporet: linja som skjer akkurat nå lyser svakt. */
@@ -180,22 +300,24 @@
 .cfo-md > :first-child { margin-top: 0; }
 .cfo-md > :last-child { margin-bottom: 0; }
 .cfo-md p { margin: 0 0 12px; }
-.cfo-md h1, .cfo-md h2, .cfo-md h3 {
+.cfo-md h1, .cfo-md h2 {
     font-family: var(--font-heading);
-    font-weight: 600;
-    line-height: 1.3;
-    margin: 22px 0 9px;
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    margin: 26px 0 10px;
 }
-.cfo-md h1 { font-size: 20px; }
-.cfo-md h2 { font-size: 17px; }
-.cfo-md h3 { font-size: 15px; }
+.cfo-md h1 { font-size: 26px; }
+.cfo-md h2 { font-size: 22px; }
+.cfo-md h3 { font-size: 15px; font-weight: 500; line-height: 1.4; margin: 20px 0 8px; }
+.cfo-md strong { font-weight: 500; }
 .cfo-md ul, .cfo-md ol { margin: 0 0 12px; padding-left: 21px; }
 .cfo-md ul { list-style: disc; }
 .cfo-md ol { list-style: decimal; }
 .cfo-md li { margin-bottom: 4px; }
-.cfo-md a { color: var(--primary); text-decoration: underline; }
+.cfo-md a { color: var(--good-text); text-decoration: underline; text-underline-offset: 3px; }
 .cfo-md code {
-    font-family: var(--font-mono, ui-monospace, monospace);
+    font-family: ui-monospace, monospace;
     font-size: .88em;
     background: var(--muted);
     padding: 1.5px 5px;
@@ -213,19 +335,16 @@
 .cfo-md table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0 0 14px; display: block; overflow-x: auto; }
 .cfo-md th {
     text-align: left;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .09em;
-    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--muted-foreground);
     padding: 0 14px 8px 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--gray-300);
     white-space: nowrap;
 }
 .cfo-md td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--border); }
 .cfo-md td:not(:first-child), .cfo-md th:not(:first-child) { text-align: right; }
-.cfo-md td:not(:first-child) { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
+.cfo-md td:not(:first-child) { font-variant-numeric: tabular-nums; }
 
 /* Utskrift: bare dokumentet. Helsesjekken skal kunne lagres som PDF fra
    nettleseren uten menyen ved siden av og uten den flytende rammen rundt. */

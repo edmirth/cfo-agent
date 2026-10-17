@@ -45,7 +45,7 @@ KEEP_VERSIONS = 10
 # wrote a line here.
 KNOWN = {
     "lonn_etterskuddsvis_mnd": ("int", "hvor mange måneder etter arbeidet "
-                                "lønnen utbetales; CFO-en leser månedstallene "
+                                "lønnen utbetales; Arvaka leser månedstallene "
                                 "med det, men det flytter ingen tall"),
     "lonn_utbetalingsdag": ("int", "dag i måneden lønnen kjøres (1–31)"),
     "kredittid_dager": ("int", "standard betalingsfrist på fakturaene deres; "
@@ -55,13 +55,13 @@ KNOWN = {
     "ferie_uker": ("int", "hvor mange uker ferie de ansatte har"),
     # The rulebook: thresholds every card, alert and brief is measured against.
     "likviditetsgulv_kr": ("kr", "laveste saldo dere vil ha på konto; under "
-                           "den varsler CFO-en"),
+                           "den varsler Arvaka"),
     "purring_etter_dager": ("int", "dager etter forfall før en kunde purres"),
     "varsel_minimum_kr": ("kr", "beløp under dette gir ingen sak eller varsel"),
     "lonnsandel_mal_pct": ("pct", "målet for lønn som andel av omsetningen, "
                            "i prosent"),
     "kostnadsavvik_pct": ("pct", "hvor mye over sitt vanlige nivå en "
-                          "kostnadskonto må ligge en måned før CFO-en sier "
+                          "kostnadskonto må ligge en måned før Arvaka sier "
                           "fra, i prosent"),
     "brev_mottakere": ("emails", "hvem mandagsbrevet sendes til på e-post, "
                        "skilt med komma; står den ikke, går det til den som "
@@ -204,7 +204,7 @@ def _parse(text: str) -> tuple[dict, str, list[str]]:
             settings[key] = raw
             if key not in KNOWN:
                 notes.append(f"«{key}» kjenner ikke beregningene til. Den blir "
-                             f"fortalt til CFO-en som et faktum, men flytter "
+                             f"fortalt til Arvaka som et faktum, men flytter "
                              f"ingen tall.")
     return settings, story.lstrip("\n"), notes
 

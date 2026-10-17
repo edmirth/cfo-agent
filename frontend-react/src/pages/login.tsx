@@ -1,14 +1,13 @@
 /* Innloggingen. Bare daglig leder har konto; ingen kan registrere seg selv.
  * Passord, eller en lenke på e-post for den som ikke vil huske et.
  *
- * En dør, ikke en utstilling: her skal ingen overtales til noe. Så siden
- * arver appens egne tokens i stedet for å finne opp en palett — en
- * innlogging som ser ut som et annet produkt enn det den åpner, er dårlig
- * design uansett hvor pen den er. */
+ * En dør, ikke en utstilling: her skal ingen overtales til noe. Siden arver
+ * appens egne tokens, og bildet ved siden av er merkets dokumentariske
+ * standard (varm mono) i en 6 px ramme. På mobil står bare skjemaet. */
 import { useId, useState, type FormEvent } from "react"
 
+import { Wordmark } from "@/components/brand"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/auth"
 
@@ -20,26 +19,6 @@ function said(message: string): string {
     return "Denne e-postadressen har ikke tilgang."
   if (/rate limit|too many/i.test(message)) return "For mange forsøk. Vent litt og prøv igjen."
   return "Innloggingen feilet. Prøv igjen."
-}
-
-/** Merket: de to linjene hele produktet hviler på — den bundne og den
- *  forventede. Samme to fargene som kontantgrafen bruker, som er kjørt
- *  gjennom fargevalidatoren i begge moduser, så de holder her også. */
-function Mark() {
-  return (
-    <svg
-      viewBox="0 0 46 18"
-      className="h-[18px] w-[46px]"
-      fill="none"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="2,7 13,4 24,6 35,2 44,3" stroke="var(--chart-expected)" />
-      <polyline points="2,13 13,11 24,13 35,10 44,16" stroke="var(--chart-committed)" />
-    </svg>
-  )
 }
 
 export function Login({ denied }: { denied?: string | null }) {
@@ -78,25 +57,20 @@ export function Login({ denied }: { denied?: string | null }) {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center px-4 py-10">
-      <main className="w-full max-w-sm">
-        <Card className="[--card-spacing:--spacing(7)]">
-          <CardContent className="grid gap-7">
-            <div className="grid gap-5">
-              <div className="flex items-center gap-3">
-                <Mark />
-                <span className="font-mono text-[11px] tracking-[0.16em] uppercase">CFO</span>
-              </div>
-              <div className="grid gap-1.5">
-                <h1 className="font-heading text-2xl font-semibold tracking-tight">
-                  {sent ? "Sjekk e-posten" : "Logg inn"}
+    <div className="grid min-h-svh lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <main className="flex flex-col px-5 py-8 sm:px-12 lg:px-20">
+        <Wordmark className="text-[28px]" />
+        <div className="arv-rise my-auto w-full max-w-[380px] py-12">
+          <div className="grid gap-9">
+            <div className="grid gap-3">
+                <h1 className="font-heading text-[44px] leading-[1.05] tracking-[-0.025em]">
+                  {sent ? "Sjekk e-posten." : "Logg inn."}
                 </h1>
-                <p className="text-muted-foreground text-[13px] leading-relaxed">
+                <p className="text-muted-foreground text-[15px] leading-6">
                   {sent
                     ? "Lenken logger deg inn uten passord."
                     : "Tilgang er personlig. Ingen kan registrere seg selv."}
                 </p>
-              </div>
             </div>
 
             {sent ? (
@@ -113,8 +87,7 @@ export function Login({ denied }: { denied?: string | null }) {
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
-                  size="lg"
+                  variant="secondary"
                   className="w-full"
                   onClick={() => setSent(false)}
                 >
@@ -133,7 +106,6 @@ export function Login({ denied }: { denied?: string | null }) {
                       type="email"
                       autoComplete="email"
                       autoFocus
-                      className="h-9"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -147,7 +119,6 @@ export function Login({ denied }: { denied?: string | null }) {
                       id={passwordId}
                       type="password"
                       autoComplete="current-password"
-                      className="h-9"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -158,12 +129,12 @@ export function Login({ denied }: { denied?: string | null }) {
                 {/* Sagt høyt for skjermlesere også: feilen kommer etter at
                     knappen er trykket, og da er fokus et annet sted. */}
                 {error && (
-                  <p role="alert" className="text-destructive text-[13px] leading-relaxed">
+                  <p role="alert" className="text-bad-text text-[13px] leading-5">
                     {error}
                   </p>
                 )}
 
-                <Button type="submit" size="lg" className="w-full" disabled={busy}>
+                <Button type="submit" className="w-full" disabled={busy}>
                   {busy ? "Logger inn …" : "Logg inn"}
                 </Button>
 
@@ -176,8 +147,7 @@ export function Login({ denied }: { denied?: string | null }) {
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
-                  size="lg"
+                  variant="secondary"
                   className="w-full"
                   onClick={withLink}
                   disabled={busy}
@@ -186,9 +156,26 @@ export function Login({ denied }: { denied?: string | null }) {
                 </Button>
               </form>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          Arvaka leser regnskapet deres. Endrer ingenting.
+        </p>
       </main>
+      <aside className="hidden p-3 lg:block" aria-hidden="true">
+        <div className="relative h-full overflow-hidden rounded-md">
+          <img
+            src="/brand/arvaka-mono-building.jpg"
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#0F0E0D]/70 to-transparent p-10 pt-32">
+            <p className="font-heading max-w-[18ch] text-[34px] leading-[1.1] tracking-[-0.02em] text-[var(--ivory)]">
+              Bokføringen ser bakover. Arvaka ser fremover.
+            </p>
+          </div>
+        </div>
+      </aside>
     </div>
   )
 }

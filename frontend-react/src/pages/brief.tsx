@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts"
 
+import { ChevronDown } from "lucide-react"
+
+import { Dot, SectionHead, Status } from "@/components/brand"
+import { DecisionBody, useDeck } from "@/components/decision"
 import { MetricCard } from "@/components/metric-card"
 import type { Point } from "@/components/metric-card"
 import { SignalList } from "@/components/signal-list"
 import { SummaryCard } from "@/components/summary-card"
-import { WeeklyBriefCard } from "@/components/weekly-brief-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -21,7 +24,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -79,6 +81,9 @@ type Data = {
   weekly?: WeeklyBrief | null
   rules?: Rules
   sched?: Schedule
+  /** Hvorfor kontantstrømmen ikke kom, så blokken kan si det i stedet for å
+   *  stå som en grå flate for alltid. */
+  cashError?: string
 }
 
 /* ── morgenkjøringen ──────────────────────────────────────────── */
@@ -374,7 +379,7 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
   return (
     <ChartContainer config={chartConfig} className="h-[280px] w-full">
       <LineChart data={data} margin={{ left: 8, right: 16, top: 16, bottom: 8 }}>
-        <CartesianGrid vertical={false} />
+        <CartesianGrid vertical={false} stroke="var(--border)" />
         <XAxis
           dataKey="week"
           tickLine={false}
@@ -393,13 +398,13 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
         {floor > 0 && (
           <ReferenceLine
             y={floor}
-            stroke="var(--destructive)"
-            strokeDasharray="2 5"
+            stroke="var(--chart-floor)"
+            strokeDasharray="2 4"
             label={{
-              value: `gulv · ${tag} ${mill(floor)}`,
+              value: `Gulv · ${tag} ${mill(floor)}`,
               position: "insideBottomLeft",
-              fill: "var(--destructive)",
-              fontSize: 11,
+              fill: "var(--muted-foreground)",
+              fontSize: 12,
             }}
           />
         )}
@@ -415,7 +420,7 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
                   <span className="text-muted-foreground">
                     {chartConfig[name as keyof typeof chartConfig]?.label ?? name}
                   </span>
-                  <span className="font-mono font-medium tabular-nums">
+                  <span className="font-medium tabular-nums">
                     {kr(value as number)}
                   </span>
                 </div>
@@ -458,7 +463,7 @@ function CashTable({ cash }: { cash: Cashflow }) {
           {["Uke", "Fra", "Inn", "Ut", "Bundet", "Forventet"].map((h, i) => (
             <TableHead
               key={h}
-              className={`text-muted-foreground h-8 font-mono text-[10px] tracking-[0.12em] uppercase ${
+              className={`text-muted-foreground border-[var(--gray-300)] h-9 text-[13px] font-medium ${
                 i > 1 ? "text-right" : ""
               }`}
             >
@@ -475,51 +480,47 @@ function CashTable({ cash }: { cash: Cashflow }) {
               key={w.index}
               // Den tynneste uka er hele poenget med tabellen, så den er den
               // ene raden som får lov til å rope.
-              className={thin ? "bg-muted/60 hover:bg-muted/60" : undefined}
+              className={thin ? "bg-brand-100/60 hover:bg-brand-100/60 dark:bg-brand-950 dark:hover:bg-brand-950" : undefined}
             >
-              <TableCell className="py-2 font-medium">
+              <TableCell className="py-2.5 font-medium">
                 {w.label}
                 {thin && (
-                  <span className="text-muted-foreground ml-2 font-mono text-[10px] tracking-[0.12em] uppercase">
-                    tynnest
-                  </span>
+                  <span className="text-good-text ml-2 text-xs font-medium">tynnest</span>
                 )}
                 {w.index === 0 && !thin && (
-                  <span className="text-muted-foreground/70 ml-2 font-mono text-[10px] tracking-[0.12em] uppercase">
-                    nå
-                  </span>
+                  <span className="text-muted-foreground ml-2 text-xs">nå</span>
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground py-2 font-mono text-xs">
+              <TableCell className="text-muted-foreground py-2.5 text-[13px]">
                 {dateShortNo(w.start)}
               </TableCell>
               {/* En uke uten bevegelse er et faktum, ikke et hull, så nullen
                   blir stående — men dempet, så øyet går til ukene der det
                   faktisk skjer noe. */}
               <TableCell
-                className={`py-2 text-right font-mono tabular-nums ${
+                className={`py-2.5 text-right tabular-nums ${
                   w.in + w.expected_in ? "" : "text-muted-foreground/40"
                 }`}
               >
                 {kr(w.in + w.expected_in)}
               </TableCell>
               <TableCell
-                className={`py-2 text-right font-mono tabular-nums ${
+                className={`py-2.5 text-right tabular-nums ${
                   w.out + w.expected_out ? "text-muted-foreground" : "text-muted-foreground/40"
                 }`}
               >
                 {kr(-(w.out + w.expected_out))}
               </TableCell>
               <TableCell
-                className={`py-2 text-right font-mono font-medium tabular-nums ${
-                  w.committed_close < 0 ? "text-destructive" : ""
+                className={`py-2.5 text-right font-medium tabular-nums ${
+                  w.committed_close < 0 ? "text-bad-text" : ""
                 }`}
               >
                 {kr(w.committed_close)}
               </TableCell>
               <TableCell
-                className={`py-2 text-right font-mono tabular-nums ${
-                  w.expected_close < 0 ? "text-destructive" : "text-muted-foreground"
+                className={`py-2.5 text-right tabular-nums ${
+                  w.expected_close < 0 ? "text-bad-text" : "text-muted-foreground"
                 }`}
               >
                 {kr(w.expected_close)}
@@ -532,8 +533,89 @@ function CashTable({ cash }: { cash: Cashflow }) {
   )
 }
 
+/* ── dommen ───────────────────────────────────────────────────── */
+/** «Mandag, uke 41» fra brevet; uten brev, dagens dato. */
+function weekLine(weekly: WeeklyBrief | null | undefined, asOf: string) {
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+  if (weekly) {
+    const week = Number(weekly.period.split("-W")[1])
+    // Et brev fra en tidligere uke sier fra hvilken dag det er, ikke hvilken
+    // dag det er i dag.
+    return weekly.current
+      ? `${cap(dayNo(weekly.made_on))}, uke ${week}`
+      : `Uke ${week} · skrevet ${dayNo(weekly.made_on)} ${dateNo(weekly.made_on)}`
+  }
+  return `${cap(dayNo(asOf))} ${dateNo(asOf)}`
+}
+
+/** «Driftsmargin: 2,4 %, fra 3,4 %.» som tre deler, så tallet kan stå stort.
+ *  Står setningen i en annen form, vises den som den er. */
+function change(line: string): { label: string; now: string; before: string } | null {
+  const m = line.match(/^(.+?):\s*(.+?),\s*fra\s+(.+?)\.?$/)
+  return m ? { label: m[1], now: m[2], before: m[3] } : null
+}
+
+/** «Sendt på e-post til deg@x.no mandag kl 07:01», fra tidspunktet serveren
+ *  lagret. */
+function sentLine(sent: NonNullable<WeeklyBrief["sent"]>) {
+  const when = new Date(sent.at).toLocaleString("nb-NO", {
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+  return `Sendt på e-post til ${sent.to.join(", ")} ${when}.`
+}
+
+/* ── nøkkeltallene ────────────────────────────────────────────── */
+type Kpi = Dashboard["kpis"][number]
+
+/** Ett nøkkeltall mot målet: tallet, en tynn linje med målet som strek, og
+ *  hva tallet betyr. Grønt bare når backend sier «good»; en status frontenden
+ *  ikke kjenner, males aldri som frisk. */
+function KpiRow({ k }: { k: Kpi }) {
+  // Backend melder «unknown» når tallet ikke lar seg regne ut nå. Da er en tom
+  // linje verre enn ingen linje.
+  const missing = k.value == null || k.status === "unknown"
+  const scale = Math.max(k.value ?? 0, k.target, k.alert) * 1.15 || 1
+  const tone = missing
+    ? "text-muted-foreground"
+    : k.status === "bad"
+      ? "text-bad-text"
+      : k.status === "good"
+        ? "text-good-text"
+        : "text-warn-text"
+  const bar = k.status === "bad" ? "bg-negative" : k.status === "good" ? "bg-positive" : "bg-warning"
+  return (
+    <div className="border-border border-t py-5">
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="min-w-0 text-[15px] font-medium">{k.label}</span>
+        <span className={`shrink-0 text-[20px] font-light whitespace-nowrap ${tone}`}>
+          {unit(k.value, k.unit)}
+        </span>
+      </div>
+      {missing ? (
+        <p className="text-muted-foreground my-3 text-[13px]">Ikke tilgjengelig nå</p>
+      ) : (
+        <div className="bg-secondary relative my-3 h-1 rounded-full" aria-hidden>
+          <span
+            className={`block h-full rounded-full ${bar}`}
+            style={{ width: `${Math.min(100, ((k.value ?? 0) / scale) * 100)}%` }}
+          />
+          <i
+            className="bg-foreground absolute -top-1.5 -bottom-1.5 w-px"
+            style={{ left: `${Math.min(100, (k.target / scale) * 100)}%` }}
+          />
+        </div>
+      )}
+      <p className="text-muted-foreground text-[13px] leading-5">
+        {k.plain}. Mål {unit(k.target, k.unit, 0)}.
+      </p>
+    </div>
+  )
+}
+
 /* ── siden ────────────────────────────────────────────────────── */
-export function Brief() {
+export function Brief({ onCount }: { onCount?: (n: number) => void }) {
   const [d, setD] = useState<Data>({})
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -548,7 +630,13 @@ export function Brief() {
       api.dashboard().then((dash) => setD((s) => ({ ...s, dash }))),
       api.commitments().then((com) => setD((s) => ({ ...s, com }))),
       api.preflight().then((pre) => setD((s) => ({ ...s, pre }))),
-      api.cashflow().then((cash) => setD((s) => ({ ...s, cash }))),
+      api
+        .cashflow()
+        .then((cash) => setD((s) => ({ ...s, cash, cashError: undefined })))
+        .catch((e: unknown) => {
+          setD((s) => ({ ...s, cashError: e instanceof Error ? e.message : String(e) }))
+          throw e
+        }),
       api.rules().then((r) => setD((s) => ({ ...s, rules: r.rules }))),
     ]
     Promise.allSettled(jobs).then((res) => {
@@ -624,140 +712,178 @@ export function Brief() {
   const fresh = signals.filter((s) => !had.has(s.id)).length
   const prepared = preparedAt(d.sched)
   const attention = (d.sched?.jobs || []).filter((j) => j.attention)
+  const cleanup = (d.pre?.checks || []).filter((c) => c.status !== "ok")
+
+  // Den ene saken som trenger en beslutning: den øverste blant de åpne, med
+  // de samme knappene som på Saker.
+  const deck = useDeck(onCount)
+  const openCases = deck.deck?.open || []
+  const top = openCases[0]
 
   // «Grav i dette» åpner en ny samtale med spørsmålet allerede stilt.
   const { ask: askCfo } = useConversations()
   const ask = (q: string, title: string) => askCfo(q, title, true)
 
   return (
-    <div className="space-y-10">
-      <header className="pt-6">
-        <div className="text-muted-foreground mb-3 flex items-baseline gap-3 font-mono text-[11px] tracking-[0.16em] uppercase">
-          <span>
-            Brief · {dayNo(asOf)} {dateNo(asOf)}
-          </span>
-          {prepared && <span>Klargjort {prepared}</span>}
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-[11px] tracking-normal normal-case"
-            onClick={loadAll}
-            disabled={loading}
-          >
+    <div className="space-y-16 sm:space-y-20">
+      {/* ── 1. Dommen: fargen, én setning og det ene tallet som betyr noe ── */}
+      <header className="arv-rise max-w-[760px] pt-8">
+        <div className="label mb-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span>{weekLine(d.weekly, asOf)}</span>
+          {prepared && <span>· klargjort {prepared}</span>}
+          <Button variant="link" className="text-[13px]" onClick={loadAll} disabled={loading}>
             Oppdater
           </Button>
         </div>
-        {loading && !d.cash ? (
-          <Skeleton className="h-16 w-full max-w-2xl" />
+        {d.weekly && !failed && <Status light={d.weekly.light} className="mb-4" />}
+        {loading && !d.cash && d.weekly === undefined ? (
+          <div className="grid gap-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-2/3" />
+          </div>
         ) : failed ? (
-          <h1 className="text-xl font-semibold">
+          <h1 className="font-heading text-[clamp(30px,3.6vw,44px)] leading-[1.1] tracking-[-0.02em] text-pretty">
             Får ikke tak i regnskapet akkurat nå. Spørsmålsfeltet virker fortsatt.
           </h1>
         ) : (
-          <h1 className="font-heading text-[30px] leading-tight font-semibold tracking-tight text-pretty">
-            {headline(d, signals)}
+          <h1 className="font-heading text-[clamp(34px,4.6vw,60px)] leading-[1.05] tracking-[-0.03em] text-pretty">
+            {d.weekly ? stop(d.weekly.sentence) : headline(d, signals)}
           </h1>
         )}
-        {attention.length > 0 && (
-          <Card
-            className="mt-5 max-w-2xl gap-2 border-l-4 py-3"
-            style={{ borderLeftColor: "var(--chart-expected)" }}
-          >
-            <CardContent className="grid gap-2 px-4">
-              {attention.map((j) => (
-                <div key={j.name} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <p className="text-sm leading-relaxed">{j.attention}</p>
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-sm"
-                    onClick={() => runNow(j.name)}
-                    disabled={runningNow}
-                  >
-                    {runningNow ? "Kjører …" : "Kjør nå"}
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {d.weekly?.low_point.text && !failed && (
+          <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] mt-5 max-w-[640px] text-[18px] leading-[28px] text-pretty">
+            {d.weekly.low_point.text}
+          </p>
+        )}
+        {/* Uten brev er det ingen dom å vise, så det å få skrevet det står
+            øverst. Alt annet som ikke kjørte, står nederst. */}
+        {d.weekly === null && !failed && (
+          <div className="bg-tint mt-6 flex flex-wrap items-baseline justify-between gap-3 rounded-xl px-5 py-4">
+            <p className="text-[15px]">
+              Mandagsbrevet skrives første virkedag hver uke kl 07. Det er ikke skrevet ennå.
+            </p>
+            <Button variant="link" onClick={() => runNow("weekly_brief")} disabled={runningNow}>
+              {runningNow ? "Skriver …" : "Skriv det nå"}
+            </Button>
+          </div>
         )}
       </header>
 
-      {/* Mandagsbrevet først: er jeg ok, når er det tynnest, hva vil du ha av meg. */}
-      <section>
-        <WeeklyBriefCard
-          data={d.weekly}
-          loading={d.weekly === undefined}
-          writing={runningNow}
-          onWrite={() => runNow("weekly_brief")}
-          sending={sendingNow}
-          onSend={sendNow}
-        />
-      </section>
-
-      {/* Slik driften har sett ut de siste månedene. */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {metrics(d).map((c) => (
-          <MetricCard
-            key={c.label}
-            label={c.label}
-            value={c.value}
-            series={c.series}
-            note={c.note}
-            kind={c.kind}
-            partial={c.partial}
-            loading={loading && !d.ov}
-          />
-        ))}
-      </section>
-
-      {/* Under de fire kortene og over CFO-ens ord: de tretten ukene i full
-          bredde. Dette er svaret på «klarer jeg det», og det satt i en tredjedel
-          av en rad ved siden av prosa — 180 piksler kurve, annenhver ukenummer,
-          ingen tall å følge. Nå kurven over tabellen, og tabellen er den man
-          leser med fingeren. */}
-      <section>
-        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="text-[17px] font-semibold">De neste 13 ukene</h2>
-          {d.cash && (
-            <span className="text-muted-foreground font-mono text-xs">
-              {kr(d.cash.opening)} kr nå
-              {d.cash.bank?.adjustment == null
-                ? d.cash.bank && " (bokført, banken ikke lest)"
-                : Math.abs(d.cash.bank.adjustment) >= 1 &&
-                  ` i banken (bokført ${kr(d.cash.bank.booked)})`}
-              {" "}· tynnest{" "}
-              {d.cash.low_committed.label.toLowerCase()} fra{" "}
-              {dateNo(d.cash.low_committed.start)}
+      {/* ── 2. Trenger deg: den ene saken, med knappene ── */}
+      {top ? (
+        <section
+          aria-labelledby="trenger-deg"
+          className="bg-tint arv-rise rounded-xl px-6 py-7 sm:px-10 sm:py-9"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+            <span id="trenger-deg" className="label">
+              Trenger deg · 1 av {openCases.length}
             </span>
-          )}
-        </div>
-        <Card>
-          {/* grid-cols-[minmax(0,1fr)], ikke bare «grid»: en rute er som
-              standard minst like bred som innholdet, og tabellen med seks
-              kolonner presset kortet forbi skjermkanten på mobil — der ble
-              Bundet og Forventet liggende utenfor, uten noe å rulle i. Nå
-              krymper ruta, og tabellen ruller inni sin egen boks. */}
+            {openCases.length > 1 && (
+              <a href="#saker" className="text-good-text text-sm font-medium hover:underline">
+                Se alle {openCases.length} i Saker →
+              </a>
+            )}
+          </div>
+          <DecisionBody c={top} state={deck} facts={false} />
+        </section>
+      ) : deck.deck && d.weekly?.light === "green" ? (
+        <p className="font-heading arv-rise text-[28px] leading-tight tracking-[-0.015em]">
+          “Ingenting trenger deg denne uken.”
+        </p>
+      ) : null}
+
+      {/* ── 3. Hva endret seg siden forrige mandag ── */}
+      {!!d.weekly?.changed.length && (
+        <section className="arv-rise" style={{ "--i": 2 } as React.CSSProperties}>
+          <SectionHead title="Hva endret seg" aside="Siden forrige mandag" />
+          <div className="border-border grid border-t sm:grid-cols-3">
+            {d.weekly.changed.map((c, i) => {
+              const ch = change(c)
+              return (
+                <div
+                  key={c}
+                  className={`border-border border-b py-5 sm:border-b-0 ${
+                    i > 0 ? "sm:border-l sm:pl-6" : ""
+                  } sm:pr-6`}
+                >
+                  {ch ? (
+                    <>
+                      <p className="label">{ch.label}</p>
+                      <p className="mt-2 text-[28px] leading-none font-light tracking-[-0.02em]">
+                        {ch.now}
+                      </p>
+                      <p className="text-muted-foreground mt-2 text-[13px]">fra {ch.before}</p>
+                    </>
+                  ) : (
+                    <p className="text-[15px] leading-6">{c}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── 4. De tretten ukene: svaret på «klarer jeg det» ── */}
+      <section>
+        <SectionHead
+          title="Kontantene de neste 13 ukene"
+          aside={
+            d.cash && (
+              <>
+                {kr(d.cash.opening)} kr nå
+                {d.cash.bank?.adjustment == null
+                  ? d.cash.bank && " (bokført, banken ikke lest)"
+                  : Math.abs(d.cash.bank.adjustment) >= 1 &&
+                    ` i banken (bokført ${kr(d.cash.bank.booked)})`}
+                {" "}· tynnest {d.cash.low_committed.label.toLowerCase()} fra{" "}
+                {dateNo(d.cash.low_committed.start)}
+              </>
+            )
+          }
+        />
+        {/* grid-cols-[minmax(0,1fr)], ikke bare «grid»: en rute er som
+            standard minst like bred som innholdet, og tabellen med seks
+            kolonner presset kortet forbi skjermkanten på mobil. Nå krymper
+            ruta, og tabellen ruller inni sin egen boks. */}
+        <Card className="rounded-xl">
           <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-6">
             {d.cash ? (
               <>
                 <CashChart cash={d.cash} rules={d.rules} />
-                <CashTable cash={d.cash} />
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  Tynnest i{" "}
-                  <b className="text-foreground font-mono">
-                    {d.cash.low_committed.label.toLowerCase()}
-                  </b>
-                  : {kr(d.cash.low_committed.amount)} kr bundet
+                <p className="text-muted-foreground max-w-[72ch] text-[13px] leading-5">
+                  Tynnest i {d.cash.low_committed.label.toLowerCase()}:{" "}
+                  <span className="text-foreground font-medium">
+                    {kr(d.cash.low_committed.amount)} kr
+                  </span>{" "}
+                  bundet
                   {d.cash.goes_negative_committed
                     ? `, og den bundne linjen går i minus i ${d.cash.goes_negative_committed.label.toLowerCase()}.`
                     : d.cash.goes_negative
                       ? `, og den forventede linjen går i minus i ${d.cash.goes_negative.label.toLowerCase()}.`
                       : ". Ingen av linjene går i minus i perioden."}{" "}
-                  Bundet er bare det som alt er fakturert inn og ut, lønn og
-                  skattedatoer. Forventet legger vanlig drift på toppen, og er
-                  et anslag.
+                  Bundet er det som alt er fakturert inn og ut, lønn og skattedatoer.
+                  Forventet legger vanlig drift på toppen, og er et anslag.
                 </p>
+                <Collapsible>
+                  <CollapsibleTrigger className="group text-good-text flex items-center gap-1.5 text-sm font-medium">
+                    Vis uke for uke
+                    <ChevronDown className="size-4 stroke-[1.5] transition-transform duration-300 group-data-[panel-open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4">
+                    <CashTable cash={d.cash} />
+                  </CollapsibleContent>
+                </Collapsible>
               </>
+            ) : d.cashError ? (
+              <div className="grid min-h-[160px] place-content-center gap-2 text-center">
+                <p className="font-heading text-[22px]">Prognosen er ikke tilgjengelig akkurat nå.</p>
+                <p className="text-muted-foreground mx-auto max-w-[56ch] text-[13px] leading-5">
+                  {d.cashError}
+                </p>
+              </div>
             ) : (
               <Skeleton className="h-[280px] w-full" />
             )}
@@ -765,7 +891,36 @@ export function Brief() {
         </Card>
       </section>
 
-      {/* CFO-ens egne ord, i full bredde nå kurven har flyttet opp. */}
+      {/* ── 5. Nøkkeltall: de fire store tallene og målene, samlet ── */}
+      <section>
+        <SectionHead
+          title="Nøkkeltall"
+          aside={d.dash?.industry ? `Målt mot ${d.dash.industry.toLowerCase()}` : undefined}
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {metrics(d).map((c) => (
+            <MetricCard
+              key={c.label}
+              label={c.label}
+              value={c.value}
+              series={c.series}
+              note={c.note}
+              kind={c.kind}
+              partial={c.partial}
+              loading={loading && !d.ov}
+            />
+          ))}
+        </div>
+        {!!d.dash?.kpis?.length && (
+          <div className="mt-10 grid gap-x-12 sm:grid-cols-2">
+            {d.dash.kpis.map((k) => (
+              <KpiRow key={k.id} k={k} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── 6. Arvaka om driften: prosa i lesebredde ── */}
       <section>
         <SummaryCard
           data={d.sum}
@@ -781,107 +936,85 @@ export function Brief() {
         />
       </section>
 
+      {/* ── Verdt å følge med på: signalene, som rolige rader ── */}
       {signals.length > 0 && (
         <section>
-          <Separator className="mb-6" />
-          <div className="mb-4 flex items-baseline justify-between gap-4">
-            <h2 className="text-[17px] font-semibold">Krever handling</h2>
-            <span className="text-muted-foreground font-mono text-xs">
-              {fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
-            </span>
-          </div>
-          <SignalList
-            signals={signals}
-            seen={had}
-            onAsk={(s: Signal) => ask(s.ask, s.title)}
+          <SectionHead
+            title="Verdt å følge med på"
+            aside={fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
           />
+          <SignalList signals={signals} seen={had} onAsk={(s: Signal) => ask(s.ask, s.title)} />
         </section>
       )}
 
-      {d.dash?.kpis?.length ? (
-        <section>
-          <Separator className="mb-6" />
-          <div className="mb-5 flex items-baseline justify-between gap-4">
-            <h2 className="text-[17px] font-semibold">Nøkkeltall</h2>
-            <span className="text-muted-foreground font-mono text-xs">
-              {d.dash.industry ? `Målt mot ${d.dash.industry.toLowerCase()}` : ""}
-            </span>
-          </div>
-          <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {d.dash.kpis.map((k) => {
-              // Backend melder «unknown» når tallet ikke lar seg regne ut nå.
-              // Da er en tom søyle verre enn ingen søyle.
-              const missing = k.value == null || k.status === "unknown"
-              const scale = Math.max(k.value ?? 0, k.target, k.alert) * 1.15 || 1
-              const tone = missing
-                ? "text-muted-foreground"
-                : k.status === "bad"
-                  ? "text-destructive"
-                  : k.status === "good"
-                    ? "text-emerald-700 dark:text-emerald-500"
-                    : "text-amber-600 dark:text-amber-500"
-              // Grønt bare når backend sier «good». Alt annet er gult, så en
-              // status frontenden ikke kjenner aldri males som friskt.
-              const bar =
-                k.status === "bad"
-                  ? "bg-destructive"
-                  : k.status === "good"
-                    ? "bg-emerald-600"
-                    : "bg-amber-500"
-              return (
-                <div key={k.id}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 text-sm font-medium">{k.label}</span>
-                    <span
-                      className={`shrink-0 font-mono text-base font-semibold whitespace-nowrap tabular-nums ${tone}`}
-                    >
-                      {unit(k.value, k.unit)}
-                    </span>
-                  </div>
-                  {missing ? (
-                    <p className="text-muted-foreground my-2 text-xs italic">
-                      Ikke tilgjengelig nå
-                    </p>
-                  ) : (
-                    <div className="bg-muted relative my-2 h-1.5 rounded-full">
-                      <span
-                        className={`block h-full rounded-full ${bar}`}
-                        style={{ width: `${Math.min(100, ((k.value ?? 0) / scale) * 100)}%` }}
-                      />
-                      <i
-                        className="bg-foreground absolute -top-1 -bottom-1 w-0.5"
-                        style={{ left: `${Math.min(100, (k.target / scale) * 100)}%` }}
-                      />
-                    </div>
-                  )}
-                  <p className="text-muted-foreground text-xs leading-relaxed">
-                    {k.plain}. Mål {unit(k.target, k.unit, 0)}.
+      {/* ── Bunnlinja: hvor ferske tallene er, og det som ikke kjørte ── */}
+      <footer className="border-border text-muted-foreground grid gap-3 border-t pt-6 text-[13px] leading-5">
+        {d.weekly && (
+          <>
+            <p>
+              {d.weekly.books.text}
+              {d.weekly.books.lines.length > 0 && " " + d.weekly.books.lines.join(" ")}
+            </p>
+            <p>{d.weekly.accuracy.text}</p>
+            {d.weekly.written_by === "engine" && (
+              <p>Skrevet ut fra tallene alene denne gangen — Arvaka fikk ikke skrevet sine egne ord.</p>
+            )}
+            {d.weekly.current && (
+              <p className="flex flex-wrap items-baseline gap-x-3">
+                <span>{d.weekly.sent ? sentLine(d.weekly.sent) : "Ikke sendt på e-post ennå."}</span>
+                <Button variant="link" className="text-[13px]" onClick={sendNow} disabled={sendingNow}>
+                  {sendingNow ? "Sender …" : d.weekly.sent ? "Send igjen" : "Send på e-post nå"}
+                </Button>
+              </p>
+            )}
+            {!d.weekly.current && <p>Brevet er fra {dateNo(d.weekly.made_on)}.</p>}
+          </>
+        )}
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {!!cleanup.length && (
+            <Collapsible>
+              <CollapsibleTrigger className="group hover:text-foreground flex items-center gap-2">
+                <Dot tone="warn" />
+                {cleanup.length} ting å rydde i regnskapet
+                <ChevronDown className="size-3.5 stroke-[1.5] transition-transform duration-300 group-data-[panel-open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 grid max-w-[72ch] gap-2">
+                {cleanup.map((c) => (
+                  <p key={c.id}>
+                    <span className="text-foreground font-medium">{c.label}</span> {c.headline}
                   </p>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {d.pre?.checks?.some((c) => c.status !== "ok") && (
-        <Collapsible className="pt-2">
-          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm">
-            <span className="bg-amber-500 size-1.5 rounded-full" />
-            {d.pre.checks.filter((c) => c.status !== "ok").length} ting å rydde i regnskapet ▾
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-3 grid gap-2">
-            {d.pre.checks
-              .filter((c) => c.status !== "ok")
-              .map((c) => (
-                <div key={c.id} className="border-border border-l-2 pl-3 text-sm">
-                  <b className="font-medium">{c.label}</b>{" "}
-                  <span className="text-muted-foreground">{c.headline}</span>
-                </div>
-              ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+          {!!attention.length && (
+            <Collapsible>
+              <CollapsibleTrigger className="group hover:text-foreground flex items-center gap-2">
+                <Dot tone="quiet" />
+                {attention.length === 1
+                  ? "1 kjøring gikk ikke som planlagt"
+                  : `${attention.length} kjøringer gikk ikke som planlagt`}
+                <ChevronDown className="size-3.5 stroke-[1.5] transition-transform duration-300 group-data-[panel-open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 grid max-w-[72ch] gap-2">
+                {attention.map((j) => (
+                  <p key={j.name} className="flex flex-wrap items-baseline gap-x-3">
+                    <span>{j.attention}</span>
+                    <Button
+                      variant="link"
+                      className="text-[13px]"
+                      onClick={() => runNow(j.name)}
+                      disabled={runningNow}
+                    >
+                      {runningNow ? "Kjører …" : "Kjør nå"}
+                    </Button>
+                  </p>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </div>
+      </footer>
     </div>
   )
 }

@@ -1,11 +1,12 @@
 import {
-  BarChart3,
   Building2,
-  HeartPulse,
-  ListFilter,
+  CalendarClock,
+  FileText,
+  ListChecks,
   LogOut,
   MessageSquare,
   Plus,
+  X,
 } from "lucide-react"
 
 import {
@@ -22,6 +23,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { Monogram, Wordmark } from "@/components/brand"
 import { authEnabled, signOut } from "@/lib/auth"
 import type { Conversation } from "@/lib/conversations"
 import { bucket } from "@/lib/conversations"
@@ -38,9 +40,9 @@ type Props = {
 /* Sammenslått står dette igjen som ikoner — shadcn sin Sidebar gjør selve
    sammenslåingen, og husker tilstanden på tvers av lasting. */
 const NAV = [
-  { href: "#", key: "home", label: "Brief", icon: BarChart3 },
-  { href: "#saker", key: "saker", label: "Saker", icon: ListFilter },
-  { href: "#helsesjekk", key: "helsesjekk", label: "Helsesjekk", icon: HeartPulse },
+  { href: "#", key: "home", label: "Brief", icon: CalendarClock },
+  { href: "#saker", key: "saker", label: "Saker", icon: ListChecks },
+  { href: "#helsesjekk", key: "helsesjekk", label: "Helsesjekk", icon: FileText },
   { href: "#selskapet", key: "selskapet", label: "Selskapet", icon: Building2 },
 ]
 
@@ -62,18 +64,23 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" variant="floating">
-      <SidebarHeader>
-        <div className="flex items-center gap-2 overflow-hidden">
-          <span className="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold tracking-wide">
-            CFO
-          </span>
-          <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
-            {company}
-          </span>
-          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="gap-5 px-4 pt-5 pb-2 group-data-[collapsible=icon]:px-2">
+        <div className="flex items-center justify-between gap-2">
+          <a href="#" aria-label="Arvaka, til forsiden" className="group-data-[collapsible=icon]:hidden">
+            <Wordmark className="text-[26px]" />
+          </a>
+          <a href="#" aria-label="Arvaka, til forsiden" className="hidden group-data-[collapsible=icon]:block">
+            <Monogram className="size-8 text-[22px]" />
+          </a>
+          <SidebarTrigger className="text-muted-foreground group-data-[collapsible=icon]:hidden" />
         </div>
-        <SidebarTrigger className="hidden group-data-[collapsible=icon]:flex" />
+        {company && (
+          <p className="label truncate group-data-[collapsible=icon]:hidden" title={company}>
+            {company}
+          </p>
+        )}
+        <SidebarTrigger className="text-muted-foreground hidden group-data-[collapsible=icon]:flex" />
       </SidebarHeader>
 
       <SidebarContent>
@@ -85,7 +92,8 @@ export function AppSidebar({
                   render={<a href="#ny" />}
                   tooltip="Ny samtale"
                   isActive={route === "#ny"}
-                  className="border"
+                  variant="outline"
+                  className="mb-2"
                 >
                   <Plus />
                   <span>Ny samtale</span>
@@ -103,7 +111,7 @@ export function AppSidebar({
                     <span>{n.label}</span>
                   </SidebarMenuButton>
                   {n.key === "saker" && sakerCount > 0 && (
-                    <SidebarMenuBadge className="bg-destructive text-white">
+                    <SidebarMenuBadge className="bg-secondary text-foreground">
                       {sakerCount}
                     </SidebarMenuBadge>
                   )}
@@ -147,9 +155,9 @@ export function AppSidebar({
                         e.preventDefault()
                         onDelete(c.id)
                       }}
-                      className="text-muted-foreground hover:text-destructive absolute top-1 right-1 hidden size-6 items-center justify-center rounded-sm group-hover/conv:flex"
+                      className="text-muted-foreground hover:text-foreground hover:bg-secondary absolute top-1.5 right-1.5 hidden size-6 items-center justify-center rounded-full group-hover/conv:flex group-focus-within/conv:flex"
                     >
-                      ×
+                      <X className="size-3.5 stroke-[1.5]" />
                     </button>
                   </SidebarMenuItem>
                 ))}
@@ -159,23 +167,23 @@ export function AppSidebar({
         ))}
 
         {!conversations.length && (
-          <p className="text-muted-foreground px-4 text-xs leading-relaxed group-data-[collapsible=icon]:hidden">
+          <p className="text-muted-foreground px-4 text-[13px] leading-5 group-data-[collapsible=icon]:hidden">
             Ingen samtaler ennå. Det du spør om, blir liggende her.
           </p>
         )}
       </SidebarContent>
 
-      <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-        <p className="text-muted-foreground px-2 text-[11px]">
+      <SidebarFooter className="border-sidebar-border mx-2 mb-2 border-t px-2 pt-4 group-data-[collapsible=icon]:hidden">
+        <p className="text-muted-foreground text-xs leading-5">
           Leser regnskapet deres. Endrer ingenting.
         </p>
         {authEnabled() && (
           <button
             type="button"
             onClick={() => signOut(undefined, true)}
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-2 text-[11px]"
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs"
           >
-            <LogOut className="size-3" /> Logg ut
+            <LogOut className="size-3.5 stroke-[1.5]" /> Logg ut
           </button>
         )}
       </SidebarFooter>
