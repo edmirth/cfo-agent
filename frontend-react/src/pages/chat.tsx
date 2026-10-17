@@ -3,6 +3,7 @@ import { Check, ChevronDown, Loader2, SendHorizontal } from "lucide-react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
+import { Wordmark } from "@/components/brand"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -34,11 +35,11 @@ function status(m: Message) {
 function StepRow({ step, live }: { step: Step; live: boolean }) {
   if (step.kind === "tool") {
     return (
-      <div className="text-muted-foreground flex items-center gap-2 font-mono text-xs">
+      <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
         {live ? (
-          <Loader2 className="text-primary size-3 animate-spin" />
+          <Loader2 className="text-good-text size-3.5 animate-spin stroke-[1.5]" />
         ) : (
-          <Check className="size-3 text-emerald-600" />
+          <Check className="text-good-text size-3.5 stroke-[1.5]" />
         )}
         {step.label}
         {step.n > 1 && <span className="opacity-70">×{step.n}</span>}
@@ -48,7 +49,7 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
   return (
     <p
       className={
-        "max-w-[64ch] text-[13.4px] leading-relaxed italic " +
+        "max-w-[64ch] text-[14px] leading-6 " +
         (step.kind === "think" ? "text-muted-foreground" : "text-foreground/80") +
         (live ? " cfo-sheen" : "")
       }
@@ -64,20 +65,24 @@ function Work({ m }: { m: Message }) {
   if (!steps.length && m.done) return null
   const live = !m.done
   return (
-    <Collapsible open={live || open} onOpenChange={setOpen} className="border-border mb-4 border-l-2 pl-3.5">
+    <Collapsible open={live || open} onOpenChange={setOpen} className="border-border mb-5 border-l pl-4">
       <CollapsibleTrigger
         disabled={live}
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 py-0.5 font-mono text-xs disabled:cursor-default"
+        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 py-0.5 text-[13px] disabled:cursor-default"
       >
         {live ? (
-          <Loader2 className="text-primary size-3 animate-spin" />
+          <Loader2 className="text-good-text size-3.5 animate-spin stroke-[1.5]" />
         ) : (
-          <Check className="size-3 text-emerald-600" />
+          <Check className="text-good-text size-3.5 stroke-[1.5]" />
         )}
         <span className={"flex-1 truncate text-left" + (live ? " cfo-pulse" : "")}>
           {m.done ? summary(m) : status(m)}
         </span>
-        {!live && <ChevronDown className={"size-3 transition " + (open ? "rotate-180" : "")} />}
+        {!live && (
+          <ChevronDown
+            className={"size-3.5 stroke-[1.5] transition-transform duration-300 " + (open ? "rotate-180" : "")}
+          />
+        )}
       </CollapsibleTrigger>
       <CollapsibleContent className="grid gap-2 py-2">
         {steps.map((s, i) => (
@@ -92,27 +97,27 @@ function Work({ m }: { m: Message }) {
 function Bubble({ m }: { m: Message }) {
   if (m.role === "user") {
     return (
-      <div className="mb-6 flex justify-end">
-        <div className="bg-primary text-primary-foreground max-w-[76%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm">
+      <div className="arv-rise mb-8 flex justify-end">
+        <div className="bg-secondary text-foreground max-w-[76%] rounded-xl px-4 py-3 text-[15px] leading-6">
           {m.text}
         </div>
       </div>
     )
   }
   return (
-    <div className="mb-7">
-      <div className="text-muted-foreground mb-2.5 font-mono text-[9.5px] font-semibold tracking-[0.15em] uppercase">
-        CFO
+    <div className="mb-10">
+      <div className="mb-3">
+        <Wordmark className="text-[17px]" />
       </div>
       <Work m={m} />
       {m.text && (
-        <div className="cfo-md text-[14.8px]">
+        <div className="cfo-md text-[15.5px] leading-[26px]">
           <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
           {!m.done && <span className="cfo-caret" />}
         </div>
       )}
       {m.error && (
-        <div className="border-destructive text-destructive mt-2 rounded border border-l-[3px] px-4 py-3 text-sm">
+        <div className="text-bad-text mt-2 rounded-md bg-[color-mix(in_oklab,var(--negative)_10%,transparent)] px-4 py-3 text-sm">
           {m.error}
         </div>
       )}
@@ -151,19 +156,20 @@ export function Chat({ conv }: { conv: Conversation | null }) {
     <div className="flex min-h-[calc(100vh-2rem)] flex-col">
       <div className="flex-1 pt-6">
         {!conv || !conv.messages.length ? (
-          <div className="pt-[12vh]">
-            <h2 className="font-heading text-2xl font-semibold">Hva lurer du på?</h2>
-            <p className="text-muted-foreground mt-2 max-w-[54ch] text-sm">
+          <div className="arv-rise pt-[14vh]">
+            <h2 className="font-heading text-[clamp(34px,4vw,48px)] leading-[1.07] tracking-[-0.025em]">
+              Hva lurer du på?
+            </h2>
+            <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] mt-4 max-w-[54ch] text-[17px] leading-[27px]">
               Spør om tallene, en kunde, en kostnad eller en plan. Svaret bygger på
               regnskapet deres slik det står i Tripletex nå.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-8 flex flex-wrap gap-2">
               {presets.map((p) => (
                 <Button
                   key={p.id}
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
                   onClick={() => ask(p.id, p.label, !conv)}
                 >
                   {p.label}
@@ -178,18 +184,23 @@ export function Chat({ conv }: { conv: Conversation | null }) {
       </div>
 
       <div className="bg-background sticky bottom-0 pt-3 pb-4">
-        <form onSubmit={send} className="flex items-center gap-2">
+        <form
+          onSubmit={send}
+          className="bg-card border-border focus-within:border-ring flex items-center gap-2 rounded-xl border p-1.5 pl-4 transition-colors duration-150"
+        >
           <Input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={conv ? "Spør videre …" : "Spør om hva som helst …"}
             autoComplete="off"
+            aria-label="Spørsmålet ditt"
+            className="h-10 border-0 bg-transparent px-0 text-[15px] focus-visible:ring-0"
           />
           <Button type="submit" size="icon" disabled={working} aria-label="Send">
             <SendHorizontal />
           </Button>
         </form>
-        <p className="text-muted-foreground mt-2 text-center text-[11px]">
+        <p className="text-muted-foreground mt-2.5 text-center text-xs">
           Leser regnskapet deres. Endrer ingenting.
         </p>
       </div>

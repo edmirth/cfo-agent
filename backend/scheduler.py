@@ -220,7 +220,7 @@ async def _brief() -> dict:
            "decisions": b["decisions"]["count"], "written_by": b["written_by"]}
     if b["written_by"] != "model":
         return {**out, "partial": True,
-                "cause": "Brevet ble skrevet ut fra tallene alene, uten CFO-ens "
+                "cause": "Brevet ble skrevet ut fra tallene alene, uten Arvakas "
                          "egne ord. Grunnen står i serverloggen."}
     if b.get("forecast_partial"):
         return {**out, "partial": True,

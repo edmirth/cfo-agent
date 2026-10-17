@@ -44,7 +44,7 @@ def subject(b: dict) -> str:
 
 
 def text(b: dict) -> str:
-    return (f"{b['body']}\n\n—\nMandagsbrevet fra CFO-en, skrevet "
+    return (f"{b['body']}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
             f"{brief._day(b['made_on'])}. Tallene er hentet fra Tripletex.")
 
 
@@ -125,7 +125,7 @@ Mandagsbrevet · uke {_e(week)}</div>
 </div></td></tr>
 </table></td></tr></table>
 <p style="margin:12px 0 0;font:12px/1.5 {FONT};color:{MUTED}">
-Skrevet av CFO-en {_e(brief._day(b['made_on']))}, fra tallene i Tripletex.</p>
+Skrevet av Arvaka {_e(brief._day(b['made_on']))}, fra tallene i Tripletex.</p>
 </td></tr></table></body></html>"""
 
 

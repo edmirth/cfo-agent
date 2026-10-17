@@ -4,12 +4,13 @@
 import { useEffect, useState } from "react"
 import { Copy, Printer } from "lucide-react"
 
+import { PageHeader, Wordmark } from "@/components/brand"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { get } from "@/lib/api"
 import { authFetch } from "@/lib/auth"
-import { dateNo } from "@/lib/format"
+import { dateNo, datesNo } from "@/lib/format"
 
 type Health = {
   made_on: string
@@ -66,29 +67,35 @@ export function Helsesjekk() {
   }
 
   return (
-    <div className="space-y-8 pt-6 print:pt-0">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-muted-foreground mb-3 font-mono text-[11px] tracking-[0.16em] uppercase">
-            Helsesjekk{data ? ` · ${dateNo(data.made_on)}` : ""}
-          </p>
-          <h1 className="font-heading text-[30px] leading-tight font-semibold tracking-tight">
-            Hvor selskapet står
-          </h1>
-        </div>
-        <div className="flex gap-2 print:hidden">
-          {data && (
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer /> Skriv ut / lagre som PDF
-            </Button>
-          )}
-          <Button size="sm" onClick={make} disabled={making}>
-            {making ? "Lager … (et minutt eller to)" : data ? "Lag ny" : "Lag helsesjekken"}
-          </Button>
-        </div>
-      </header>
+    <div className="space-y-12 print:space-y-8">
+      <div className="print:hidden">
+        <PageHeader
+          eyebrow={`Helsesjekk${data ? ` · ${dateNo(data.made_on)}` : ""}`}
+          title="Hvor selskapet står."
+          aside={
+            <>
+              {data && (
+                <Button variant="outline" onClick={() => window.print()}>
+                  <Printer /> Lagre som PDF
+                </Button>
+              )}
+              <Button variant={data ? "secondary" : "default"} onClick={make} disabled={making}>
+                {making ? "Lager … (et minutt eller to)" : data ? "Lag ny" : "Lag helsesjekken"}
+              </Button>
+            </>
+          }
+        />
+      </div>
+      {/* Papiret: ordmerket og datoen øverst, slik månedsrapporten i
+          porteføljen står. Vises bare på utskrift. */}
+      <div className="border-border hidden items-baseline justify-between border-b pb-4 print:flex">
+        <Wordmark className="text-[22px]" />
+        <span className="text-muted-foreground text-xs">
+          Helsesjekk{data ? ` · ${dateNo(data.made_on)}` : ""}
+        </span>
+      </div>
 
-      {failed && <p className="text-destructive text-sm print:hidden">{failed}</p>}
+      {failed && <p className="text-bad-text text-sm print:hidden">{failed}</p>}
 
       {data === undefined || making ? (
         <div className="grid max-w-3xl gap-3">
@@ -98,26 +105,34 @@ export function Helsesjekk() {
           <Skeleton className="h-4 w-[95%]" />
         </div>
       ) : !data ? (
-        <p className="text-muted-foreground max-w-[60ch] text-sm">
+        <p className="text-muted-foreground max-w-[60ch] text-[15px]">
           Ingen helsesjekk er laget ennå. Den lages også av seg selv på den 6. virkedagen i
           hver måned.
         </p>
       ) : (
-        <article className="max-w-3xl space-y-7">
-          <p className="text-[17px] leading-relaxed font-medium text-pretty">{data.summary}</p>
+        <article className="max-w-[680px] space-y-10">
+          <p className="font-heading text-[28px] leading-[1.2] tracking-[-0.015em] text-pretty print:text-[22px]">
+            {data.summary}
+          </p>
 
           {data.sections.map((s) => (
             <section key={s.key} className="break-inside-avoid">
-              <h2 className="mb-2 text-[17px] font-semibold">{s.title}</h2>
-              <p className="text-[15px] leading-relaxed text-pretty">{s.text}</p>
+              <h2 className="font-heading mb-3 text-[24px] leading-tight tracking-[-0.01em] print:text-[18px]">
+                {s.title}
+              </h2>
+              <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] text-[17px] leading-[28px] text-pretty print:text-[11pt] print:leading-[1.5]">
+                {datesNo(s.text)}
+              </p>
             </section>
           ))}
 
           <Separator />
 
           <section className="break-before-page">
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-[17px] font-semibold">Til regnskapsføreren</h2>
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+              <h2 className="font-heading text-[24px] leading-tight tracking-[-0.01em]">
+                Til regnskapsføreren
+              </h2>
               {data.cleanup_text && (
                 <Button variant="outline" size="sm" onClick={copy} className="print:hidden">
                   <Copy /> {copied ? "Kopiert" : "Kopier teksten"}
@@ -126,22 +141,25 @@ export function Helsesjekk() {
             </div>
             {data.cleanup.length ? (
               <>
-                <p className="text-muted-foreground mb-3 text-sm">{data.cleanup_intro}</p>
-                <ol className="list-decimal space-y-2 pl-5 text-[15px] leading-relaxed">
-                  {data.cleanup.map((c) => (
-                    <li key={c.id}>{c.text}</li>
+                <p className="text-muted-foreground mb-5 text-[15px]">{data.cleanup_intro}</p>
+                <ol className="divide-border border-border divide-y border-y">
+                  {data.cleanup.map((c, i) => (
+                    <li key={c.id} className="flex gap-4 py-3.5 text-[15px] leading-6">
+                      <span className="text-muted-foreground w-5 shrink-0 text-right">{i + 1}</span>
+                      <span className="text-pretty">{datesNo(c.text)}</span>
+                    </li>
                   ))}
                 </ol>
               </>
             ) : (
-              <p className="text-sm">Ingenting å rydde: kontrollene fant ikke noe.</p>
+              <p className="text-[15px]">Ingenting å rydde: kontrollene fant ikke noe.</p>
             )}
           </section>
 
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-[13px]">
             Laget {dateNo(data.made_on)} fra tallene i Tripletex
             {data.written_by === "engine" &&
-              " — skrevet ut fra tallene alene denne gangen, uten CFO-ens egne ord"}
+              " — skrevet ut fra tallene alene denne gangen, uten Arvakas egne ord"}
             .
           </p>
         </article>
