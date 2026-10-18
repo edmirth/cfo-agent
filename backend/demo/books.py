@@ -106,6 +106,10 @@ class Spec:
     budget_revenue: float = 1.0   # budget against actual revenue
     budget_payroll: float = 0.0   # budget payroll share; 0 = actual
     company_md: str = ""
+    # The industry profile (state/profile.json): which figures matter and
+    # what good looks like. In the real product the model decides it once
+    # from the books; a demo brings it decided, the way the model would.
+    profile: dict = field(default_factory=dict)
     # Scripted turns of the story, applied after the ordinary months.
     events: tuple = ()
 
