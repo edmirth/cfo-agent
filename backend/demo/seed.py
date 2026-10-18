@@ -13,7 +13,7 @@ import asyncio
 import logging
 import shutil
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -42,6 +42,18 @@ async def run() -> int:
 
     import scheduler  # noqa: E402 — after the state folder exists
     failed = []
+    # A week of history: the figures as they stood seven days ago, from the
+    # same books. Without it a fresh demo has nothing to compare against, and
+    # the brief's «Hva endret seg» stays empty.
+    try:
+        import memory
+        import overview
+        week_ago = date.today() - timedelta(days=7)
+        then = await overview.build(week_ago)
+        memory.snapshot(then["kpis"], on=week_ago.isoformat())
+    except Exception as e:  # noqa: BLE001 — the brief still works without it
+        log.exception("Fikk ikke lagret forrige ukes tall")
+        failed.append(f"forrige uke ({e})")
     for name in ("morning", "weekly_brief", "health_check"):
         log.info("%s: %s …", spec.name, name)
         try:

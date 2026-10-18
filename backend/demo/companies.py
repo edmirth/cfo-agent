@@ -163,7 +163,7 @@ KVARNHEIM = Spec(
         Supplier("Tallmester Regnskap AS", 6705, monthly=24_000, terms=14, day=10),
         Supplier("Arbeidsklær Nord AS", 6570, monthly=11_000, terms=30, day=12),
     ),
-    payroll=0.31, headcount=18, fte=17.4, payday=10, invoice_day=15,
+    payroll=0.31, headcount=18, fte=17.4, payday=10, invoice_day=10,
     opening_bank=2_600_000, opening_assets=3_200_000,
     loan=2_400_000, loan_monthly=40_000,
     inbox=5, budget_revenue=1.0, budget_payroll=0.33, dividend=1_450_000,
@@ -184,7 +184,7 @@ og rør settes ut til underentreprenører.
 
 ## Fakturering
 
-Store prosjekter faktureres a-konto den 15. hver måned etter fremdrift, med 30
+Store prosjekter faktureres a-konto den 10. hver måned etter fremdrift, med 30
 dagers frist. Ospelia trinn 2 for Ospelia Utvikling er det klart største
 prosjektet i år, rundt 40 % av omsetningen.
 
