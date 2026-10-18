@@ -73,6 +73,22 @@ LINDESKAR = Spec(
     opening_bank=2_350_000, opening_assets=900_000,
     inbox=3, budget_revenue=1.03, budget_payroll=0.75, dividend=300_000,
     events=(_lindeskar_late_customer, _lindeskar_machines),
+    profile={
+        "bransje": "Renhold (bygg- og eiendomsrenhold)",
+        "beskrivelse": "Renhold av kontorbygg, skoler, sameier og helsehus med egne ansatte, fakturert etterskuddsvis hver måned.",
+        "begrunnelse": "Fakturaene gjelder løpende renhold, kundene er eiendomsselskaper, kommunen og sameier, og nesten alle kostnadene er lønn (rundt 79 %) med lite varer. Det er en ren tjenesteleverandør med mange ansatte.",
+        "sikkerhet": "høy",
+        "hovedtall": "lonnsandel",
+        "nokkeltall": [
+            {"id": "lonnsandel", "hvorfor": "Dere selger arbeidstimer, så andelen av fakturaen som går til lønn avgjør nesten alene om dere tjener penger.", "mal": 75, "varsel": 80},
+            {"id": "driftsmargin", "hvorfor": "I renhold er marginen tynn, så det som blir igjen etter alle kostnader må følges måned for måned.", "mal": 6, "varsel": 3},
+            {"id": "omsetning_per_ansatt", "hvorfor": "Viser om hver renholder har nok oppdrag og riktig timepris.", "mal": 750000, "varsel": 600000},
+            {"id": "topp_tre", "hvorfor": "Mister dere én av de største kundene, forsvinner en stor del av inntekten over natta.", "mal": 40, "varsel": 55},
+            {"id": "betalingstid", "hvorfor": "Lønnen går ut hver måned uansett, så sene kunder blir fort trangt.", "mal": 30, "varsel": 45},
+            {"id": "vekst", "hvorfor": "Om dere vinner flere kontrakter enn dere mister.", "mal": 5, "varsel": 0},
+            {"id": "likviditetsgrad", "hvorfor": "Om dere har nok omløpsmidler til å dekke det som forfaller.", "mal": 1.5, "varsel": 1.0}
+        ]
+    },
     company_md="""---
 lonn_utbetalingsdag: 20
 ferie_utbetalingsmnd: 6
@@ -168,6 +184,22 @@ KVARNHEIM = Spec(
     loan=2_400_000, loan_monthly=40_000,
     inbox=5, budget_revenue=1.0, budget_payroll=0.33, dividend=1_450_000,
     events=(_kvarnheim_developer_late, _kvarnheim_subcontractors),
+    profile={
+        "bransje": "Bygg og anlegg (totalentreprise bolig og næring)",
+        "beskrivelse": "Totalentreprenør med egne fagarbeidere og underentreprenører på elektro og rør, fakturert a-konto etter fremdrift.",
+        "begrunnelse": "Store a-kontofakturaer til utbyggere og borettslag, tunge innkjøp av byggevarer og underentreprise, og én utbygger som står for rundt 40 % av omsetningen. Pengene bindes i prosjektene mellom innkjøp og betaling.",
+        "sikkerhet": "høy",
+        "hovedtall": "driftsmargin",
+        "nokkeltall": [
+            {"id": "driftsmargin", "hvorfor": "I bygg er marginen liten og risikoen stor; ett prosjekt som sprekker, spiser årets overskudd.", "mal": 6, "varsel": 3},
+            {"id": "storste_kunde", "hvorfor": "Når én utbygger er nesten halve omsetningen, er det dens betaling hele kontantstrømmen venter på.", "mal": 30, "varsel": 45},
+            {"id": "kontantdager", "hvorfor": "Underentreprenører og lønn må betales før utbyggeren betaler, så buffer i dager er det som avgjør.", "mal": 30, "varsel": 15},
+            {"id": "betalingstid", "hvorfor": "A-konto skal inn på 30 dager; drar det ut, finansierer dere prosjektet selv.", "mal": 30, "varsel": 45},
+            {"id": "lonnsandel", "hvorfor": "Egne fagarbeidere er en fast kostnad, også i måneder med lite fakturering.", "mal": 33, "varsel": 40},
+            {"id": "vekst", "hvorfor": "Om ordrebøkene vokser.", "mal": 5, "varsel": 0},
+            {"id": "likviditetsgrad", "hvorfor": "Om omløpsmidlene dekker det som forfaller.", "mal": 1.5, "varsel": 1.0}
+        ]
+    },
     company_md="""---
 lonn_utbetalingsdag: 10
 lonn_etterskuddsvis_mnd: 1
@@ -232,6 +264,22 @@ ASLEFJORD = Spec(
     payroll=0.115, headcount=9, fte=8.6, payday=25, invoice_day=0,
     opening_bank=4_200_000, opening_assets=1_400_000, opening_stock=3_900_000,
     inbox=0, budget_revenue=0.99, budget_payroll=0.12, dividend=500_000,
+    profile={
+        "bransje": "Varehandel (grossist byggevarer)",
+        "beskrivelse": "Grossist og proffbutikk for trelast, plater, isolasjon og festemidler til håndverkere.",
+        "begrunnelse": "Om lag 70 % av omsetningen går til varekjøp, lageret er stort, og kundene er mange håndverkere på konto pluss kontantsalg. Det er marginen på varene som avgjør, ikke lønnen.",
+        "sikkerhet": "høy",
+        "hovedtall": "bruttomargin",
+        "nokkeltall": [
+            {"id": "bruttomargin", "hvorfor": "Hva som blir igjen av hver krone etter varekjøpet; det er hele forretningen for en grossist.", "mal": 25, "varsel": 21},
+            {"id": "varekostandel", "hvorfor": "Stiger innkjøpsprisene uten at utsalgsprisene følger, er det her det synes først.", "mal": 75, "varsel": 79},
+            {"id": "driftsmargin", "hvorfor": "Det som blir igjen etter lokaler, lager og lønn.", "mal": 4, "varsel": 2},
+            {"id": "omsetning_per_ansatt", "hvorfor": "En grossist skal selge mye per ansatt.", "mal": 2500000, "varsel": 2000000},
+            {"id": "betalingstid", "hvorfor": "Håndverkerne handler på konto; varene er betalt til leverandøren før de betaler dere.", "mal": 30, "varsel": 40},
+            {"id": "vekst", "hvorfor": "Om dere tar andeler i et marked som følger byggeaktiviteten.", "mal": 5, "varsel": 0},
+            {"id": "egenkapitalandel", "hvorfor": "Lageret skal være finansiert av egne penger, ikke av leverandørene.", "mal": 35, "varsel": 20}
+        ]
+    },
     company_md="""---
 lonn_utbetalingsdag: 25
 ferie_utbetalingsmnd: 6

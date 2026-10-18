@@ -39,6 +39,13 @@ async def run() -> int:
     spec = SPECS[config.DEMO]
     wipe()
     (config.STATE / "company.md").write_text(spec.company_md, encoding="utf-8")
+    if spec.profile:
+        import json
+        import industry
+        profile = {**spec.profile, "bestemt": date.today().isoformat(),
+                   "vurderte": [k.id for k in industry.CATALOGUE], "bevis": {}}
+        (config.STATE / "profile.json").write_text(
+            json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
 
     import scheduler  # noqa: E402 — after the state folder exists
     failed = []
