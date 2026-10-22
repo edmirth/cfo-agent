@@ -60,6 +60,13 @@ PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
 # year has fewer, and the gap is made up from the end of last year.
 MIN_CLOSED_MONTHS = 3
 
+# What makes a supplier's bill a fixed one, for the committed line: billed in
+# FIXED_MIN of the last FIXED_LOOKBACK closed months (or FIXED_MIN quarters in
+# a row), every amount within FIXED_TOLERANCE of the median. See _fixed_bills.
+FIXED_LOOKBACK = 4
+FIXED_MIN = 3
+FIXED_TOLERANCE = 0.15
+
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
 # **Half tax in December.** The tax tables take half the usual trekk from the
@@ -178,7 +185,8 @@ def _kr(v) -> str:
 async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                          outstanding_key: str, name_key: str,
                          issued: dict | None = None,
-                         in_kroner: bool = False) -> tuple[list, list, bool]:
+                         in_kroner: bool = False,
+                         history: list | None = None) -> tuple[list, list, bool]:
     """Open invoices with their due dates, the warnings, and whether every
     window answered — an empty list from failed calls is not an empty book.
 
@@ -202,6 +210,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     `in_kroner` says the outstanding amount is already in kroner whatever
     the invoice's currency, as the customer register's `amountOutstanding`
     is. The supplier register's `outstandingAmount` is in the invoice's own.
+
+    `history`, when given, gets every row, paid ones too: the fixed bills are
+    read off how a supplier has billed, and most of those bills are paid.
     """
     calls = []
     for back in range(AR_MONTHS_BACK):
@@ -250,6 +261,8 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                 if key in seen:
                     continue
                 seen.add(key)
+            if history is not None:
+                history.append(row)
             amount = row.get(outstanding_key) or 0
             if not amount or not row.get("dueDate"):
                 continue
@@ -344,6 +357,103 @@ def _schedule_payments(bills: list, today: date) -> list:
             flows.append({"date": when, "amount": -amount,
                           "kind": "ap", "label": f"Regning fra {bill['name']}"})
     return flows
+
+
+def _add_months(year: int, month: int, n: int) -> tuple[int, int]:
+    i = year * 12 + (month - 1) + n
+    return i // 12, i % 12 + 1
+
+
+def _fixed_bills(history: list, today: date, horizon: date) -> tuple[list, list]:
+    """The bills that come whether anyone sells anything: rent, leasing,
+    insurance, software. Returns the flows and what was found.
+
+    The committed line is the floor, and it had payroll and the tax dates but
+    none of these — they lived only inside the expected line's running costs,
+    so the floor the brief's colour rests on stood higher than it is.
+
+    Found by how the bills arrive, not by which account they are booked on:
+    6400, 6700 and 7700 hold fixed and variable alike, while a supplier who
+    bills the same amount every month is plain to see. Monthly: a bill in at
+    least FIXED_MIN of the last FIXED_LOOKBACK closed months. Quarterly: at
+    least FIXED_MIN bills three months apart. Every amount within
+    FIXED_TOLERANCE of the supplier's median, so materials that follow sales
+    stay out — they are not certain, which is what this line is for. Credit
+    notes and foreign currency stay out of the reading.
+
+    A month whose bill has arrived is skipped: it is in the payables or paid
+    out of the opening balance. One whose usual day has passed without a bill
+    is placed anyway, on its usual due date or today, since a bill that is
+    late or in the inbox is still owed.
+    """
+    by_supplier: dict = {}
+    for row in history:
+        if row.get("isCreditNote") or (row.get("currency") or "NOK").upper() != "NOK":
+            continue
+        try:
+            issued = date.fromisoformat(row["invoiceDate"])
+            due = date.fromisoformat(row["dueDate"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        amount = float(row.get("amountCurrency") or row.get("amount") or 0)
+        name = row.get("supplierName") or ""
+        if amount <= 0 or not name:
+            continue
+        s = by_supplier.setdefault(row.get("supplierId") or name,
+                                   {"name": name, "months": {}})
+        m = s["months"].setdefault((issued.year, issued.month),
+                                   {"amount": 0.0, "days": [], "terms": [], "last": issued})
+        m["amount"] += amount
+        m["days"].append(issued.day)
+        m["terms"].append((due - issued).days)
+        m["last"] = max(m["last"], issued)
+
+    this = (today.year, today.month)
+    closed = [_add_months(*this, -n) for n in range(1, FIXED_LOOKBACK + 1)]
+    flows, found = [], []
+    for s in by_supplier.values():
+        months = s["months"]
+        past = sorted(k for k in months if k < this)
+        if not past:
+            continue
+
+        def stable(keys) -> bool:
+            values = [months[k]["amount"] for k in keys]
+            mid = statistics.median(values)
+            return mid > 0 and all(abs(v - mid) <= FIXED_TOLERANCE * mid for v in values)
+
+        recent = [k for k in closed if k in months]
+        gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in zip(past, past[1:])]
+        if len(recent) >= FIXED_MIN and stable(recent):
+            step, cadence, basis = 1, "månedlig", recent
+        elif len(past) >= FIXED_MIN and gaps and all(g == 3 for g in gaps) \
+                and stable(past) and _add_months(*past[-1], 3) >= this:
+            step, cadence, basis = 3, "kvartalsvis", past
+        else:
+            continue
+
+        latest = max(months, key=lambda k: months[k]["last"])
+        amount = months[latest]["amount"]
+        day = int(statistics.median([d for k in basis for d in months[k]["days"]]))
+        terms = int(statistics.median([t for k in basis for t in months[k]["terms"]]))
+        upcoming = []
+        y, mo = _add_months(*past[-1], step)
+        while True:
+            issued = date(y, mo, min(day, monthrange(y, mo)[1]))
+            if issued >= horizon:
+                break
+            pay = max(issued + timedelta(days=terms), today)
+            if (y, mo) >= this and (y, mo) not in months and pay < horizon:
+                flows.append({"date": pay, "amount": -amount, "kind": "fixed",
+                              "month": (y, mo),
+                              "label": f"Fast regning fra {s['name']}"})
+                upcoming.append(pay)
+            y, mo = _add_months(y, mo, step)
+        found.append({"name": s["name"], "amount": round(amount, 2),
+                      "cadence": cadence, "day": day, "terms": terms,
+                      "next": min(upcoming).isoformat() if upcoming else None})
+    found.sort(key=lambda f: -f["amount"])
+    return flows, found
 
 
 def _expected_items(invoices: list, bills: list, today: date) -> dict:
@@ -635,6 +745,7 @@ async def build(today: date | None = None) -> dict:
         return await saldobalanse.monthly(mcp, f"{last_year}-01-01", f"{last_year}-12-31")
 
     issued: dict = {}
+    supplier_history: list = []
     balance, com, ar, ap, prior = await asyncio.gather(
         saldobalanse.monthly(mcp, start_year, today.isoformat()),
         commitments.cached(),
@@ -644,7 +755,8 @@ async def build(today: date | None = None) -> dict:
                        in_kroner=True),
         # Supplier rows are keyed by voucherId, not id.
         _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
-                       "voucherId", "outstandingAmount", "supplierName"),
+                       "voucherId", "outstandingAmount", "supplierName",
+                       history=supplier_history),
         _prior(),
         return_exceptions=True,
     )
@@ -769,6 +881,14 @@ async def build(today: date | None = None) -> dict:
                               "amount": per, "kind": "ar_unmatched",
                               "label": "Kundefordringer uten kjent faktura"})
     committed += _schedule_payments(ap_due, today)
+    # Rent, leasing, insurance: certain whether anyone sells anything, so the
+    # floor carries them. The expected line's running costs already contain
+    # them, and are netted below month by month.
+    fixed_flows, fixed_found = _fixed_bills(supplier_history, today, horizon)
+    committed += fixed_flows
+    fixed_by_month: dict = {}
+    for f in fixed_flows:
+        fixed_by_month[f["month"]] = fixed_by_month.get(f["month"], 0.0) - f["amount"]
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
     # was backwards. Being short on receivables flatters the forecast; being
@@ -927,12 +1047,18 @@ async def build(today: date | None = None) -> dict:
         current = (month.year, month.month) == (today.year, today.month)
         cost = (opex_left * (opex_cash / rates["opex"]) if rates["opex"] else 0.0) \
             if current else opex_cash
+        # The fixed bills of this month are in the committed line already, on
+        # their own due dates. Both gross. Never below zero: fixed bills above
+        # the run-rate mean the rate is low, not that money comes back.
+        fixed = fixed_by_month.get((month.year, month.month), 0.0)
+        cost = max(0.0, cost - fixed)
         if cost_day < horizon and round(cost) > 0:
             expected.append({"date": cost_day, "amount": -cost,
                              "kind": "opex",
                              "label": f"Driftskostnader "
                                       f"{MONTH_NAMES[month.month - 1]}"
                                       f"{', resten' if current else ''}"
+                                      f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
                                       f"{' (inkl. moms)' if opex_vat >= 0.5 else ''}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
@@ -955,6 +1081,11 @@ async def build(today: date | None = None) -> dict:
     data["assumptions"]["mva_paa_kostnader"] = round(opex_vat, 2)
     data["assumptions"]["monthly_opex_cash"] = round(opex_cash, 2)
     data["assumptions"]["kostnader_bokfort_denne_maneden"] = round(booked_opex, 2)
+    # The recurring bills the committed line now carries, for the owner to
+    # check against what he knows he pays.
+    data["fixed_costs"] = fixed_found
+    data["assumptions"]["faste_regninger_mnd"] = round(sum(
+        f["amount"] / (1 if f["cadence"] == "månedlig" else 3) for f in fixed_found), 2)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
     data["items"] = _expected_items(ar_due, ap_due, today)
     # What is still owed after the bank's unbooked receipts: a customer who
@@ -1263,7 +1394,8 @@ def briefing(data: dict | None) -> str:
            f"presented as one.\n",
            f"- Starter på **{_kr(data['opening'])} kr**",
            _opening_note(data.get("bank")),
-           f"- **Bundet linje** — bare det som allerede er fakturert inn og ut, "
+           f"- **Bundet linje** — det som allerede er fakturert inn og ut, de "
+           f"faste regningene, "
            f"lønn og skattedatoer: lavest **{_kr(low_c['amount'])} kr** i "
            f"{low_c['label']} ({low_c['start']}).",
            f"- **Forventet linje** — med vanlig drift og fakturering: lavest "
@@ -1324,6 +1456,28 @@ def briefing(data: dict | None) -> str:
                + f", kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
+
+    # The floor's newest part, named bill by bill so the owner can check it
+    # against what he knows he pays — and what it cannot see, said every time.
+    fixed = data.get("fixed_costs") or []
+    gap = ("Husleie eller leasing som trekkes direkte fra banken uten "
+           "leverandørfaktura, og regninger som kommer én gang i året, er ikke "
+           "med — de finnes ikke som gjentatte fakturaer.")
+    if fixed:
+        named = ", ".join(
+            f"{f['name']} {_kr(f['amount'])} kr {f['cadence']}" for f in fixed[:8])
+        more = f" og {len(fixed) - 8} til" if len(fixed) > 8 else ""
+        out.append(f"**Faste regninger i den bundne linjen** — funnet på at "
+                   f"leverandøren fakturerer det samme hver måned eller hvert "
+                   f"kvartal, lagt på vanlig forfallsdag: {named}{more}. Til "
+                   f"sammen {_kr(a.get('faste_regninger_mnd'))} kr i måneden. "
+                   f"De er trukket fra driftskostnadene i den forventede "
+                   f"linjen, så de telles ikke to ganger. {gap}\n")
+    else:
+        out.append(f"**Ingen faste regninger funnet** — ingen leverandør "
+                   f"fakturerer det samme beløpet jevnlig, så den bundne linjen "
+                   f"har ingen husleie, leasing eller forsikring i seg. {gap} "
+                   f"Say so if he asks how safe the bundne line is.\n")
 
     # The half of the forecast that is easy to leave out, because it is a bill
     # arriving for money that already came in.

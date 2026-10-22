@@ -109,8 +109,9 @@ def light(cf: dict, floor: float, books: str = "clean") -> Light:
         out = Light("red", "Selv om kundene betaler som de pleier, går saldoen "
                     "under gulvet innen seks uker.", safe)
     elif c_zero is not None and c_zero < ZERO_WEEKS:
-        out = Light("red", "Pengene som allerede er fakturert og regningene som "
-                    "allerede er kommet, tar kontoen under null innen fire uker.",
+        out = Light("red", "Pengene som allerede er fakturert, regningene som "
+                    "er kommet og de faste regningene tar kontoen under null "
+                    "innen fire uker.",
                     safe)
     elif c_floor is not None and c_floor < SAFE_WEEKS:
         out = Light("yellow", "Uten innbetalinger utover det som er fakturert, "

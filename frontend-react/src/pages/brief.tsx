@@ -223,7 +223,7 @@ function buildSignals(data: Data): Signal[] {
   if (cash) {
     const { amount: floor, said } = floorOf(data)
     // The committed line, not the expected one: this card's own words are
-    // "det som allerede er fakturert inn og ut", and its amount reads
+    // "det som allerede er fakturert og de faste regningene", and its amount reads
     // committed_close. It used to key off goes_negative, which the backend
     // measured on the expected line, so the card stayed silent exactly when
     // the floor went dry while the forecast still looked healthy.
@@ -235,7 +235,7 @@ function buildSignals(data: Data): Signal[] {
         sev: "crit",
         tag: "Kontanter",
         title: `Kontoen går i minus i ${negative.label.toLowerCase()}`,
-        body: `Med det som allerede er fakturert inn og ut, er kontoen tom i uka fra ${dateNo(negative.start)}.`,
+        body: `Med det som allerede er fakturert og de faste regningene, er kontoen tom i uka fra ${dateNo(negative.start)}.`,
         ask: "Gå gjennom kontantstrømmen uke for uke fram til uka vi går i minus. Hva er de største utbetalingene, og hva kan flyttes?",
         amount: week ? Math.abs(week.committed_close) : undefined,
         due: negative.start,
