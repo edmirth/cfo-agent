@@ -262,6 +262,97 @@ def test_next_month_ignores_what_this_month_booked():
     assert nov and round(nov[0]["amount"]) == -140_000
 
 
+# ------------------------------------ the fixed bills, in the committed line
+def _bill(ident, supplier, amount, issued, terms=14, outstanding=0.0):
+    from datetime import timedelta
+    due = date.fromisoformat(issued) + timedelta(days=terms)
+    return {"voucherId": ident, "supplierId": abs(hash(supplier)) % 10_000,
+            "supplierName": supplier, "amountCurrency": amount,
+            "invoiceDate": issued, "dueDate": due.isoformat(),
+            "outstandingAmount": outstanding, "currency": "NOK"}
+
+
+def _monthly_bills(supplier, amounts, months, day=1, terms=14, first_id=100):
+    return [_bill(first_id + i, supplier, a, f"2026-{m:02d}-{day:02d}", terms)
+            for i, (m, a) in enumerate(zip(months, amounts))]
+
+
+RENT = _monthly_bills("Gårdeier AS", [60_000.0] * 4, [6, 7, 8, 9])
+
+
+def _fixed(data):
+    return _kinds(data, "fixed")
+
+
+def test_a_monthly_rent_is_in_the_committed_line():
+    """The floor had payroll and the tax dates and none of the rent. Placed on
+    its usual due date, the 15th, through the window's end."""
+    data = _forecast([], ap=RENT)
+    fixed = _fixed(data)
+    assert [round(f["amount"]) for f in fixed] == [-60_000] * 3, \
+        "15 October, November and December; January's falls after the window"
+    assert all(f["scenario"] == "committed" for f in fixed)
+    assert data["fixed_costs"][0]["name"] == "Gårdeier AS"
+    assert data["fixed_costs"][0]["cadence"] == "månedlig"
+
+
+def test_a_bill_that_follows_sales_is_not_fixed():
+    swings = _monthly_bills("Byggevare AS", [40_000.0, 60_000.0, 45_000.0, 70_000.0],
+                            [6, 7, 8, 9])
+    data = _forecast([], ap=swings)
+    assert not _fixed(data) and not data["fixed_costs"]
+
+
+def test_a_bill_already_arrived_this_month_is_not_placed_again():
+    """October's rent is in the payables with its own due date."""
+    october = _bill(200, "Gårdeier AS", 60_000.0, "2026-10-01", outstanding=60_000.0)
+    data = _forecast([], ap=RENT + [october])
+    assert len(_fixed(data)) == 2, "November and December only"
+    assert _kinds(data, "ap"), "October's own bill pays from the payables"
+
+
+def test_a_bill_late_this_month_is_placed_now():
+    """Due on the 3rd, today is the 5th, and nothing has come: still owed."""
+    rent = _monthly_bills("Gårdeier AS", [60_000.0] * 4, [6, 7, 8, 9], terms=2)
+    data = _forecast([], ap=rent)
+    assert any(i["kind"] == "fixed" for i in data["weeks"][0]["items"])
+
+
+def test_a_quarterly_bill_lands_only_in_its_own_months():
+    insurance = _monthly_bills("Forsikring AS", [30_000.0] * 3, [1, 4, 7],
+                               day=10, terms=30)
+    data = _forecast([], ap=insurance)
+    fixed = _fixed(data)
+    assert [round(f["amount"]) for f in fixed] == [-30_000], \
+        "October's bill, paid 9 November; January's is after the window"
+    assert data["fixed_costs"][0]["cadence"] == "kvartalsvis"
+
+
+def test_two_months_of_four_is_not_a_pattern():
+    data = _forecast([], ap=_monthly_bills("Ny AS", [10_000.0] * 2, [8, 9]))
+    assert not _fixed(data)
+
+
+def test_the_expected_line_does_not_move():
+    """The same rent is inside the running costs. Counted in both lines it
+    would leave twice; the expected line must end where it did."""
+    costs = [_cum("6300 Leie lokaler", [60_000.0] * 9 + [0.0])]
+    without = _forecast(costs)
+    with_rent = _forecast(costs, ap=RENT)
+    assert _fixed(with_rent)
+    assert round(with_rent["weeks"][-1]["expected_close"]) == \
+        round(without["weeks"][-1]["expected_close"])
+    assert with_rent["weeks"][-1]["committed_close"] < \
+        without["weeks"][-1]["committed_close"], "the floor carries the rent now"
+
+
+def test_fixed_bills_above_the_rate_never_give_money_back():
+    costs = [_cum("6300 Leie lokaler", [20_000.0] * 9 + [0.0])]
+    data = _forecast(costs, ap=RENT)
+    assert all(i["amount"] <= 0 for i in _kinds(data, "opex"))
+    assert not _opex(data, "november"), "the rent covers the whole rate"
+
+
 # --------------------------------------- a half-read forecast expires early
 class _Broken(_Tripletex):
     """Answers the reports and drops one register, the way a 503 does."""
