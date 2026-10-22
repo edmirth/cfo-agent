@@ -196,6 +196,72 @@ def test_last_months_invoices_do_not_reduce_this_month():
     assert left and round(left[0]["amount"]) == 500_000
 
 
+# ------------------------------- running costs, as they leave the account
+# 400 000 kr a month invoiced, and input VAT measured at 40 % of output VAT:
+# 100 000 kr out, 40 000 kr in, both standing on the accounts since January
+# so this month has accrued none of its own.
+VAT_40 = [_cum("2700 Utgående mva", [-100_000.0] + [0.0] * 9),
+          _cum("2710 Inngående mva", [40_000.0] + [0.0] * 9)]
+
+
+def _rent(booked_this_month=0.0):
+    return _cum("6300 Leie lokaler", [100_000.0] * 9 + [booked_this_month])
+
+
+def _opex(data, month):
+    return [i for i in _kinds(data, "opex") if month in i["label"]]
+
+
+def test_running_costs_are_paid_with_their_vat():
+    """The VAT forecast deducts input VAT from what is paid over. The bills
+    that VAT sits on were paid at their P&L figure, which has none — so the
+    deduction was taken and the VAT it deducts was never paid."""
+    data = _forecast([REVENUE, _rent()] + VAT_40)
+    nov = _opex(data, "november")
+    assert nov and round(nov[0]["amount"]) == -140_000, \
+        "100 000 kr of costs plus the 40 000 kr of input VAT the deduction assumes"
+    assert "inkl. moms" in nov[0]["label"]
+    assert round(data["assumptions"]["mva_paa_kostnader"]) == 40_000
+
+
+def test_no_vat_goes_on_the_costs_when_none_is_deducted():
+    """Unmeasured, the deduction is zero, so is the VAT on the bills."""
+    data = _forecast([REVENUE, _rent()])
+    nov = _opex(data, "november")
+    assert nov and round(nov[0]["amount"]) == -100_000
+    assert "moms" not in nov[0]["label"]
+
+
+def test_the_rest_of_this_month_is_charged():
+    """On the 5th most of the month's bills have not arrived. The opex leg
+    started next month, so they were in no line at all."""
+    data = _forecast([REVENUE, _rent()] + VAT_40)
+    october = _opex(data, "oktober")
+    assert october and round(october[0]["amount"]) == -140_000
+    assert "resten" in october[0]["label"]
+
+
+def test_only_the_unbooked_part_of_this_month_is_charged():
+    """A bill booked this month is in the payables, or paid out of the opening
+    balance. Charging the whole month as well paid it twice."""
+    data = _forecast([REVENUE, _rent(booked_this_month=60_000.0)] + VAT_40)
+    october = _opex(data, "oktober")
+    assert october and round(october[0]["amount"]) == -56_000, \
+        "40 000 kr still to come, plus its share of the input VAT"
+    assert round(data["assumptions"]["kostnader_bokfort_denne_maneden"]) == 60_000
+
+
+def test_a_heavy_month_already_booked_adds_nothing():
+    data = _forecast([REVENUE, _rent(booked_this_month=150_000.0)] + VAT_40)
+    assert not _opex(data, "oktober"), "never a negative cost"
+
+
+def test_next_month_ignores_what_this_month_booked():
+    data = _forecast([REVENUE, _rent(booked_this_month=60_000.0)] + VAT_40)
+    nov = _opex(data, "november")
+    assert nov and round(nov[0]["amount"]) == -140_000
+
+
 # --------------------------------------- a half-read forecast expires early
 class _Broken(_Tripletex):
     """Answers the reports and drops one register, the way a 503 does."""

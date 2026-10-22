@@ -121,6 +121,32 @@ STATUTORY_FROM_COMMITMENTS = {
 # it cannot come back the day someone posts to 2600 again.
 
 
+# Every krone that leaves the account has to be in exactly one of these.
+# 4000-4999 and 5100-5999 were in none of them: varekjøp, underentreprise,
+# pensjon and yrkesskade simply did not exist in the forecast, about
+# 116 000 kr a month against a modelled opex of 156 000.
+#
+# And no krone that never leaves it. A cost booked against a balance sheet
+# account rather than the bank is a P&L figure, not a payment: counting it
+# took the depreciation on three cars — about 19 000 kr a month in Q1 —
+# out of the account every month as if it were a bill.
+OPEX_RANGES = [(4000, 4999),      # varekjøp og underentreprise
+               (5100, 5199),
+               (5300, 5399),      # annen opplysningspliktig godtgjørelse
+               (5402, 5999),      # pensjon, yrkesskade, personalkostnad
+               (6100, 7799),      # ordinære driftskostnader
+               (7900, 7999)]
+# The gaps in that list, each on purpose:
+# - 5200-5299 fordel i arbeidsforhold: a benefit in kind, taxed through
+#   payroll and booked against its own contra account. No money moves.
+# - 5400/5401 arbeidsgiveravgift: dated by commitments from its own
+#   balance; taking it here as well would pay it twice.
+# - 6000-6099 avskrivning og nedskrivning: the cost of an asset already
+#   paid for, spread over its life.
+# - 7800-7899 tap på fordringer og ved avgang: money that did not come in,
+#   or an asset written off. Neither is a payment.
+
+
 def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
@@ -438,30 +464,6 @@ def _run_rates(rows: list, columns: list,
             notes.append(" ".join([said] + why))
         return average
 
-    # Every krone that leaves the account has to be in exactly one of these.
-    # 4000-4999 and 5100-5999 were in none of them: varekjøp, underentreprise,
-    # pensjon and yrkesskade simply did not exist in the forecast, about
-    # 116 000 kr a month against a modelled opex of 156 000.
-    #
-    # And no krone that never leaves it. A cost booked against a balance sheet
-    # account rather than the bank is a P&L figure, not a payment: counting it
-    # took the depreciation on three cars — about 19 000 kr a month in Q1 —
-    # out of the account every month as if it were a bill.
-    OPEX_RANGES = [(4000, 4999),      # varekjøp og underentreprise
-                   (5100, 5199),
-                   (5300, 5399),      # annen opplysningspliktig godtgjørelse
-                   (5402, 5999),      # pensjon, yrkesskade, personalkostnad
-                   (6100, 7799),      # ordinære driftskostnader
-                   (7900, 7999)]
-    # The gaps in that list, each on purpose:
-    # - 5200-5299 fordel i arbeidsforhold: a benefit in kind, taxed through
-    #   payroll and booked against its own contra account. No money moves.
-    # - 5400/5401 arbeidsgiveravgift: dated by commitments from its own
-    #   balance; taking it here as well would pay it twice.
-    # - 6000-6099 avskrivning og nedskrivning: the cost of an asset already
-    #   paid for, spread over its life.
-    # - 7800-7899 tap på fordringer og ved avgang: money that did not come in,
-    #   or an asset written off. Neither is a payment.
     rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning"),
              # The full wage cost, accrual and all — what the P&L carries.
              "wages": rate([(5000, 5099)], 1, "Lønn"),
@@ -871,6 +873,30 @@ async def build(today: date | None = None) -> dict:
     # collected again at month end. The open list stays the floor, for a
     # month whose invoices could not be read.
     invoiced_this_month = max(invoiced_this_month, issued.get("this_month", 0.0))
+    # Running costs leave the account with their VAT on, and the run-rate is
+    # the P&L figure, which has none. The VAT forecast above takes the input
+    # VAT off what is paid over, so leaving it off the bills as well took the
+    # deduction without ever paying the VAT it deducts. Added back as exactly
+    # that deduction rather than 25 % on every cost account: pension,
+    # insurance and bank fees carry none, and the deduction is already the
+    # measured share. Unmeasured, it is zero on both sides.
+    opex_vat = rates["revenue"] * MVA_RATE * vat_share
+    opex_cash = rates["opex"] + opex_vat
+    # What this month has already booked against the same cost accounts. The
+    # opex leg used to start next month on the strength of "this month's bills
+    # are already in the payables" — true on the last day of the month only.
+    # On the 5th most of the month's bills have not arrived, and they were in
+    # no line at all. Netted the way the revenue leg nets what is invoiced: a
+    # bill booked this month is in the payables or already paid out of the
+    # opening balance, and one still in the inbox is in neither, so it belongs
+    # to the remainder. Net against net; the VAT goes on after.
+    booked_opex = 0.0
+    for low, high in OPEX_RANGES:
+        series = _monthly(rows, columns, low, high)
+        if series:
+            booked_opex += series[-1][1]
+    booked_opex = max(0.0, booked_opex)
+    opex_left = max(0.0, rates["opex"] - booked_opex)
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
@@ -897,12 +923,17 @@ async def build(today: date | None = None) -> dict:
                              "kind": "vat_future",
                              "label": f"Merverdiavgift på fakturering "
                                       f"{MONTH_NAMES[month.month - 1]}"})
-        cost_day = month_end
-        if month > date(today.year, today.month, 1) and today <= cost_day < horizon:
-            expected.append({"date": cost_day, "amount": -rates["opex"],
+        cost_day = max(month_end, today)
+        current = (month.year, month.month) == (today.year, today.month)
+        cost = (opex_left * (opex_cash / rates["opex"]) if rates["opex"] else 0.0) \
+            if current else opex_cash
+        if cost_day < horizon and round(cost) > 0:
+            expected.append({"date": cost_day, "amount": -cost,
                              "kind": "opex",
                              "label": f"Driftskostnader "
-                                      f"{MONTH_NAMES[month.month - 1]}"})
+                                      f"{MONTH_NAMES[month.month - 1]}"
+                                      f"{', resten' if current else ''}"
+                                      f"{' (inkl. moms)' if opex_vat >= 0.5 else ''}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
@@ -919,6 +950,11 @@ async def build(today: date | None = None) -> dict:
                      vat_share, vat_measured, booked_vat,
                      invoiced_this_month, payroll_months)
     data["assumptions"]["credit_days_source"] = credit_source
+    # What the bills cost in cash, against the P&L figure beside it, and what
+    # this month has already booked — netted off, as `fakturert_denne_maneden`.
+    data["assumptions"]["mva_paa_kostnader"] = round(opex_vat, 2)
+    data["assumptions"]["monthly_opex_cash"] = round(opex_cash, 2)
+    data["assumptions"]["kostnader_bokfort_denne_maneden"] = round(booked_opex, 2)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
     data["items"] = _expected_items(ar_due, ap_due, today)
     # What is still owed after the bank's unbooked receipts: a customer who
@@ -1278,7 +1314,14 @@ def briefing(data: dict | None) -> str:
                f"out loud is what separates a forecast from a guess: fakturering "
                f"{_kr(a['monthly_revenue'])} kr i måneden, lønn "
                f"{_kr(a['monthly_wages'])} kr, driftskostnader "
-               f"{_kr(a['monthly_opex'])} kr, kredittid {a['credit_days']} dager "
+               f"{_kr(a['monthly_opex'])} kr"
+               + (f" ({_kr(a['monthly_opex_cash'])} kr ut av kontoen med "
+                  f"{_kr(a['mva_paa_kostnader'])} kr inngående moms)"
+                  if a.get("mva_paa_kostnader") else "")
+               + (f", hvorav {_kr(a['kostnader_bokfort_denne_maneden'])} kr "
+                  f"alt er bokført denne måneden og bare resten lagt inn"
+                  if a.get("kostnader_bokfort_denne_maneden") else "")
+               + f", kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
 
