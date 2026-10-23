@@ -83,14 +83,15 @@ def test_a_blank_closing_cell_does_not_switch_off_the_1500_check():
     """
     rows = [_row("1500 Kundefordringer", [0, 2_539_600, None])]
     data = _forecast(rows)
-    assert _kinds(data, "ar_unmatched"), "the ledger's receivables went missing"
+    assert round(data["assumptions"]["ukjente_fordringer"]["belop"]) == 2_539_600, \
+        "the ledger's receivables went missing"
     assert any("Konto 1500" in w for w in data["warnings"])
 
 
 def test_receivables_outside_1500_are_part_of_the_same_reconciliation():
     rows = [_row("1505 Kundefordringer, utland", [0, 400_000, 400_000])]
     data = _forecast(rows)
-    assert _kinds(data, "ar_unmatched")
+    assert round(data["assumptions"]["ukjente_fordringer"]["belop"]) == 400_000
 
 
 def test_an_absent_payables_account_raises_no_warning():
@@ -495,6 +496,40 @@ def test_the_age_boundaries():
     assert len(parts(90)) == 6
     assert parts(91) == [], "past ninety days nothing is counted on"
     assert len(parts(0)) == 1, "due today is not late"
+
+
+# ------------------------------ receivables on 1500 that no invoice explains
+LEDGER_AR = [_row("1500 Kundefordringer", [0, 500_000, 500_000])]
+
+
+def test_unexplained_receivables_are_not_in_the_floor():
+    """Money nobody can explain propped up the floor the colour rests on,
+    while the supplier side pays its own unexplained difference this week."""
+    data = _forecast(LEDGER_AR)
+    assert not _kinds(data, "ar_unmatched"), "in neither line"
+    unknown = data["assumptions"]["ukjente_fordringer"]
+    assert round(unknown["belop"]) == 500_000
+    assert unknown["behandlet"] == "ikke_regnet_med"
+    assert any("ikke regnet med" in w for w in data["warnings"])
+    assert "Kundefordringer uten faktura" in cashflow.briefing(data)
+
+
+def test_a_cut_off_invoice_list_makes_them_expected():
+    """A hundred rows may be a list cut short: then the difference is most
+    likely ordinary invoices that were not read, and expected, slowly."""
+    paid = [{**_invoice(0.0, "2026-10-01", "2026-10-31", n), "amount": 1_000.0}
+            for n in range(1, 101)]
+    data = _forecast(LEDGER_AR, ar=paid)
+    found = _kinds(data, "ar_unmatched")
+    assert len(found) == 6 and {i["scenario"] for i in found} == {"expected"}
+    assert round(sum(i["amount"] for i in found)) == 500_000
+    assert data["assumptions"]["ukjente_fordringer"]["behandlet"] == "forventet"
+
+
+def test_a_tied_ledger_has_no_unknown_receivables():
+    data = _forecast([_row("1500 Kundefordringer", [0, 90_000, 90_000])],
+                     ar=[_invoice(90_000.0, "2026-09-20", "2026-10-20")])
+    assert data["assumptions"]["ukjente_fordringer"] == {"belop": 0.0, "behandlet": None}
 
 
 # --------------------------------------- a half-read forecast expires early

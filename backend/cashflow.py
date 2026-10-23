@@ -221,7 +221,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
 
     `issued`, when given, gets `this_month`: everything invoiced this month,
     paid or not, from the same rows. The open list leaves out what is paid,
-    and what was invoiced and paid this month is invoicing all the same.
+    and what was invoiced and paid this month is invoicing all the same. It
+    also gets `truncated` when a month came back full, which is the one known
+    reason the ledger can hold more receivables than the list shows.
 
     `in_kroner` says the outstanding amount is already in kroner whatever
     the invoice's currency, as the customer register's `amountOutstanding`
@@ -269,6 +271,8 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
         if len(rows) >= 100:
             warnings.append(f"Det er minst 100 {what.lower()} i {when}; lista "
                             f"kan være avkortet.")
+            if issued is not None:
+                issued["truncated"] = True
         for row in rows:
             # A row with no id is not a duplicate of the last row with no id.
             # Putting None in `seen` made the first one swallow every one after.
@@ -1005,19 +1009,34 @@ async def build(today: date | None = None) -> dict:
     gl_ar = _closing_or_none(rows, 1500, 1509)
     ar_total = sum(i["amount"] for i in ar_open)
     ar_residual = 0.0
+    residual_counted = False
     if gl_ar is not None and gl_ar - ar_total > 1000:
-        # The invoice list is short of the ledger, and the ledger is the figure
-        # that ties to the general ledger. Dropping the difference would
-        # forecast money in that never arrives; keeping it undated would put it
-        # in the wrong week. It is carried at the ledger's amount, spread like
-        # the overdue book, and declared.
+        # The invoice list is short of the ledger. It used to be counted as
+        # money in, in the committed line, over the next three weeks — money
+        # nobody could explain, propping up the floor the colour rests on,
+        # while the supplier side pays its unexplained difference this week.
+        # What it usually is: invoices older than the lookback (past ninety
+        # days by then), postings made straight to 1500, payments not matched
+        # to their invoices. Only a list cut off at a hundred rows gives a
+        # reason to think it is ordinary invoicing on its way in — that, or a
+        # register that could not be read whole; then it is
+        # expected, slowly, like the invoices a month or two late. Otherwise it
+        # is in neither line, and named, as the oldest invoices are.
         ar_residual = gl_ar - ar_total
+        list_short = bool(issued.get("truncated")) or not ar_complete
+        residual_counted = list_short
+        head = (f"Konto 1500 viser {_kr(gl_ar)} kr i kundefordringer, men de "
+                f"åpne fakturaene summerer bare til {_kr(ar_total)} kr. ")
         warnings.append(
-            f"Konto 1500 viser {_kr(gl_ar)} kr i kundefordringer, men de åpne "
-            f"fakturaene summerer bare til {_kr(ar_total)} kr. De resterende "
-            f"{_kr(ar_residual)} kr er tatt med, fordelt over de nærmeste "
-            f"ukene, men uten forfallsdato å feste dem til. Noen bør finne ut "
-            f"hva de består av.")
+            head + (f"Fakturalista er ikke lest helt, så de resterende "
+                    f"{_kr(ar_residual)} kr er trolig vanlige fakturaer som ikke "
+                    f"ble lest. De ligger bare i den forventede linjen, fordelt "
+                    f"over uke {SLOW_WEEKS[0]}–{SLOW_WEEKS[1]}."
+                    if residual_counted else
+                    f"De resterende {_kr(ar_residual)} kr er ikke regnet med i "
+                    f"prognosen før noen har funnet ut hva de består av — "
+                    f"gamle fakturaer, posteringer rett på kontoen eller "
+                    f"innbetalinger som ikke er koblet til fakturaen."))
 
     committed: list[dict] = []
     expected: list[dict] = []
@@ -1037,12 +1056,14 @@ async def build(today: date | None = None) -> dict:
         key = ("i_rute" if late == 0 else "inntil_30" if late <= LATE_DAYS
                else "31_90" if late <= DOUBTFUL_DAYS else "over_90")
         ages[key] += i["amount"]
-    if ar_residual:
-        per = ar_residual / LATE_SPREAD_WEEKS
-        for w in range(LATE_SPREAD_WEEKS):
-            committed.append({"date": today + timedelta(days=7 * (w + 1)),
-                              "amount": per, "kind": "ar_unmatched",
-                              "label": "Kundefordringer uten kjent faktura"})
+    if ar_residual and residual_counted:
+        first, last = SLOW_WEEKS
+        per = ar_residual / (last - first + 1)
+        for w in range(first, last + 1):
+            expected.append({"date": today + timedelta(days=7 * w),
+                             "amount": per, "kind": "ar_unmatched",
+                             "label": "Kundefordringer uten kjent faktura, "
+                                      "trolig fra en avkortet fakturaliste"})
     committed += _schedule_payments(ap_due, today)
     # Rent, leasing, insurance: certain whether anyone sells anything, so the
     # floor carries them. The expected line's running costs already contain
@@ -1263,6 +1284,10 @@ async def build(today: date | None = None) -> dict:
     # what could not be checked, for the clean-up list.
     data["ar_at_risk"] = ar_at_risk
     data["ar_doubtful"] = ar_doubtful
+    data["assumptions"]["ukjente_fordringer"] = {
+        "belop": round(ar_residual, 2),
+        "behandlet": ("forventet" if residual_counted else "ikke_regnet_med")
+                     if ar_residual else None}
     data["assumptions"]["forfalte_grupper"] = {k: round(v, 2) for k, v in ages.items()}
     data["register"] = brreg.loose_ends({i["name"] for i in ar_open})
     # Whether that list is the whole book. An empty list from a failed call
@@ -1651,6 +1676,22 @@ def briefing(data: dict | None) -> str:
                    f"ikke har lovet. Say this when he asks what is owed to him: "
                    f"the money is still his to chase, it is just not counted "
                    f"on.\n")
+
+    # The receivables nobody can explain: never in the floor, and only in the
+    # forecast when the invoice list is known to be short.
+    unknown = a.get("ukjente_fordringer") or {}
+    if unknown.get("behandlet") == "ikke_regnet_med":
+        out.append(f"**Kundefordringer uten faktura** — konto 1500 har "
+                   f"{_kr(unknown['belop'])} kr mer enn de åpne fakturaene. "
+                   f"Ingen vet hva det er, så det er ikke regnet med i noen av "
+                   f"linjene. Do not promise this money; say the accountant "
+                   f"should find out what it is.\n")
+    elif unknown.get("behandlet") == "forventet":
+        out.append(f"**Kundefordringer uten faktura** — konto 1500 har "
+                   f"{_kr(unknown['belop'])} kr mer enn fakturalista som ble "
+                   f"lest, og lista er ikke hel. Det er trolig vanlige fakturaer, "
+                   f"så det ligger i den forventede linjen, men ikke i den "
+                   f"bundne.\n")
 
     # When the running costs leave, and what that rests on: it moves which week
     # is the tight one, so it is said either way.
