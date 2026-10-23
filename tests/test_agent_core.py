@@ -308,3 +308,43 @@ async def _gather(job, messages):
 
 def _collect(job, messages):
     return _gather(job, messages)
+
+
+# ------------------------------------------- JSON held to its shape by the API
+def test_a_json_job_with_a_schema_sends_it_as_a_structured_output():
+    """Asked for in the prompt alone, a long health check now and then came
+    back with a bare quotation mark inside a sentence, and could not be read."""
+    job = core.Job(name="skjema", output="json", effort="low",
+                   schema=core.obj(verdict=core.STR, text=core.STR))
+    sent = []
+    result = _play(job, [_final("end_turn", [NS(type="text", text='{"verdict": "Solid", "text": "Bra."}')])],
+                   sent=sent, method="complete")
+    fmt = sent[0]["output_config"]["format"]
+    assert fmt["type"] == "json_schema"
+    assert fmt["schema"]["required"] == ["verdict", "text"]
+    assert fmt["schema"]["additionalProperties"] is False
+    assert sent[0]["output_config"]["effort"] == "low", "effort is kept beside it"
+    assert result.data == {"verdict": "Solid", "text": "Bra."}
+
+
+def test_a_job_without_a_schema_sends_no_format():
+    sent = []
+    _play(CHAT, [_final("end_turn", [NS(type="text", text="Hei.")])], sent=sent)
+    assert "format" not in (sent[0].get("output_config") or {})
+
+
+def test_a_schema_on_a_text_job_fails_when_the_job_is_defined():
+    try:
+        core.Job(name="feil", schema=core.obj(text=core.STR))
+    except ValueError:
+        return
+    raise AssertionError("a text job cannot be held to a JSON schema")
+
+
+def test_every_json_job_has_a_schema():
+    import brief
+    import health
+    import industry
+    import summary
+    for job in (brief.TEXT, health.HELSESJEKK, industry.CLASSIFY, summary.SUMMARY):
+        assert job.schema, f"{job.name} asks for JSON without a schema"

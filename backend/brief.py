@@ -64,7 +64,8 @@ MONTHS = ("januar", "februar", "mars", "april", "mai", "juni", "juli",
 # Named so the scheduler's own `weekly_brief` runs are not counted as the
 # slot's attempts: `job_runs` tells a slot's runs by the job's name.
 TEXT = core.Job(name="mandagsbrev", max_tokens=MAX_TOKENS, output="json",
-                prompt_source="grunnlaget")
+                prompt_source="grunnlaget",
+                schema=core.obj(sentence=core.STR, changed=core.array(core.STR)))
 
 
 class BriefError(RuntimeError):

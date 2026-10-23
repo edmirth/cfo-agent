@@ -391,8 +391,16 @@ def _computable(ctx: dict) -> list[str]:
 # The model picks from a menu and sets targets from what it knows of the
 # trade, so its targets are judgements and `verify` will log them as figures
 # without a source. That is the right reading of them, and the log says so.
-CLASSIFY = core.Job(name="bransje", max_tokens=2000, output="json",
-                    prompt_source="bevisene")
+_NUMBER_OR_NULL = {"type": ["number", "null"]}
+CLASSIFY = core.Job(
+    name="bransje", max_tokens=2000, output="json", prompt_source="bevisene",
+    schema=core.obj(
+        bransje=core.STR, beskrivelse=core.STR, begrunnelse=core.STR,
+        sikkerhet={"type": "string", "enum": ["høy", "middels", "lav"]},
+        nokkeltall=core.array(core.obj(id=core.STR, hvorfor=core.STR,
+                                       mal=_NUMBER_OR_NULL,
+                                       varsel=_NUMBER_OR_NULL)),
+        hovedtall=core.STR))
 
 
 async def classify(ctx: dict, evidence: dict) -> dict:
