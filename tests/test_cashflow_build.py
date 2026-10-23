@@ -353,6 +353,71 @@ def test_fixed_bills_above_the_rate_never_give_money_back():
     assert not _opex(data, "november"), "the rent covers the whole rate"
 
 
+# ----------------------------- when the running costs leave, through the month
+MATERIALS = [_cum("4000 Varekjøp", [100_000.0] * 9 + [0.0])]
+
+
+def _variable_bills(day, terms, n=12):
+    """Bills that swing too much to be fixed, all dated on `day`."""
+    return [_bill(300 + i, "Byggevare AS", 40_000.0 if i % 2 else 70_000.0,
+                  f"2026-{1 + i % 9:02d}-{day:02d}", terms) for i in range(n)]
+
+
+def _week_of(data, label_part):
+    return [w["start"] for w in data["weeks"]
+            for i in w["items"] if i["kind"] == "opex" and label_part in i["label"]]
+
+
+def test_bills_early_in_the_month_are_paid_mid_month():
+    """Dated around the 6th on fourteen days: paid around the 18th, not in a
+    lump on the last day of the month."""
+    data = _forecast(MATERIALS, ap=_variable_bills(6, 14))
+    assert _week_of(data, "november, fakturert 1.–7.") == ["2026-11-16"]
+    nov = _opex(data, "november")
+    assert len(nov) == 1 and round(nov[0]["amount"]) == -100_000
+    assert data["assumptions"]["kostnadsprofil"]["measured"] is True
+
+
+def test_bills_late_in_the_month_are_paid_the_next():
+    """Dated the 25th on thirty days: November's costs leave in December, and
+    December's after the window — as sales collected after it do."""
+    data = _forecast(MATERIALS, ap=_variable_bills(25, 30))
+    assert _week_of(data, "november") == ["2026-12-21"]
+    assert not _opex(data, "desember"), "paid 25 January, after the window"
+
+
+def test_spreading_moves_the_costs_not_the_amount():
+    lump = _forecast(MATERIALS)
+    spread = _forecast(MATERIALS, ap=_variable_bills(6, 14))
+    total = lambda d: round(sum(i["amount"] for i in _kinds(d, "opex")))
+    assert total(lump) == total(spread) == -300_000
+
+
+def test_too_few_bills_keep_the_month_end():
+    data = _forecast(MATERIALS, ap=_variable_bills(6, 14, n=5))
+    assert not any("fakturert" in i["label"] for i in _kinds(data, "opex"))
+    assert data["assumptions"]["kostnadsprofil"]["measured"] is False
+
+
+def test_fixed_bills_do_not_shape_the_profile():
+    """Rent on the 1st is placed on its own date; it says nothing about when
+    the materials come."""
+    data = _forecast(MATERIALS, ap=RENT + _variable_bills(6, 14, n=8))
+    assert data["assumptions"]["kostnadsprofil"]["bills"] == 8
+    assert data["assumptions"]["kostnadsprofil"]["measured"] is False
+
+
+def test_the_rest_of_this_month_falls_in_the_days_still_to_come():
+    profile = {"measured": True, "bills": 20, "periods": [
+        {"from": 1, "to": 7, "share": 0.5, "terms": 0},
+        {"from": 22, "to": 31, "share": 0.5, "terms": 0}]}
+    parts = cashflow._cost_parts(profile, date(2026, 10, 1), date(2026, 10, 20), True)
+    assert parts == [(date(2026, 10, 26), 1.0, "fakturert 22.–31.")], \
+        "the first week is over; what is not booked yet comes late in the month"
+    later = cashflow._cost_parts(profile, date(2026, 11, 1), date(2026, 10, 20), False)
+    assert [p[1] for p in later] == [0.5, 0.5]
+
+
 # --------------------------------------- a half-read forecast expires early
 class _Broken(_Tripletex):
     """Answers the reports and drops one register, the way a 503 does."""
