@@ -243,8 +243,15 @@ hvilken konto eller måned det gjelder, og hva som må gjøres. Kort og konkret.
 Bruk bare tall som står i grunnlaget, slik de står. Ikke regn ut nye."""
 
 
-HELSESJEKK = core.Job(name="helsesjekk", max_tokens=MAX_TOKENS, output="json",
-                      prompt_source="grunnlaget")
+HELSESJEKK = core.Job(
+    name="helsesjekk", max_tokens=MAX_TOKENS, output="json",
+    prompt_source="grunnlaget",
+    schema=core.obj(
+        summary=core.STR,
+        sections=core.obj(cash=core.STR, payroll=core.STR, receivables=core.STR,
+                          tax=core.STR, gaps=core.STR),
+        cleanup_intro=core.STR,
+        cleanup=core.array(core.obj(id=core.STR, text=core.STR))))
 
 
 def _plain(f: dict) -> dict:

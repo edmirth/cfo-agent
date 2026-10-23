@@ -90,7 +90,11 @@ class Job:
     outside it is offered, and a call to anything outside it is refused.
     `tripletex` opens the read-only Tripletex toolset and the Python sandbox.
     `output` is "text" or "json"; `complete` parses the latter and fails the
-    job when the answer is not JSON.
+    job when the answer is not JSON. `schema`, for a JSON job, is the shape
+    the answer must have, and is sent as a structured output: the model is
+    then held to valid JSON of that shape. Asked for in the prompt alone, it
+    now and then put a plain quotation mark inside a sentence, and a long
+    health check came back unreadable one run in two.
     """
     name: str
     system: Callable[[], Awaitable[list[dict]]] | None = None
@@ -99,6 +103,7 @@ class Job:
     output: str = "text"
     max_tokens: int = config.MAX_TOKENS
     effort: str | None = None
+    schema: dict | None = None
     thinking: dict | None = None
     max_rounds: int = config.MAX_TOOL_ROUNDS
     # How the evidence is labelled when a figure is traced back to it.
@@ -109,6 +114,22 @@ class Job:
         tools.pick(self.tools)          # an unknown tool name fails at import
         if self.output not in ("text", "json"):
             raise ValueError(f"Ukjent output for jobb {self.name}: {self.output}")
+        if self.schema and self.output != "json":
+            raise ValueError(f"Jobb {self.name} har skjema, men svarer ikke med JSON")
+
+
+def obj(**properties) -> dict:
+    """A JSON-schema object where every property is required and nothing else
+    is allowed — what a structured output asks for."""
+    return {"type": "object", "properties": properties,
+            "required": list(properties), "additionalProperties": False}
+
+
+STR = {"type": "string"}
+
+
+def array(items: dict) -> dict:
+    return {"type": "array", "items": items}
 
 
 class JobError(RuntimeError):
@@ -185,8 +206,13 @@ async def _request_kwargs(job: Job, messages: list[dict]) -> dict:
         kwargs["tools"] = offered
     if job.thinking:
         kwargs["thinking"] = job.thinking
+    output_config: dict = {}
     if job.effort:
-        kwargs["output_config"] = {"effort": job.effort}
+        output_config["effort"] = job.effort
+    if job.schema:
+        output_config["format"] = {"type": "json_schema", "schema": job.schema}
+    if output_config:
+        kwargs["output_config"] = output_config
     if _fallbacks_enabled:
         betas.append("server-side-fallback-2026-07-01")
         kwargs["fallbacks"] = "default"

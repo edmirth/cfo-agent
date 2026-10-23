@@ -36,7 +36,8 @@ MAX_TOKENS = 4000
 # Through the core so `verify` reads it like every other answer — a figure in
 # the summary that is not in the grunnlag is logged as one.
 SUMMARY = core.Job(name="oppsummering", max_tokens=MAX_TOKENS, output="json",
-                   prompt_source="grunnlaget")
+                   prompt_source="grunnlaget",
+                   schema=core.obj(verdict=core.STR, text=core.STR))
 
 # Ett kall om gangen. Uten dette skriver fem samtidige sidelaster den samme
 # teksten fem ganger den første morgenen noen åpner forsiden.
