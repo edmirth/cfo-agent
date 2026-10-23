@@ -67,6 +67,13 @@ FIXED_LOOKBACK = 4
 FIXED_MIN = 3
 FIXED_TOLERANCE = 0.15
 
+# The running costs that are not fixed bills are spread over the month by
+# when this company's variable bills are dated and paid. See _cost_profile.
+COST_PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))
+PROFILE_MIN_BILLS = 10
+PROFILE_WEIGHT_CAP = 3
+PROFILE_MIN_PERIOD_BILLS = 3
+
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
 # **Half tax in December.** The tax tables take half the usual trekk from the
@@ -364,9 +371,12 @@ def _add_months(year: int, month: int, n: int) -> tuple[int, int]:
     return i // 12, i % 12 + 1
 
 
-def _fixed_bills(history: list, today: date, horizon: date) -> tuple[list, list]:
+def _fixed_bills(history: list, today: date,
+                 horizon: date) -> tuple[list, list, dict]:
     """The bills that come whether anyone sells anything: rent, leasing,
-    insurance, software. Returns the flows and what was found.
+    insurance, software. Returns the flows, what was found, and the fixed
+    amount of each month still to be billed — paid inside the window or not,
+    since it is that month's cost all the same and the expected line nets it.
 
     The committed line is the floor, and it had payroll and the tax dates but
     none of these — they lived only inside the expected line's running costs,
@@ -410,7 +420,7 @@ def _fixed_bills(history: list, today: date, horizon: date) -> tuple[list, list]
 
     this = (today.year, today.month)
     closed = [_add_months(*this, -n) for n in range(1, FIXED_LOOKBACK + 1)]
-    flows, found = [], []
+    flows, found, by_month = [], [], {}
     for s in by_supplier.values():
         months = s["months"]
         past = sorted(k for k in months if k < this)
@@ -443,7 +453,10 @@ def _fixed_bills(history: list, today: date, horizon: date) -> tuple[list, list]
             if issued >= horizon:
                 break
             pay = max(issued + timedelta(days=terms), today)
-            if (y, mo) >= this and (y, mo) not in months and pay < horizon:
+            due_now = (y, mo) >= this and (y, mo) not in months
+            if due_now:
+                by_month[(y, mo)] = by_month.get((y, mo), 0.0) + amount
+            if due_now and pay < horizon:
                 flows.append({"date": pay, "amount": -amount, "kind": "fixed",
                               "month": (y, mo),
                               "label": f"Fast regning fra {s['name']}"})
@@ -453,7 +466,103 @@ def _fixed_bills(history: list, today: date, horizon: date) -> tuple[list, list]
                       "cadence": cadence, "day": day, "terms": terms,
                       "next": min(upcoming).isoformat() if upcoming else None})
     found.sort(key=lambda f: -f["amount"])
-    return flows, found
+    return flows, found, by_month
+
+
+def _bill_rows(history: list):
+    """(issued, due, gross, supplier) for every readable NOK bill in the
+    supplier history. Credit notes and foreign currency are left out."""
+    for row in history:
+        if row.get("isCreditNote") or (row.get("currency") or "NOK").upper() != "NOK":
+            continue
+        try:
+            issued = date.fromisoformat(row["invoiceDate"])
+            due = date.fromisoformat(row["dueDate"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        amount = float(row.get("amountCurrency") or row.get("amount") or 0)
+        if amount > 0:
+            yield issued, due, amount, row.get("supplierName") or ""
+
+
+def _weighted_median(pairs: list[tuple[float, float]]) -> float:
+    """The value at which half the weight is reached. (value, weight) pairs."""
+    pairs = sorted(pairs)
+    half, running = sum(w for _, w in pairs) / 2, 0.0
+    for value, weight in pairs:
+        running += weight
+        if running >= half:
+            return value
+    return pairs[-1][0]
+
+
+def _cost_profile(history: list, fixed_names: set[str]) -> dict:
+    """When in the month the variable bills are dated, and how long after they
+    are paid — measured on this company's own supplier history.
+
+    The running costs used to leave in one lump on the last day of the month.
+    Materials dated the 6th on fourteen days' terms are paid on the 20th, and
+    a bill dated the 25th on thirty days is paid next month; the lump was
+    wrong both ways, and the week it put the low point in is the week the
+    brief names. Split into COST_PERIODS: each period's share of the amount,
+    and the amount-weighted median of its terms. The fixed suppliers are
+    left out: their bills are placed on their own dates already.
+
+    Each bill weighs by its amount, but no more than PROFILE_WEIGHT_CAP times
+    the median bill: one machine bought on 65 days' terms otherwise set the
+    pattern for every month's cleaning supplies.
+
+    Too few bills to read a pattern off, and the month-end lump is kept and
+    said to be kept.
+    """
+    sums = [0.0] * len(COST_PERIODS)
+    terms: list[list] = [[] for _ in COST_PERIODS]
+    bills = [b for b in _bill_rows(history) if b[3] not in fixed_names]
+    cap = (PROFILE_WEIGHT_CAP * statistics.median([b[2] for b in bills])
+           if bills else 0.0)
+    count = 0
+    for issued, due, gross, _ in bills:
+        amount = min(gross, cap)
+        i = next(n for n, (_, last) in enumerate(COST_PERIODS) if issued.day <= last)
+        sums[i] += amount
+        terms[i].append((max(0, (due - issued).days), amount))
+        count += 1
+    total = sum(sums)
+    if count < PROFILE_MIN_BILLS or total <= 0:
+        return {"measured": False, "bills": count, "periods": []}
+    # A period with a bill or two says little about its terms, and a lone
+    # one-off set them on its own: it takes the terms of all the bills.
+    overall = int(_weighted_median([t for ts in terms for t in ts]))
+    return {"measured": True, "bills": count, "periods": [
+        {"from": first, "to": last, "share": round(sums[i] / total, 4),
+         "terms": (int(_weighted_median(terms[i]))
+                   if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
+        for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
+
+
+def _cost_parts(profile: dict, month: date, today: date,
+                current: bool) -> list[tuple[date, float, str]]:
+    """(pay day, share, which days) for one month's variable costs.
+
+    The current month's remainder is what has not been booked yet, so it is
+    spread over the periods not yet over, and nothing is paid before today.
+    """
+    last_day = monthrange(month.year, month.month)[1]
+    month_end = date(month.year, month.month, last_day)
+    if not profile.get("measured"):
+        return [(max(month_end, today), 1.0, "")]
+    periods = [p for p in profile["periods"]
+               if not current or min(p["to"], last_day) >= today.day]
+    if not periods:
+        return [(max(month_end, today), 1.0, "")]
+    total = sum(p["share"] for p in periods)
+    out = []
+    for p in periods:
+        to = min(p["to"], last_day)
+        mid = date(month.year, month.month, (p["from"] + to) // 2)
+        pay = max(mid + timedelta(days=p["terms"]), today)
+        out.append((pay, p["share"] / total, f"fakturert {p['from']}.–{to}."))
+    return out
 
 
 def _expected_items(invoices: list, bills: list, today: date) -> dict:
@@ -884,11 +993,10 @@ async def build(today: date | None = None) -> dict:
     # Rent, leasing, insurance: certain whether anyone sells anything, so the
     # floor carries them. The expected line's running costs already contain
     # them, and are netted below month by month.
-    fixed_flows, fixed_found = _fixed_bills(supplier_history, today, horizon)
+    fixed_flows, fixed_found, fixed_by_month = _fixed_bills(
+        supplier_history, today, horizon)
     committed += fixed_flows
-    fixed_by_month: dict = {}
-    for f in fixed_flows:
-        fixed_by_month[f["month"]] = fixed_by_month.get(f["month"], 0.0) - f["amount"]
+    profile = _cost_profile(supplier_history, {f["name"] for f in fixed_found})
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
     # was backwards. Being short on receivables flatters the forecast; being
@@ -1043,23 +1151,28 @@ async def build(today: date | None = None) -> dict:
                              "kind": "vat_future",
                              "label": f"Merverdiavgift på fakturering "
                                       f"{MONTH_NAMES[month.month - 1]}"})
-        cost_day = max(month_end, today)
         current = (month.year, month.month) == (today.year, today.month)
         cost = (opex_left * (opex_cash / rates["opex"]) if rates["opex"] else 0.0) \
             if current else opex_cash
-        # The fixed bills of this month are in the committed line already, on
-        # their own due dates. Both gross. Never below zero: fixed bills above
-        # the run-rate mean the rate is low, not that money comes back.
+        # The fixed bills of this month are its cost too, placed in the
+        # committed line on their own dates when they fall inside the window.
+        # Both gross. Never below zero: fixed bills above the run-rate mean
+        # the rate is low, not that money comes back.
         fixed = fixed_by_month.get((month.year, month.month), 0.0)
         cost = max(0.0, cost - fixed)
-        if cost_day < horizon and round(cost) > 0:
-            expected.append({"date": cost_day, "amount": -cost,
-                             "kind": "opex",
-                             "label": f"Driftskostnader "
-                                      f"{MONTH_NAMES[month.month - 1]}"
-                                      f"{', resten' if current else ''}"
-                                      f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-                                      f"{' (inkl. moms)' if opex_vat >= 0.5 else ''}"})
+        # Spread by when the bills are paid. A part paid after the window
+        # leaves it, as sales collected after it do.
+        for pay, share, days in _cost_parts(profile, month, today, current):
+            part = cost * share
+            if pay < horizon and round(part) > 0:
+                expected.append({"date": pay, "amount": -part,
+                                 "kind": "opex",
+                                 "label": f"Driftskostnader "
+                                          f"{MONTH_NAMES[month.month - 1]}"
+                                          f"{', resten' if current else ''}"
+                                          f"{', ' + days if days else ''}"
+                                          f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
+                                          f"{' (inkl. moms)' if opex_vat >= 0.5 else ''}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
@@ -1084,6 +1197,7 @@ async def build(today: date | None = None) -> dict:
     # The recurring bills the committed line now carries, for the owner to
     # check against what he knows he pays.
     data["fixed_costs"] = fixed_found
+    data["assumptions"]["kostnadsprofil"] = profile
     data["assumptions"]["faste_regninger_mnd"] = round(sum(
         f["amount"] / (1 if f["cadence"] == "månedlig" else 3) for f in fixed_found), 2)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
@@ -1456,6 +1570,22 @@ def briefing(data: dict | None) -> str:
                + f", kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
+
+    # When the running costs leave, and what that rests on: it moves which week
+    # is the tight one, so it is said either way.
+    prof = a.get("kostnadsprofil") or {}
+    if prof.get("measured"):
+        spread = ", ".join(f"{round(p['share'] * 100)} % fakturert "
+                           f"{p['from']}.–{min(p['to'], 31)}. og betalt etter "
+                           f"{p['terms']} dager" for p in prof["periods"])
+        out.append(f"**Når driftskostnadene går ut** — fordelt på måneden etter "
+                   f"når selskapets egne leverandørfakturaer pleier å komme og "
+                   f"betales, målt på {prof['bills']} fakturaer det siste året: "
+                   f"{spread}. Det som betales etter de 13 ukene, er ikke med.\n")
+    else:
+        out.append("**Når driftskostnadene går ut** — det finnes for få "
+                   "leverandørfakturaer til å se et mønster, så de løpende "
+                   "kostnadene er lagt på siste dag i hver måned.\n")
 
     # The floor's newest part, named bill by bill so the owner can check it
     # against what he knows he pays — and what it cannot see, said every time.
