@@ -71,6 +71,7 @@ FIXED_TOLERANCE = 0.15
 # when this company's variable bills are dated and paid. See _cost_profile.
 COST_PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))
 PROFILE_MIN_BILLS = 10
+PROFILE_WEIGHT_CAP = 3
 
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
@@ -506,15 +507,21 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     and the amount-weighted median of its terms. The fixed suppliers are
     left out: their bills are placed on their own dates already.
 
+    Each bill weighs by its amount, but no more than PROFILE_WEIGHT_CAP times
+    the median bill: one machine bought on 65 days' terms otherwise set the
+    pattern for every month's cleaning supplies.
+
     Too few bills to read a pattern off, and the month-end lump is kept and
     said to be kept.
     """
     sums = [0.0] * len(COST_PERIODS)
     terms: list[list] = [[] for _ in COST_PERIODS]
+    bills = [b for b in _bill_rows(history) if b[3] not in fixed_names]
+    cap = (PROFILE_WEIGHT_CAP * statistics.median([b[2] for b in bills])
+           if bills else 0.0)
     count = 0
-    for issued, due, amount, supplier in _bill_rows(history):
-        if supplier in fixed_names:
-            continue
+    for issued, due, gross, _ in bills:
+        amount = min(gross, cap)
         i = next(n for n, (_, last) in enumerate(COST_PERIODS) if issued.day <= last)
         sums[i] += amount
         terms[i].append((max(0, (due - issued).days), amount))

@@ -407,6 +407,15 @@ def test_fixed_bills_do_not_shape_the_profile():
     assert data["assumptions"]["kostnadsprofil"]["measured"] is False
 
 
+def test_one_large_bill_does_not_set_the_pattern():
+    """A machine bought once on long terms is not when the supplies are paid."""
+    machine = _bill(900, "Maskin AS", 1_250_000.0, "2026-09-18", terms=65)
+    data = _forecast(MATERIALS, ap=_variable_bills(6, 14) + [machine])
+    periods = data["assumptions"]["kostnadsprofil"]["periods"]
+    early = next(p for p in periods if p["from"] == 1)
+    assert early["share"] > 0.75 and early["terms"] == 14
+
+
 def test_the_rest_of_this_month_falls_in_the_days_still_to_come():
     profile = {"measured": True, "bills": 20, "periods": [
         {"from": 1, "to": 7, "share": 0.5, "terms": 0},
