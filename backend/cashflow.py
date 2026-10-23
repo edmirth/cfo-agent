@@ -72,6 +72,7 @@ FIXED_TOLERANCE = 0.15
 COST_PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))
 PROFILE_MIN_BILLS = 10
 PROFILE_WEIGHT_CAP = 3
+PROFILE_MIN_PERIOD_BILLS = 3
 
 # Two Norwegian payroll facts that break the twelve-identical-months assumption.
 #
@@ -529,9 +530,13 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     total = sum(sums)
     if count < PROFILE_MIN_BILLS or total <= 0:
         return {"measured": False, "bills": count, "periods": []}
+    # A period with a bill or two says little about its terms, and a lone
+    # one-off set them on its own: it takes the terms of all the bills.
+    overall = int(_weighted_median([t for ts in terms for t in ts]))
     return {"measured": True, "bills": count, "periods": [
         {"from": first, "to": last, "share": round(sums[i] / total, 4),
-         "terms": int(_weighted_median(terms[i]))}
+         "terms": (int(_weighted_median(terms[i]))
+                   if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
         for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
 
 

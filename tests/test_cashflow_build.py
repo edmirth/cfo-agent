@@ -414,6 +414,8 @@ def test_one_large_bill_does_not_set_the_pattern():
     periods = data["assumptions"]["kostnadsprofil"]["periods"]
     early = next(p for p in periods if p["from"] == 1)
     assert early["share"] > 0.75 and early["terms"] == 14
+    lone = next(p for p in periods if p["from"] == 15)
+    assert lone["terms"] == 14, "one bill alone does not set its period's terms"
 
 
 def test_the_rest_of_this_month_falls_in_the_days_still_to_come():
