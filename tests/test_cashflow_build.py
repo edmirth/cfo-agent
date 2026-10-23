@@ -429,6 +429,74 @@ def test_the_rest_of_this_month_falls_in_the_days_still_to_come():
     assert [p[1] for p in later] == [0.5, 0.5]
 
 
+# --------------------------------- overdue invoices, counted on by their age
+def _overdue(days, amount=90_000.0, ident=1, name="Kunde"):
+    from datetime import timedelta
+    due = TODAY - timedelta(days=days)
+    return {**_invoice(amount, (due - timedelta(days=30)).isoformat(),
+                       due.isoformat(), ident), "customerName": name}
+
+
+def _by_scenario(data, kind):
+    return {i["scenario"] for i in _kinds(data, kind)}
+
+
+def test_ordinary_lateness_stays_in_the_floor():
+    data = _forecast([], ar=[_overdue(10)])
+    late = _kinds(data, "ar_late")
+    assert len(late) == 3 and _by_scenario(data, "ar_late") == {"committed"}
+    assert round(sum(i["amount"] for i in late)) == 90_000
+
+
+def test_a_month_late_invoice_is_expected_not_committed():
+    """It usually pays, but not reliably and not soon: in the forecast, not
+    in the floor the colour rests on."""
+    data = _forecast([], ar=[_overdue(45)])
+    slow = _kinds(data, "ar_slow")
+    assert len(slow) == 6 and _by_scenario(data, "ar_slow") == {"expected"}
+    assert round(sum(i["amount"] for i in slow)) == 90_000
+    assert [w["start"] for w in data["weeks"] if any(
+        i["kind"] == "ar_slow" for i in w["items"])][0] == "2026-10-26", "from week 3"
+    assert not _kinds(data, "ar_late")
+
+
+def test_an_old_invoice_is_counted_on_in_neither_line_but_named():
+    data = _forecast([], ar=[_overdue(120, name="Gammel AS")])
+    assert not any(i["kind"].startswith("ar") for w in data["weeks"] for i in w["items"])
+    assert data["ar_doubtful"][0]["name"] == "Gammel AS"
+    assert data["ar_doubtful"][0]["days_overdue"] == 120
+    assert round(data["assumptions"]["forfalte_grupper"]["over_90"]) == 90_000
+
+
+def test_every_open_invoice_is_still_there_to_chase():
+    data = _forecast([], ar=[_overdue(10, ident=1), _overdue(45, ident=2),
+                             _overdue(120, ident=3)])
+    assert len(data["ar_open"]) == 3, "the oldest need chasing most of all"
+
+
+def test_a_bankrupt_customer_stays_out_whatever_the_age():
+    import brreg
+    old = brreg.at_risk
+    brreg.at_risk = lambda: {"Konkurs AS": {"excluded": True}}
+    try:
+        data = _forecast([], ar=[_overdue(10, name="Konkurs AS")])
+    finally:
+        brreg.at_risk = old
+    assert not _kinds(data, "ar_late") and not data["ar_doubtful"]
+
+
+def test_the_age_boundaries():
+    from datetime import timedelta
+    def parts(days):
+        due = (TODAY - timedelta(days=days)).isoformat()
+        return cashflow._receipt_parts({"due": due, "amount": 60.0}, TODAY)
+    assert len(parts(30)) == 3, "thirty days is still ordinary lateness"
+    assert len(parts(31)) == 6
+    assert len(parts(90)) == 6
+    assert parts(91) == [], "past ninety days nothing is counted on"
+    assert len(parts(0)) == 1, "due today is not late"
+
+
 # --------------------------------------- a half-read forecast expires early
 class _Broken(_Tripletex):
     """Answers the reports and drops one register, the way a 503 does."""
