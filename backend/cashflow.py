@@ -48,6 +48,15 @@ CACHE_SECONDS = 600
 WEEKS = 13
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
 LATE_SPREAD_WEEKS = 3        # already-overdue invoices land across this many
+# How late an overdue invoice is decides how far it is counted on. Up to
+# LATE_DAYS is ordinary lateness: in both lines, over the next three weeks.
+# Up to DOUBTFUL_DAYS it usually pays, but not reliably and not soon: in the
+# expected line only, over SLOW_WEEKS. Beyond that it is not counted on at all
+# — money that in practice comes back through debt collection or not at all —
+# and is named instead, so it is chased rather than forecast.
+LATE_DAYS = 30
+DOUBTFUL_DAYS = 90
+SLOW_WEEKS = (3, 8)
 PAY_LAG_DAYS = 7             # customers pay this late even when not "late"
 # No WITHHOLDING_SHARE any more. Until 2026 the tax withheld from wages was held
 # back and settled on a bimonthly term, so only the net left on pay day. From
@@ -307,15 +316,30 @@ def _receipt_parts(inv: dict, today: date) -> list[tuple[date, float]] | None:
     forecast both come from here, so a miss is measured against what the
     forecast actually said.
     """
+    late = _days_overdue(inv, today)
+    if late is None:
+        return None
+    if late > DOUBTFUL_DAYS:
+        return []
+    if late > LATE_DAYS:
+        first, last = SLOW_WEEKS
+        per = inv["amount"] / (last - first + 1)
+        return [(today + timedelta(days=7 * w), per) for w in range(first, last + 1)]
+    if late > 0:
+        per = inv["amount"] / LATE_SPREAD_WEEKS
+        return [(today + timedelta(days=7 * (w + 1)), per)
+                for w in range(LATE_SPREAD_WEEKS)]
+    return [(date.fromisoformat(inv["due"]) + timedelta(days=PAY_LAG_DAYS),
+             inv["amount"])]
+
+
+def _days_overdue(inv: dict, today: date) -> int | None:
+    """Days past due, 0 for one not yet due, None without a due date."""
     try:
         due = date.fromisoformat(inv["due"])
     except (ValueError, TypeError, KeyError):
         return None
-    if due < today:
-        per = inv["amount"] / LATE_SPREAD_WEEKS
-        return [(today + timedelta(days=7 * (w + 1)), per)
-                for w in range(LATE_SPREAD_WEEKS)]
-    return [(due + timedelta(days=PAY_LAG_DAYS), inv["amount"])]
+    return max(0, (today - due).days)
 
 
 def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
@@ -332,11 +356,18 @@ def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
 def _schedule_receipts(invoices: list, today: date) -> list:
     """Customer invoices as flows. Not-yet-due ones keep their own line;
     overdue ones are pooled into one line a week, since the spread is ours and
-    a line per invoice per week would bury the table."""
-    flows, overdue = [], []
+    a line per invoice per week would bury the table.
+
+    Those 31-90 days late come back as `ar_slow`, which belongs in the
+    expected line only; the caller splits them off. Those later still have no
+    flow at all."""
+    flows, overdue, slow = [], [], []
     for inv in invoices:
         parts = _receipt_parts(inv, today)
-        if parts is None:
+        if not parts:
+            continue
+        if (_days_overdue(inv, today) or 0) > LATE_DAYS:
+            slow.append(parts)
             continue
         if len(parts) > 1:
             overdue.append((inv, parts))
@@ -351,6 +382,15 @@ def _schedule_receipts(invoices: list, today: date) -> list:
                           "kind": "ar_late",
                           "label": f"Forfalte fakturaer ({len(overdue)} stk), "
                                    f"fordelt over {LATE_SPREAD_WEEKS} uker"})
+    if slow:
+        first, last = SLOW_WEEKS
+        for n, w in enumerate(range(first, last + 1)):
+            flows.append({"date": today + timedelta(days=7 * w),
+                          "amount": sum(p[n][1] for p in slow),
+                          "kind": "ar_slow",
+                          "label": f"Fakturaer {LATE_DAYS + 1}–{DOUBTFUL_DAYS} "
+                                   f"dager på overtid ({len(slow)} stk), "
+                                   f"fordelt over uke {first}–{last}"})
     return flows
 
 
@@ -982,7 +1022,21 @@ async def build(today: date | None = None) -> dict:
     committed: list[dict] = []
     expected: list[dict] = []
 
-    committed += _schedule_receipts(ar_due, today)
+    receipts = _schedule_receipts(ar_due, today)
+    committed += [f for f in receipts if f["kind"] != "ar_slow"]
+    expected += [f for f in receipts if f["kind"] == "ar_slow"]
+    # The ones not counted on at all, named so they are chased.
+    ar_doubtful = [{**i, "days_overdue": _days_overdue(i, today)} for i in ar_due
+                   if (_days_overdue(i, today) or 0) > DOUBTFUL_DAYS]
+    ar_doubtful.sort(key=lambda i: -i["amount"])
+    ages = {"i_rute": 0.0, "inntil_30": 0.0, "31_90": 0.0, "over_90": 0.0}
+    for i in ar_due:
+        late = _days_overdue(i, today)
+        if late is None:
+            continue
+        key = ("i_rute" if late == 0 else "inntil_30" if late <= LATE_DAYS
+               else "31_90" if late <= DOUBTFUL_DAYS else "over_90")
+        ages[key] += i["amount"]
     if ar_residual:
         per = ar_residual / LATE_SPREAD_WEEKS
         for w in range(LATE_SPREAD_WEEKS):
@@ -1208,6 +1262,8 @@ async def build(today: date | None = None) -> dict:
     # Invoices to customers in trouble, held out or not, for their cards; and
     # what could not be checked, for the clean-up list.
     data["ar_at_risk"] = ar_at_risk
+    data["ar_doubtful"] = ar_doubtful
+    data["assumptions"]["forfalte_grupper"] = {k: round(v, 2) for k, v in ages.items()}
     data["register"] = brreg.loose_ends({i["name"] for i in ar_open})
     # Whether that list is the whole book. An empty list from a failed call
     # reads exactly like a book with nobody late, and cards.py closes every
@@ -1570,6 +1626,31 @@ def briefing(data: dict | None) -> str:
                + f", kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
+
+    # How far the overdue book is counted on, by age. Said whenever any of it
+    # is held back, because the owner will otherwise count it himself.
+    ages = a.get("forfalte_grupper") or {}
+    if ages.get("31_90") or ages.get("over_90"):
+        parts = []
+        if ages.get("31_90"):
+            parts.append(f"{_kr(ages['31_90'])} kr er {LATE_DAYS + 1}–"
+                         f"{DOUBTFUL_DAYS} dager på overtid og ligger bare i den "
+                         f"forventede linjen, fordelt over uke {SLOW_WEEKS[0]}–"
+                         f"{SLOW_WEEKS[1]}")
+        if ages.get("over_90"):
+            named = ", ".join(
+                f"{i['name']} {_kr(i['amount'])} kr ({i['days_overdue']} dager)"
+                for i in (data.get("ar_doubtful") or [])[:5])
+            parts.append(f"{_kr(ages['over_90'])} kr er mer enn {DOUBTFUL_DAYS} "
+                         f"dager på overtid og er ikke regnet med i noen av "
+                         f"linjene: {named}")
+        out.append(f"**Forfalte kundefakturaer, etter alder** — det som er "
+                   f"inntil {LATE_DAYS} dager på overtid er vanlig forsinkelse "
+                   f"og ligger i begge linjene. " + "; ".join(parts) + ". "
+                   f"Kommer de gamle pengene inn, er det en gevinst prognosen "
+                   f"ikke har lovet. Say this when he asks what is owed to him: "
+                   f"the money is still his to chase, it is just not counted "
+                   f"on.\n")
 
     # When the running costs leave, and what that rests on: it moves which week
     # is the tight one, so it is said either way.
