@@ -34,6 +34,7 @@ import company
 import forecasts
 import scoring
 import freshness
+import payment_habits
 import workdays
 from mcp_client import mcp
 import saldobalanse
@@ -318,7 +319,8 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     return out, warnings, complete
 
 
-def _receipt_parts(inv: dict, today: date) -> list[tuple[date, float]] | None:
+def _receipt_parts(inv: dict, today: date,
+                   habits: dict | None = None) -> list[tuple[date, float]] | None:
     """When one customer invoice's money is expected to land: (date, amount).
 
     An invoice that is already overdue will not arrive the day you notice it,
@@ -332,6 +334,7 @@ def _receipt_parts(inv: dict, today: date) -> list[tuple[date, float]] | None:
     late = _days_overdue(inv, today)
     if late is None:
         return None
+    due = date.fromisoformat(inv["due"])
     if late > DOUBTFUL_DAYS:
         return []
     if late > LATE_DAYS:
@@ -339,11 +342,18 @@ def _receipt_parts(inv: dict, today: date) -> list[tuple[date, float]] | None:
         per = inv["amount"] / (last - first + 1)
         return [(today + timedelta(days=7 * w), per) for w in range(first, last + 1)]
     if late > 0:
+        # A customer who always pays three weeks late and is one week late now
+        # is not late by his own lights: his money comes when it usually does.
+        usual = payment_habits.own(habits, inv.get("name") or "")
+        if usual is not None and late < usual:
+            return [(due + timedelta(days=usual), inv["amount"])]
         per = inv["amount"] / LATE_SPREAD_WEEKS
         return [(today + timedelta(days=7 * (w + 1)), per)
                 for w in range(LATE_SPREAD_WEEKS)]
-    return [(date.fromisoformat(inv["due"]) + timedelta(days=PAY_LAG_DAYS),
-             inv["amount"])]
+    # Not yet due: the customer's own lateness, the company's where he has too
+    # little history, and the old seven days where there is none at all.
+    lag = payment_habits.lag(habits, inv.get("name") or "", PAY_LAG_DAYS)
+    return [(due + timedelta(days=lag), inv["amount"])]
 
 
 def _days_overdue(inv: dict, today: date) -> int | None:
@@ -366,7 +376,8 @@ def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
     return [(max(due, today), bill["amount"])]
 
 
-def _schedule_receipts(invoices: list, today: date) -> list:
+def _schedule_receipts(invoices: list, today: date,
+                       habits: dict | None = None) -> list:
     """Customer invoices as flows. Not-yet-due ones keep their own line;
     overdue ones are pooled into one line a week, since the spread is ours and
     a line per invoice per week would bury the table.
@@ -376,7 +387,7 @@ def _schedule_receipts(invoices: list, today: date) -> list:
     flow at all."""
     flows, overdue, slow = [], [], []
     for inv in invoices:
-        parts = _receipt_parts(inv, today)
+        parts = _receipt_parts(inv, today, habits)
         if not parts:
             continue
         if (_days_overdue(inv, today) or 0) > LATE_DAYS:
@@ -618,7 +629,8 @@ def _cost_parts(profile: dict, month: date, today: date,
     return out
 
 
-def _expected_items(invoices: list, bills: list, today: date) -> dict:
+def _expected_items(invoices: list, bills: list, today: date,
+                    habits: dict | None = None) -> dict:
     """Every open invoice and bill, with when this forecast expects it.
 
     Kept with the saved forecast, so that when it is scored a miss can be put
@@ -633,7 +645,8 @@ def _expected_items(invoices: list, bills: list, today: date) -> dict:
                             "amount": round(r["amount"], 2),
                             "parts": [[d.isoformat(), round(a, 2)] for d, a in parts]})
         return out
-    return {"ar": items(invoices, _receipt_parts), "ap": items(bills, _payment_parts)}
+    return {"ar": items(invoices, lambda r, t: _receipt_parts(r, t, habits)),
+            "ap": items(bills, _payment_parts)}
 
 
 def _merged(rows: list, columns: list, ranges) -> list:
@@ -963,18 +976,20 @@ async def build(today: date | None = None) -> dict:
 
     issued: dict = {}
     supplier_history: list = []
-    balance, com, ar, ap, prior = await asyncio.gather(
+    customer_history: list = []
+    balance, com, ar, ap, prior, paid = await asyncio.gather(
         saldobalanse.monthly(mcp, start_year, today.isoformat()),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
                        "amountOutstanding", "customerName", issued,
                        # Kroner already, for a foreign-currency invoice too.
-                       in_kroner=True),
+                       in_kroner=True, history=customer_history),
         # Supplier rows are keyed by voucherId, not id.
         _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
                        "voucherId", "outstandingAmount", "supplierName",
                        history=supplier_history),
         _prior(),
+        payment_habits.payments(mcp, today),
         return_exceptions=True,
     )
     if isinstance(balance, Exception):
@@ -1011,6 +1026,17 @@ async def build(today: date | None = None) -> dict:
         history = (_rows(prior),
                    [c.get("name") for c in prior["table"].get("columns", [])])
     season = _seasons(history)
+    # How late each customer pays, from a year of payments on 1500. Without
+    # it every customer is the old seven days late, and that is said.
+    if isinstance(paid, Exception):
+        log.warning("Cashflow: innbetalingene kunne ikke leses: %s", paid)
+        paid = None
+    habits = payment_habits.habits(customer_history, paid)
+    if paid is None or not habits["complete"]:
+        warnings.append(
+            "Innbetalingene på konto 1500 kunne ikke leses helt, så "
+            "betalingsvanene er ufullstendige; kunder uten nok historikk er "
+            f"regnet med {PAY_LAG_DAYS} dager etter forfall.")
     rates, rate_notes = _run_rates(rows, columns, prior_months, season,
                                    (*history, last_year) if history else None)
     warnings += rate_notes
@@ -1117,7 +1143,7 @@ async def build(today: date | None = None) -> dict:
     committed: list[dict] = []
     expected: list[dict] = []
 
-    receipts = _schedule_receipts(ar_due, today)
+    receipts = _schedule_receipts(ar_due, today, habits)
     committed += [f for f in receipts if f["kind"] != "ar_slow"]
     expected += [f for f in receipts if f["kind"] == "ar_slow"]
     # The ones not counted on at all, named so they are chased.
@@ -1368,7 +1394,8 @@ async def build(today: date | None = None) -> dict:
     data["assumptions"]["faste_regninger_mnd"] = round(sum(
         f["amount"] / (1 if f["cadence"] == "månedlig" else 3) for f in fixed_found), 2)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
-    data["items"] = _expected_items(ar_due, ap_due, today)
+    data["items"] = _expected_items(ar_due, ap_due, today, habits)
+    data["betalingsvaner"] = habits
     # What is still owed after the bank's unbooked receipts: a customer who
     # has paid must not be sent a reminder because the books are behind.
     data["ar_open"] = ar_due
@@ -1768,6 +1795,24 @@ def briefing(data: dict | None) -> str:
                    f"ikke har lovet. Say this when he asks what is owed to him: "
                    f"the money is still his to chase, it is just not counted "
                    f"on.\n")
+
+    # When the customers' money comes: their own habits, said with the slowest.
+    h = data.get("betalingsvaner") or {}
+    if h.get("measured"):
+        slow = sorted(((n, c["days"]) for n, c in (h.get("customers") or {}).items()
+                       if c["days"] > 0), key=lambda x: -x[1])[:3]
+        named = (" De tregeste: " + ", ".join(f"{n} {d} dager" for n, d in slow) + "."
+                 if slow else "")
+        overall = (f"kundene betaler vanligvis {h['company']} dager etter "
+                   f"forfall, og " if h.get("company") is not None else "")
+        out.append(f"**Når kundene betaler** — målt på et år med innbetalinger: "
+                   f"{overall}hver kunde med minst {payment_habits.MIN_CUSTOMER} betalte "
+                   f"fakturaer er lagt inn med sin egen vane.{named} Fakturaer "
+                   f"som ikke er forfalt, er lagt på forfall pluss kundens vane.\n")
+    else:
+        out.append(f"**Når kundene betaler** — det er for få innbetalinger å se "
+                   f"et mønster i, så alle kunder er lagt inn med "
+                   f"{PAY_LAG_DAYS} dager etter forfall.\n")
 
     # The months are not alike, and the owner should hear which ones are not.
     seasons = a.get("sesong") or {}

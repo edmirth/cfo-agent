@@ -129,16 +129,18 @@ KVARNHEIM_DEVELOPER = "Ospelia Utvikling AS"
 
 
 def _kvarnheim_developer_late(b, rng):
-    """The developer's last on-account invoice is a month past due, and the
-    one before it was paid late. The work goes on, so the next one is out."""
+    """The developer's on-account invoice from two months ago is a month past
+    due — far past his usual week or so, which the forecast reads off his
+    payments — so it is out of the floor, and the floor runs dry without it.
+    The work goes on, so the later ones are out too."""
     devs = sorted((i for i in b.invoices if i.customer == KVARNHEIM_DEVELOPER),
                   key=lambda i: i.date)
     for inv in devs:
         days_late = (b.today - inv.due).days
-        if 20 <= days_late <= 40:
+        if 31 <= days_late <= 61:
             inv.paid = None
             inv.comment = "A-konto 7, Ospelia trinn 2"
-        elif days_late < 20:
+        elif days_late < 31:
             inv.paid = None
 
 
