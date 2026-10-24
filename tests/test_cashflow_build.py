@@ -35,13 +35,21 @@ FULL_YEAR = ["Inngående balanse"] + [c for c in COLUMNS[1:-1]] + ["Nov", "Des",
 
 
 class _Tripletex:
-    def __init__(self, rows, ar=(), ap=(), last=None):
+    def __init__(self, rows, ar=(), ap=(), last=None, postings=None):
         self.rows, self.ar, self.ap = rows, list(ar), list(ap)
         self.last = last          # last year's ledger, a whole year of columns
+        self.postings = postings  # 1500 postings; an Exception to fail the read
         self.asked = []
 
     async def call(self, tool, args=None):
         self.asked.append(tool)
+        if tool == "search_ledger_postings" and self.postings is not None:
+            if isinstance(self.postings, Exception):
+                raise self.postings
+            a = args or {}
+            hits = [p for p in self.postings
+                    if a["dateFrom"] <= p["date"] < a["dateTo"]]
+            return {"postings": hits if not a.get("from") else [], "hasMore": False}
         if (tool == "fetch_report" and self.last is not None
                 and str((args or {}).get("period_start", "")).startswith(str(TODAY.year - 1))):
             return {"table": {"rows": self.last,
@@ -57,9 +65,11 @@ class _Tripletex:
 
 
 def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
-              last=None):
+              last=None, postings=None):
     """Run `build` against a stubbed ledger. Returns the payload."""
-    stub = _Tripletex(rows, ar, ap, last)
+    import payment_habits
+    payment_habits._cache.clear()
+    stub = _Tripletex(rows, ar, ap, last, postings)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
@@ -75,6 +85,7 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     finally:
         cashflow.mcp, cashflow.commitments.cached = old_mcp, old_cached
         company.setting = old_setting
+        payment_habits._cache.clear()
 
 
 def _kinds(data, kind):
@@ -613,6 +624,98 @@ def test_costs_have_their_own_season_and_the_fixed_bills_still_come_off():
     nov = _opex(data, "november")
     expected_nov = per["november"] - 60_000
     assert (not nov and expected_nov <= 0) or round(-nov[0]["amount"]) == expected_nov
+
+
+# -------------------------------------------- each customer's own lateness
+def _paid_history(name, days_late, dues, amount=100_000.0, first_id=500):
+    """Paid invoices and the payments that closed them, `days_late` after due."""
+    from datetime import timedelta
+    rows, pays = [], []
+    for n, due in enumerate(dues):
+        d = date.fromisoformat(due)
+        rows.append({**_invoice(0.0, (d - timedelta(days=30)).isoformat(), due,
+                                first_id + n), "customerName": name, "amount": amount})
+        pays.append({"date": (d + timedelta(days=days_late)).isoformat(),
+                     "amount": -amount, "customerName": name})
+    return rows, pays
+
+
+DUES = ["2026-05-31", "2026-06-30", "2026-07-31", "2026-08-31"]
+
+
+def _open_invoice(name, due, ident=900, amount=80_000.0):
+    from datetime import timedelta
+    d = date.fromisoformat(due)
+    return {**_invoice(amount, (d - timedelta(days=30)).isoformat(), due, ident),
+            "customerName": name, "amount": amount}
+
+
+def _expected_at(data, number):
+    return [p[0] for i in data["items"]["ar"] if i["number"] == str(number)
+            for p in i["parts"]]
+
+
+def test_a_customer_who_pays_late_is_expected_late():
+    rows, pays = _paid_history("Treg AS", 20, DUES)
+    data = _forecast([], ar=rows + [_open_invoice("Treg AS", "2026-10-20")],
+                     postings=pays)
+    assert _expected_at(data, 900) == ["2026-11-09"], "due plus his own twenty days"
+    assert data["betalingsvaner"]["customers"]["Treg AS"] == {"days": 20, "invoices": 4}
+    assert "Treg AS 20 dager" in cashflow.briefing(data)
+
+
+def test_a_customer_with_little_history_takes_the_companys():
+    rows, pays = _paid_history("Fast AS", 10, DUES + ["2026-09-30"])
+    few, few_pays = _paid_history("Ny AS", 30, DUES[:2], first_id=600)
+    data = _forecast([], ar=rows + few + [_open_invoice("Ny AS", "2026-10-20")],
+                     postings=pays + few_pays)
+    assert "Ny AS" not in data["betalingsvaner"]["customers"]
+    assert data["betalingsvaner"]["company"] == 10
+    assert _expected_at(data, 900) == ["2026-10-30"]
+
+
+def test_without_history_the_old_seven_days_stay():
+    data = _forecast([], ar=[_open_invoice("Kunde", "2026-10-20")], postings=[])
+    assert _expected_at(data, 900) == ["2026-10-27"]
+    assert data["betalingsvaner"]["measured"] is False
+
+
+def test_payments_close_the_oldest_invoice_first_and_early_counts_as_none():
+    import payment_habits
+    invoices = [{"dueDate": "2026-01-31", "amount": 100.0, "amountOutstanding": 0},
+                {"dueDate": "2026-02-28", "amount": 100.0, "amountOutstanding": 0}]
+    paid = [{"date": "2025-12-20", "amount": 50.0},     # an invoice from before the year
+            {"date": "2026-01-25", "amount": 100.0},    # early
+            {"date": "2026-03-10", "amount": 100.0}]
+    assert payment_habits._matched(invoices, paid) == [(0, 100.0), (10, 100.0)]
+
+
+def test_lateness_is_held_at_sixty_days():
+    import payment_habits
+    rows, pays = _paid_history("Svært treg AS", 90, ["2026-01-31", "2026-02-28",
+                                                      "2026-03-31", "2026-04-30",
+                                                      "2026-05-31"])
+    pays = [{"customer": p["customerName"], "date": p["date"], "amount": -p["amount"]}
+            for p in pays]
+    h = payment_habits.habits(rows, {"payments": pays, "complete": True})
+    assert h["customers"]["Svært treg AS"]["days"] == 60 and h["company"] == 60
+
+
+def test_a_little_late_by_his_own_lights_is_expected_when_he_usually_pays():
+    """Five days past due from a customer who pays twenty days late: not
+    spread over three weeks as if something were wrong."""
+    rows, pays = _paid_history("Treg AS", 20, DUES)
+    data = _forecast([], ar=rows + [_open_invoice("Treg AS", "2026-09-30")],
+                     postings=pays)
+    assert _expected_at(data, 900) == ["2026-10-20"], "fifteen days from today"
+    assert not _kinds(data, "ar_late")
+
+
+def test_a_failed_payment_read_keeps_the_forecast():
+    data = _forecast([], ar=[_open_invoice("Kunde", "2026-10-20")],
+                     postings=RuntimeError("Tripletex svarte ikke"))
+    assert _expected_at(data, 900) == ["2026-10-27"]
+    assert any("Innbetalingene på konto 1500" in w for w in data["warnings"])
 
 
 # --------------------------------------- a half-read forecast expires early
