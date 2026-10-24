@@ -719,9 +719,10 @@ def test_a_failed_payment_read_keeps_the_forecast():
 
 
 # ------------------------------- sales not yet invoiced, as this company invoices
-def _invoiced_on_the_10th(late=None, n=11):
+def _invoiced_on_the_10th(late=None, n=11, amount=10_000.0):
     """A year of invoices dated the 10th on thirty days, all paid; with
-    `late`, the payments that closed them that many days after due."""
+    `late`, the payments that closed them that many days after due. Small,
+    because the stub hands every row back as this month's invoicing too."""
     from datetime import timedelta
     rows, pays = [], []
     months = [(2025, 11), (2025, 12)] + [(2026, m) for m in range(1, 10)]
@@ -729,10 +730,10 @@ def _invoiced_on_the_10th(late=None, n=11):
         issued = date(y, m, 10)
         due = issued + timedelta(days=30)
         rows.append({**_invoice(0.0, issued.isoformat(), due.isoformat(), 700 + k),
-                     "customerName": "Kunde", "amount": 100_000.0})
+                     "customerName": "Kunde", "amount": amount})
         if late is not None:
             pays.append({"date": (due + timedelta(days=late)).isoformat(),
-                         "amount": -100_000.0, "customerName": "Kunde"})
+                         "amount": -amount, "customerName": "Kunde"})
     return rows, pays
 
 
@@ -762,6 +763,8 @@ def test_too_few_invoices_keep_the_month_end():
     rows, _ = _invoiced_on_the_10th(n=5)
     data = _forecast([REVENUE], ar=rows)
     assert data["assumptions"]["fakturaprofil"]["measured"] is False
+    assert _sales_weeks(data, "oktober") == [("2026-12-07", 450_000)], \
+        "31 October + 30 + 7, as before"
     assert [i["label"] for i in _october_sales(data)] == ["Fakturering oktober, betalt"]
 
 
@@ -769,7 +772,8 @@ def test_this_months_remainder_follows_the_profile():
     """On the 5th, October's invoicing is still to go out on the 10th."""
     rows, _ = _invoiced_on_the_10th()
     data = _forecast([REVENUE], ar=rows)
-    assert _sales_weeks(data, "oktober") == [("2026-11-16", 500_000)], "10 Oct + 30 + 7"
+    assert _sales_weeks(data, "oktober") == [("2026-11-16", 390_000)], \
+        "10 October + 30 + 7, less what the stub says is already out"
 
 
 
