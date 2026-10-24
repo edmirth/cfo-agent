@@ -30,12 +30,13 @@ def _lindeskar_late_customer(b, rng):
 
 
 def _lindeskar_machines(b, rng):
-    """New scrubber-dryers are delivered and the bill is in: due early in
-    December, the week the VAT term is paid too."""
+    """New scrubber-dryers are delivered and the bill is in: due in seven
+    weeks, before the next month's invoicing has been paid — the dip that
+    makes the week yellow, late in the window."""
     from demo.books import Bill
     on = b.today - timedelta(days=6)
     b.bills.append(Bill(len(b.bills) + 1, 0, f"{rng.randint(100000, 999999)}", on,
-                        b.today + timedelta(days=65), "Renfix Engros AS",
+                        b.today + timedelta(days=52), "Renfix Engros AS",
                         b.suppliers["Renfix Engros AS"]["id"], 1250, 1_250_000.0, True, None))
 
 
@@ -92,7 +93,7 @@ LINDESKAR = Spec(
     company_md="""---
 lonn_utbetalingsdag: 20
 ferie_utbetalingsmnd: 6
-likviditetsgulv_kr: 2 000 000
+likviditetsgulv_kr: 2 500 000
 purring_etter_dager: 14
 lonnsandel_mal_pct: 75
 ---

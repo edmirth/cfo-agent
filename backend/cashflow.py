@@ -579,17 +579,55 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     Too few bills to read a pattern off, and the month-end lump is kept and
     said to be kept.
     """
+    return _profile([(i, d, a) for i, d, a, who in _bill_rows(history)
+                     if who not in fixed_names])
+
+
+def _sales_rows(history: list):
+    """(issued, due, amount) for every customer invoice in the history that
+    stands: a credited invoice and its credit note are left out together."""
+    for row in history:
+        if row.get("isCredited"):
+            continue
+        try:
+            issued = date.fromisoformat(row["invoiceDate"])
+            due = date.fromisoformat(row["dueDate"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        amount = float(row.get("amount") or row.get("amountCurrency") or 0)
+        if amount > 0:
+            yield issued, due, amount
+
+
+def _sales_profile(history: list) -> dict:
+    """When in the month this company's invoices are dated, and on what
+    terms — the same reading `_cost_profile` makes of the supplier bills.
+
+    New sales were assumed invoiced on the last day of every month, on the
+    median terms of the open invoices: a company invoicing on the 10th had
+    its money placed three weeks late, and October's invoicing paid in
+    January fell outside the window altogether.
+    """
+    return _profile(list(_sales_rows(history)))
+
+
+def _profile(bills: list[tuple[date, date, float]]) -> dict:
+    """Shares and terms by COST_PERIODS from (issued, due, amount) rows."""
     sums = [0.0] * len(COST_PERIODS)
     terms: list[list] = [[] for _ in COST_PERIODS]
-    bills = [b for b in _bill_rows(history) if b[3] not in fixed_names]
+    # The day within the period the money is usually dated, not its middle:
+    # a company invoicing on the last workday was placed on the 26th, five
+    # days early, and five days decide which week the money lands in.
+    days: list[list] = [[] for _ in COST_PERIODS]
     cap = (PROFILE_WEIGHT_CAP * statistics.median([b[2] for b in bills])
            if bills else 0.0)
     count = 0
-    for issued, due, gross, _ in bills:
+    for issued, due, gross in bills:
         amount = min(gross, cap)
         i = next(n for n, (_, last) in enumerate(COST_PERIODS) if issued.day <= last)
         sums[i] += amount
         terms[i].append((max(0, (due - issued).days), amount))
+        days[i].append((issued.day, amount))
         count += 1
     total = sum(sums)
     if count < PROFILE_MIN_BILLS or total <= 0:
@@ -599,6 +637,7 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     overall = int(_weighted_median([t for ts in terms for t in ts]))
     return {"measured": True, "bills": count, "periods": [
         {"from": first, "to": last, "share": round(sums[i] / total, 4),
+         "day": int(_weighted_median(days[i])),
          "terms": (int(_weighted_median(terms[i]))
                    if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
         for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
@@ -623,7 +662,9 @@ def _cost_parts(profile: dict, month: date, today: date,
     out = []
     for p in periods:
         to = min(p["to"], last_day)
-        mid = date(month.year, month.month, (p["from"] + to) // 2)
+        # The usual day where measured; an older profile without one, the middle.
+        mid = date(month.year, month.month,
+                   min(max(p.get("day") or (p["from"] + to) // 2, p["from"]), to))
         pay = max(mid + timedelta(days=p["terms"]), today)
         out.append((pay, p["share"] / total, f"fakturert {p['from']}.–{to}."))
     return out
@@ -1174,6 +1215,11 @@ async def build(today: date | None = None) -> dict:
         supplier_history, today, horizon)
     committed += fixed_flows
     profile = _cost_profile(supplier_history, {f["name"] for f in fixed_found})
+    # And the sales not yet invoiced: when in the month this company invoices,
+    # on what terms, paid as late as its customers usually pay.
+    sales_profile = _sales_profile(customer_history)
+    sales_lag = (habits["company"] if habits.get("company") is not None
+                 else PAY_LAG_DAYS)
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
     # was backwards. Being short on receivables flatters the forecast; being
@@ -1308,7 +1354,6 @@ async def build(today: date | None = None) -> dict:
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
-        landing = month_end + timedelta(days=credit_days + PAY_LAG_DAYS)
         revenue = revenue_in(month.month)
         opex = opex_in(month.month)
         sales_by_month.append({"month": MONTH_NAMES[month.month - 1],
@@ -1319,11 +1364,23 @@ async def build(today: date | None = None) -> dict:
         gross = revenue * (1 + MVA_RATE)
         if (month.year, month.month) == (today.year, today.month):
             gross = max(0.0, gross - invoiced_this_month)
-        if today <= landing < horizon and round(gross) > 0:
-            expected.append({"date": landing, "amount": gross,
-                             "kind": "new_sales",
-                             "label": f"Fakturering {MONTH_NAMES[month.month - 1]}"
-                                      f", betalt"})
+        current = (month.year, month.month) == (today.year, today.month)
+        if sales_profile.get("measured"):
+            # Each period's share, paid its own terms plus the lateness after.
+            # This month's remainder only in the days still to come.
+            parts = [(pay + timedelta(days=sales_lag), share, days)
+                     for pay, share, days in _cost_parts(sales_profile, month,
+                                                         today, current)]
+        else:
+            parts = [(month_end + timedelta(days=credit_days + sales_lag), 1.0, "")]
+        for landing, share, days in parts:
+            amount = gross * share
+            if today <= landing < horizon and round(amount) > 0:
+                expected.append({"date": landing, "amount": amount,
+                                 "kind": "new_sales",
+                                 "label": f"Fakturering {MONTH_NAMES[month.month - 1]}"
+                                          f"{', ' + days.replace('fakturert ', '') if days else ''}"
+                                          f", betalt"})
         # The VAT on that invoicing, whether or not the customer has paid by
         # then — the deadline does not wait for the money. Scheduled even when
         # the receipt itself falls outside the window, because that is the case
@@ -1338,7 +1395,6 @@ async def build(today: date | None = None) -> dict:
                              "kind": "vat_future",
                              "label": f"Merverdiavgift på fakturering "
                                       f"{MONTH_NAMES[month.month - 1]}"})
-        current = (month.year, month.month) == (today.year, today.month)
         cost = (opex_left * ((opex + month_vat) / opex) if opex else 0.0) \
             if current else opex + month_vat
         # The fixed bills of this month are its cost too, placed in the
@@ -1385,6 +1441,7 @@ async def build(today: date | None = None) -> dict:
     # check against what he knows he pays.
     data["fixed_costs"] = fixed_found
     data["assumptions"]["kostnadsprofil"] = profile
+    data["assumptions"]["fakturaprofil"] = {**sales_profile, "forsinkelse_dager": sales_lag}
     data["assumptions"]["sesong"] = {
         k: ({MONTH_NAMES[m - 1]: v for m, v in sorted(idx.items())} if idx else None)
         for k, idx in season.items()}
@@ -1813,6 +1870,23 @@ def briefing(data: dict | None) -> str:
         out.append(f"**Når kundene betaler** — det er for få innbetalinger å se "
                    f"et mønster i, så alle kunder er lagt inn med "
                    f"{PAY_LAG_DAYS} dager etter forfall.\n")
+
+    # When the sales not yet invoiced come in, and what that rests on.
+    sp = a.get("fakturaprofil") or {}
+    if sp.get("measured"):
+        spread = ", ".join(f"{round(p['share'] * 100)} % fakturert "
+                           f"{p['from']}.–{min(p['to'], 31)}. med {p['terms']} "
+                           f"dagers frist" for p in sp["periods"])
+        out.append(f"**Ny fakturering** — lagt på måneden slik selskapet "
+                   f"pleier å fakturere, målt på {sp['bills']} fakturaer: "
+                   f"{spread}, betalt {sp['forsinkelse_dager']} dager etter "
+                   f"forfall. Det som betales etter de 13 ukene, er ikke med.\n")
+    else:
+        out.append(f"**Ny fakturering** — for få fakturaer til å se når i "
+                   f"måneden selskapet fakturerer, så den er lagt på siste dag "
+                   f"i måneden med {a['credit_days']} dagers kredittid og "
+                   f"{sp.get('forsinkelse_dager', PAY_LAG_DAYS)} dagers "
+                   f"forsinkelse.\n")
 
     # The months are not alike, and the owner should hear which ones are not.
     seasons = a.get("sesong") or {}

@@ -95,7 +95,7 @@ print("RESULT " + json.dumps(out, ensure_ascii=False, default=str))
 
 
 # The floor each company's company.md sets.
-FLOORS = {"lindeskar": 2_000_000, "kvarnheim": 1_500_000, "aslefjord": 2_000_000}
+FLOORS = {"lindeskar": 2_500_000, "kvarnheim": 1_500_000, "aslefjord": 2_000_000}
 
 
 def _run(slug: str) -> dict:
