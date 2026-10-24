@@ -2,7 +2,7 @@
 # Fakta som beregningene bruker. Tall, én per linje.
 # Fjern skigarden (#) foran en linje for å slå den på.
 
-lonn_etterskuddsvis_mnd: 1     # lønn i september gjelder arbeid utført i august
+# lonn_etterskuddsvis_mnd: 1   # lønn i september gjelder arbeid utført i august
 # lonn_utbetalingsdag: 10      # hvilken dag i måneden lønnen kjøres
 # kredittid_dager: 45          # settes bare hvis fakturaene ikke sier det selv
 # ferie_utbetalingsmnd: 6      # måneden feriepengene utbetales
@@ -15,7 +15,7 @@ lonn_etterskuddsvis_mnd: 1     # lønn i september gjelder arbeid utført i augu
 # lonnsandel_mal_pct: 75         # målet for lønn som andel av omsetningen
 ---
 
-# Slik fungerer Ullensaker Renholdsteknikk
+# Slik fungerer {selskap}
 
 <!-- MAL. Denne filen kopieres til state/company.md første gang, og
      etter det er det state/company.md som gjelder — den redigeres i
@@ -28,10 +28,11 @@ Vanlig norsk, ingen regnskapsord — det er ikke et skjema.
 
 ## Lønn
 
-Lønn utbetales én måned etterskuddsvis. Lønnen som bokføres i september er for
-arbeid utført i august. Det betyr at lønnsandelen i én enkelt måned
-sammenligner lønn og omsetning fra to forskjellige måneder, og at en måned der
-faktureringen ikke er kjørt ser dramatisk mye verre ut enn den er.
+<!-- Når kjøres lønnen, og for hvilken måned? Betales den etterskuddsvis
+     (lønnen i september er for arbeid utført i august), slå på
+     lonn_etterskuddsvis_mnd øverst. Uten det tror CFO-en at lønn og
+     omsetning i samme måned hører sammen, og en måned der faktureringen
+     ikke er kjørt ser mye verre ut enn den er. -->
 
 ## Kundene
 

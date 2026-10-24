@@ -218,7 +218,9 @@ def _seed() -> None:
         return
     try:
         COMPANY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        COMPANY_FILE.write_text(TEMPLATE.read_text(encoding="utf-8"),
+        # The starter is every customer's; only the name in the heading is theirs.
+        COMPANY_FILE.write_text(TEMPLATE.read_text(encoding="utf-8")
+                                .replace("{selskap}", config.COMPANY_NAME),
                                 encoding="utf-8")
         log.info("Opprettet state/company.md fra malen")
     except OSError as exc:
