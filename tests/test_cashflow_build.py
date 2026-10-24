@@ -30,13 +30,22 @@ def _cum(path, monthly):
     return _row(path, cells + [running])
 
 
+FULL_YEAR = ["Inngående balanse"] + [c for c in COLUMNS[1:-1]] + ["Nov", "Des",
+                                                                 "Utgående saldo"]
+
+
 class _Tripletex:
-    def __init__(self, rows, ar=(), ap=()):
+    def __init__(self, rows, ar=(), ap=(), last=None):
         self.rows, self.ar, self.ap = rows, list(ar), list(ap)
+        self.last = last          # last year's ledger, a whole year of columns
         self.asked = []
 
     async def call(self, tool, args=None):
         self.asked.append(tool)
+        if (tool == "fetch_report" and self.last is not None
+                and str((args or {}).get("period_start", "")).startswith(str(TODAY.year - 1))):
+            return {"table": {"rows": self.last,
+                              "columns": [{"name": c} for c in FULL_YEAR]}}
         if tool == "fetch_report":
             return {"table": {"rows": self.rows,
                               "columns": [{"name": c} for c in COLUMNS]}}
@@ -47,9 +56,10 @@ class _Tripletex:
         return {}
 
 
-def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None):
+def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
+              last=None):
     """Run `build` against a stubbed ledger. Returns the payload."""
-    stub = _Tripletex(rows, ar, ap)
+    stub = _Tripletex(rows, ar, ap, last)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
@@ -530,6 +540,79 @@ def test_a_tied_ledger_has_no_unknown_receivables():
     data = _forecast([_row("1500 Kundefordringer", [0, 90_000, 90_000])],
                      ar=[_invoice(90_000.0, "2026-09-20", "2026-10-20")])
     assert data["assumptions"]["ukjente_fordringer"] == {"belop": 0.0, "behandlet": None}
+
+
+# ------------------------------------------- the months are not alike
+def _sales(monthly, path="3000 Salgsinntekt"):
+    return _cum(path, [-v for v in monthly])
+
+
+# Last year: October 20 % above an average month, December 20 % below.
+SEASONAL_YEAR = [_sales([400_000.0] * 9 + [480_000.0, 400_000.0, 320_000.0])]
+
+
+def _per_month(data, key="omsetning_per_maned"):
+    return {m["month"]: round(m["amount"]) for m in data["assumptions"][key]}
+
+
+def test_last_years_season_shapes_this_years_months_at_half_strength():
+    data = _forecast([REVENUE], last=SEASONAL_YEAR)
+    sales = _per_month(data)
+    assert sales["oktober"] == 440_000, "20 % above, taken half: 10 %"
+    assert sales["november"] == 400_000
+    assert sales["desember"] == 360_000
+    assert data["assumptions"]["sesong"]["revenue"]["desember"] == 0.9
+    assert "Sesong" in cashflow.briefing(data)
+
+
+def test_the_vat_and_the_sales_follow_the_season():
+    data = _forecast([REVENUE], last=SEASONAL_YEAR)
+    assert round(_october_vat(data)[0]["amount"]) == -110_000
+    assert round(_october_sales(data)[0]["amount"]) == 550_000
+
+
+def test_without_twelve_months_last_year_every_month_is_alike():
+    """The stub's own ledger has ten months: no season to read."""
+    data = _forecast([REVENUE])
+    assert data["assumptions"]["sesong"]["revenue"] is None
+    assert set(_per_month(data).values()) == {400_000}
+    assert "hver måned er lagt inn likt" in cashflow.briefing(data)
+
+
+def test_an_extreme_month_is_held_within_the_limits():
+    rows = [_sales([100_000.0] * 11 + [1_000_000.0])]
+    season = cashflow._seasons((rows, FULL_YEAR))["revenue"]
+    assert season[12] == 1.25, "held at 1.5, then taken half"
+    assert season[1] == round(1 + 0.5 * (100_000 / 175_000 - 1), 4)
+
+
+def test_the_level_is_the_last_six_months_so_growth_shows():
+    """Five months at 400 000 and the last four at 440 000: the whole-year
+    average lagged the growth, the last six months do not."""
+    this_year = [_sales([400_000.0] * 5 + [440_000.0] * 4 + [0.0])]
+    flat = [_sales([400_000.0] * 12)]
+    data = _forecast(this_year, last=flat)
+    assert round(data["assumptions"]["monthly_revenue"]) == 426_667
+    old = _forecast(this_year)
+    assert round(old["assumptions"]["monthly_revenue"]) == 417_778
+
+
+def test_an_unposted_month_is_still_left_out_of_the_level():
+    this_year = [_sales([400_000.0] * 8 + [0.0, 0.0])]
+    data = _forecast(this_year, last=[_sales([400_000.0] * 12)])
+    assert round(data["assumptions"]["monthly_revenue"]) == 400_000
+    assert any("Sept" in w and "holdt utenfor" in w for w in data["warnings"])
+
+
+def test_costs_have_their_own_season_and_the_fixed_bills_still_come_off():
+    last = SEASONAL_YEAR + [_cum("6300 Leie lokaler", [100_000.0] * 11 + [40_000.0])]
+    costs = [_cum("6300 Leie lokaler", [100_000.0] * 9 + [0.0])]
+    data = _forecast([REVENUE] + costs, ap=RENT, last=last)
+    per = _per_month(data, "kostnader_per_maned")
+    assert per["desember"] < per["november"], "December's costs are lighter"
+    nov = _opex(data, "november")
+    expected_nov = per["november"] - 60_000
+    assert (not nov and expected_nov <= 0) or round(-nov[0]["amount"]) == expected_nov
 
 
 # --------------------------------------- a half-read forecast expires early
