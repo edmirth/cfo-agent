@@ -76,6 +76,15 @@ FIXED_LOOKBACK = 4
 FIXED_MIN = 3
 FIXED_TOLERANCE = 0.15
 
+# The months are not alike. Sales and running costs get a seasonal pattern
+# from last year — each month against last year's average, held within
+# SEASON_LIMITS and taken at SEASON_WEIGHT, since one year is a thin basis —
+# and a level from the last LEVEL_MONTHS closed months with the season taken
+# out, which carries the trend without drawing a line into the future.
+LEVEL_MONTHS = 6
+SEASON_LIMITS = (0.5, 1.5)
+SEASON_WEIGHT = 0.5
+
 # The running costs that are not fixed bills are spread over the month by
 # when this company's variable bills are dated and paid. See _cost_profile.
 COST_PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))
@@ -627,8 +636,61 @@ def _expected_items(invoices: list, bills: list, today: date) -> dict:
     return {"ar": items(invoices, _receipt_parts), "ap": items(bills, _payment_parts)}
 
 
+def _merged(rows: list, columns: list, ranges) -> list:
+    """One monthly series across several account ranges.
+
+    Summed before the outlier filter runs, never after. Filtering each
+    range on its own and adding the results lets a quiet month in one range
+    be judged against that range's own median, which is not the question —
+    the question is what the whole cost base does in a month.
+    """
+    total: dict = {}
+    order: list = []
+    for low, high in ranges:
+        for m, v in _monthly(rows, columns, low, high):
+            if m not in total:
+                total[m] = 0.0
+                order.append(m)
+            total[m] += v
+    return [(m, total[m]) for m in order]
+
+
+def _month_no(label: str) -> int | None:
+    """1-12 for a column label, "Okt" or last year's "Okt 2025"."""
+    name = label.split(" ")[0]
+    return saldobalanse.MONTHS.index(name) + 1 if name in saldobalanse.MONTHS else None
+
+
+def _seasons(history: tuple | None) -> dict:
+    """Each month's season for sales and for running costs, from last year.
+
+    `history` is last year's (rows, columns). A season is that month against
+    last year's average, held within SEASON_LIMITS and pulled half way to 1:
+    December at 0.82 last year becomes 0.91. None for a series without twelve
+    months of something in them — a new company, or a month never posted —
+    and the forecast then stays flat, and says so.
+    """
+    out: dict = {}
+    for key, (ranges, flip) in (("revenue", ([(3000, 3999)], -1)),
+                                ("opex", (OPEX_RANGES, 1))):
+        by = {}
+        if history:
+            for m, v in _merged(history[0], history[1], ranges):
+                if (n := _month_no(m)):
+                    by[n] = v * flip
+        if len(by) < 12 or any(v <= 0 for v in by.values()):
+            out[key] = None
+            continue
+        mean = sum(by.values()) / 12
+        lo, hi = SEASON_LIMITS
+        out[key] = {m: round(1 + SEASON_WEIGHT * (min(max(v / mean, lo), hi) - 1), 4)
+                    for m, v in by.items()}
+    return out
+
+
 def _run_rates(rows: list, columns: list,
-               prior: tuple | None = None) -> tuple[dict, list[str]]:
+               prior: tuple | None = None, season: dict | None = None,
+               history: tuple | None = None) -> tuple[dict, list[str]]:
     """Monthly run-rates that a posting backlog cannot poison.
 
     Costs in this ledger read 122k, 223k, 114k, then 48k, 14k, 13k. Nothing got
@@ -646,26 +708,17 @@ def _run_rates(rows: list, columns: list,
     year this year alone has too few closed months — none at all in January,
     where every rate came out 0 and the forecast had no payroll, costs or
     revenue in it.
+
+    `season`, from `_seasons`, and `history`, last year's `(rows, columns,
+    year)`: for sales and running costs with a measured season, the rate is
+    the level instead — the last LEVEL_MONTHS closed months, last year's
+    included where this year has too few, each divided by its own season. A
+    year of growth then shows in the level, and the forecast multiplies each
+    month's season back on. Without a season, the median of the closed months
+    as before.
     """
     notes: list[str] = []
-
-    def merged(rows: list, columns: list, ranges) -> list:
-        """One monthly series across several account ranges.
-
-        Summed before the outlier filter runs, never after. Filtering each
-        range on its own and adding the results lets a quiet month in one range
-        be judged against that range's own median, which is not the question —
-        the question is what the whole cost base does in a month.
-        """
-        total: dict = {}
-        order: list = []
-        for low, high in ranges:
-            for m, v in _monthly(rows, columns, low, high):
-                if m not in total:
-                    total[m] = 0.0
-                    order.append(m)
-                total[m] += v
-        return [(m, total[m]) for m in order]
+    merged = _merged
 
     def series_for(ranges) -> list:
         """Last year's tail, if asked for, then this year's months."""
@@ -677,9 +730,19 @@ def _run_rates(rows: list, columns: list,
                     for m, v in merged(p_rows, p_columns, ranges)][-keep:]
         return head + merged(rows, columns, ranges)
 
-    def rate(ranges, flip, name):
+    def rate(ranges, flip, name, key=None):
+        idx = (season or {}).get(key) if key else None
         full = series_for(ranges)
         series = [(m, v * flip) for m, v in full][:-1]
+        if idx and series:
+            past = []
+            if history:
+                h_rows, h_cols, year = history
+                past = [(f"{m} {year}", v * flip)
+                        for m, v in merged(h_rows, h_cols, ranges)]
+            this = [(m, v * flip) for m, v in merged(rows, columns, ranges)][:-1]
+            series = [(m, v / idx.get(_month_no(m) or 0, 1.0))
+                      for m, v in (past + this)[-LEVEL_MONTHS:]]
         values = [v for _, v in series]
         if not values:
             # No account in the range at all is a real zero: a company without
@@ -704,7 +767,8 @@ def _run_rates(rows: list, columns: list,
         # half the median and others above double it.
         average = (sum(kept) / len(kept)) if kept else mid
         # Format the number on its own: the sentence has commas of its own.
-        said = f"{name} er lagt inn med {_kr(average)} kr i måneden."
+        said = (f"{name} er lagt inn med {_kr(average)} kr i måneden"
+                f"{' før sesong' if idx else ''}.")
         # One note per rate, not one per direction. A range with both a quiet
         # month and a loud one used to produce two notes opening on the same
         # sentence, which reads like the figure was stated twice.
@@ -727,7 +791,7 @@ def _run_rates(rows: list, columns: list,
             notes.append(" ".join([said] + why))
         return average
 
-    rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning"),
+    rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning", "revenue"),
              # The full wage cost, accrual and all — what the P&L carries.
              "wages": rate([(5000, 5099)], 1, "Lønn"),
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
@@ -739,7 +803,7 @@ def _run_rates(rows: list, columns: list,
              # 2770 balance for payrolls already reported, this rates the ones
              # still to come. 5401 stays out, being the feriepenger's own.
              "aga": rate([(5400, 5400)], 1, "Arbeidsgiveravgift"),
-             "opex": rate(OPEX_RANGES, 1, "Driftskostnader")}
+             "opex": rate(OPEX_RANGES, 1, "Driftskostnader", "opex")}
     return rates, notes
 
 
@@ -892,9 +956,9 @@ async def build(today: date | None = None) -> dict:
     keep = max(0, MIN_CLOSED_MONTHS - (today.month - 1))
     last_year = today.year - 1
 
+    # Last year always: early in the year for the months this year lacks,
+    # and every month for the seasonal pattern.
     async def _prior():
-        if not keep:
-            return None
         return await saldobalanse.monthly(mcp, f"{last_year}-01-01", f"{last_year}-12-31")
 
     issued: dict = {}
@@ -942,8 +1006,20 @@ async def build(today: date | None = None) -> dict:
                 f"Saldobalansen for {last_year} kunne ikke hentes, så de "
                 f"løpende tallene hviler på færre enn {MIN_CLOSED_MONTHS} "
                 f"måneder.")
-    rates, rate_notes = _run_rates(rows, columns, prior_months)
+    history = None
+    if isinstance(prior, dict) and "table" in prior:
+        history = (_rows(prior),
+                   [c.get("name") for c in prior["table"].get("columns", [])])
+    season = _seasons(history)
+    rates, rate_notes = _run_rates(rows, columns, prior_months, season,
+                                   (*history, last_year) if history else None)
     warnings += rate_notes
+
+    def revenue_in(month_no: int) -> float:
+        return rates["revenue"] * ((season.get("revenue") or {}).get(month_no, 1.0))
+
+    def opex_in(month_no: int) -> float:
+        return rates["opex"] * ((season.get("opex") or {}).get(month_no, 1.0))
 
     # Open on the money in the bank, not on the booked balance. The bank feed
     # runs days ahead of the bookkeeping, and every week of the forecast, the
@@ -1185,6 +1261,8 @@ async def build(today: date | None = None) -> dict:
     # measured share. Unmeasured, it is zero on both sides.
     opex_vat = rates["revenue"] * MVA_RATE * vat_share
     opex_cash = rates["opex"] + opex_vat
+    # Per month from here, each on its own season: the VAT on the bills
+    # follows the deduction, which follows the month's sales.
     # What this month has already booked against the same cost accounts. The
     # opex leg used to start next month on the strength of "this month's bills
     # are already in the payables" — true on the last day of the month only.
@@ -1199,12 +1277,20 @@ async def build(today: date | None = None) -> dict:
         if series:
             booked_opex += series[-1][1]
     booked_opex = max(0.0, booked_opex)
-    opex_left = max(0.0, rates["opex"] - booked_opex)
+    opex_left = max(0.0, opex_in(today.month) - booked_opex)
+    sales_by_month, costs_by_month = [], []
     month = date(today.year, today.month, 1)
     for _ in range(6):
         month_end = date(month.year, month.month, monthrange(month.year, month.month)[1])
         landing = month_end + timedelta(days=credit_days + PAY_LAG_DAYS)
-        gross = rates["revenue"] * (1 + MVA_RATE)
+        revenue = revenue_in(month.month)
+        opex = opex_in(month.month)
+        sales_by_month.append({"month": MONTH_NAMES[month.month - 1],
+                               "amount": round(revenue, 2)})
+        costs_by_month.append({"month": MONTH_NAMES[month.month - 1],
+                               "amount": round(opex, 2)})
+        month_vat = revenue * MVA_RATE * vat_share
+        gross = revenue * (1 + MVA_RATE)
         if (month.year, month.month) == (today.year, today.month):
             gross = max(0.0, gross - invoiced_this_month)
         if today <= landing < horizon and round(gross) > 0:
@@ -1216,7 +1302,7 @@ async def build(today: date | None = None) -> dict:
         # then — the deadline does not wait for the money. Scheduled even when
         # the receipt itself falls outside the window, because that is the case
         # that hurts: the liability inside, the cash outside.
-        net_vat = rates["revenue"] * MVA_RATE * (1 - vat_share)
+        net_vat = revenue * MVA_RATE * (1 - vat_share)
         if (month.year, month.month) == (today.year, today.month):
             net_vat = max(0.0, net_vat - booked_vat)
         vat_due = workdays.forward(
@@ -1227,8 +1313,8 @@ async def build(today: date | None = None) -> dict:
                              "label": f"Merverdiavgift på fakturering "
                                       f"{MONTH_NAMES[month.month - 1]}"})
         current = (month.year, month.month) == (today.year, today.month)
-        cost = (opex_left * (opex_cash / rates["opex"]) if rates["opex"] else 0.0) \
-            if current else opex_cash
+        cost = (opex_left * ((opex + month_vat) / opex) if opex else 0.0) \
+            if current else opex + month_vat
         # The fixed bills of this month are its cost too, placed in the
         # committed line on their own dates when they fall inside the window.
         # Both gross. Never below zero: fixed bills above the run-rate mean
@@ -1247,7 +1333,7 @@ async def build(today: date | None = None) -> dict:
                                           f"{', resten' if current else ''}"
                                           f"{', ' + days if days else ''}"
                                           f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-                                          f"{' (inkl. moms)' if opex_vat >= 0.5 else ''}"})
+                                          f"{' (inkl. moms)' if month_vat >= 0.5 else ''}"})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
@@ -1273,6 +1359,12 @@ async def build(today: date | None = None) -> dict:
     # check against what he knows he pays.
     data["fixed_costs"] = fixed_found
     data["assumptions"]["kostnadsprofil"] = profile
+    data["assumptions"]["sesong"] = {
+        k: ({MONTH_NAMES[m - 1]: v for m, v in sorted(idx.items())} if idx else None)
+        for k, idx in season.items()}
+    data["assumptions"]["sesong_vekt"] = SEASON_WEIGHT
+    data["assumptions"]["omsetning_per_maned"] = sales_by_month
+    data["assumptions"]["kostnader_per_maned"] = costs_by_month
     data["assumptions"]["faste_regninger_mnd"] = round(sum(
         f["amount"] / (1 if f["cadence"] == "månedlig" else 3) for f in fixed_found), 2)
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
@@ -1676,6 +1768,30 @@ def briefing(data: dict | None) -> str:
                    f"ikke har lovet. Say this when he asks what is owed to him: "
                    f"the money is still his to chase, it is just not counted "
                    f"on.\n")
+
+    # The months are not alike, and the owner should hear which ones are not.
+    seasons = a.get("sesong") or {}
+    if seasons.get("revenue"):
+        months = [m["month"] for m in a.get("omsetning_per_maned") or []]
+        said = ", ".join(
+            f"{m} {round((seasons['revenue'][m] - 1) * 100):+d} %" for m in months
+            if m in seasons["revenue"])
+        sales = ", ".join(f"{m['month']} {_kr(m['amount'])} kr"
+                          for m in a.get("omsetning_per_maned") or [])
+        out.append(f"**Sesong** — omsetningen følger fjorårets mønster, tatt "
+                   f"med halv styrke fordi ett år er et tynt grunnlag: {said} "
+                   f"mot en vanlig måned. Nivået er de siste {LEVEL_MONTHS} "
+                   f"avsluttede månedene med sesongen trukket ut, så vekst eller "
+                   f"nedgang siden i fjor er med. Lagt inn: {sales}. "
+                   + ("Driftskostnadene har sitt eget mønster fra fjorårets "
+                      "kostnader." if seasons.get("opex") else
+                      "Driftskostnadene ligger flatt — fjoråret har ikke tolv "
+                      "måneder med kostnader å lese et mønster av.") + "\n")
+    else:
+        out.append("**Sesong** — fjoråret har ikke tolv måneder med omsetning "
+                   "å lese et mønster av, så hver måned er lagt inn likt. Er "
+                   "noen måneder normalt stillere, er prognosen for snill i "
+                   "dem.\n")
 
     # The receivables nobody can explain: never in the floor, and only in the
     # forecast when the invoice list is known to be short.
