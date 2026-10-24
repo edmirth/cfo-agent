@@ -152,6 +152,8 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/main.py` | FastAPI routes and the in-memory session store |
 | `frontend/brief.js` | The front page: brief, cash chart, signals, KPIs, and the Saker deck |
 | `frontend/app.js` | Shell, routing, conversations, chat, the Selskapet editor |
+| `site/` | The landing page at arvaka.no: plain files, Norwegian and English, nothing loaded from anyone else |
+| `docs/hosting.md` | Where it all runs and how to put it there: Render, and DNS at domene.no |
 | `scripts/oauth_login.py` | One-time browser login |
 | `scripts/check_tokens.py` | Verifies the Tripletex connection on its own |
 | `tests/` | `./.venv/bin/python -m tests.run` — plain asserts, no framework, temporary state |
