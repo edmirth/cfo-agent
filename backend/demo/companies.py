@@ -129,16 +129,18 @@ KVARNHEIM_DEVELOPER = "Ospelia Utvikling AS"
 
 
 def _kvarnheim_developer_late(b, rng):
-    """The developer's last on-account invoice is a month past due, and the
-    one before it was paid late. The work goes on, so the next one is out."""
+    """The developer's on-account invoice from two months ago is a month past
+    due — far past his usual week or so, which the forecast reads off his
+    payments — so it is out of the floor, and the floor runs dry without it.
+    The work goes on, so the later ones are out too."""
     devs = sorted((i for i in b.invoices if i.customer == KVARNHEIM_DEVELOPER),
                   key=lambda i: i.date)
     for inv in devs:
         days_late = (b.today - inv.due).days
-        if 20 <= days_late <= 40:
+        if 31 <= days_late <= 61:
             inv.paid = None
             inv.comment = "A-konto 7, Ospelia trinn 2"
-        elif days_late < 20:
+        elif days_late < 31:
             inv.paid = None
 
 
@@ -160,9 +162,7 @@ KVARNHEIM = Spec(
     season=(0.78, 0.84, 0.98, 1.08, 1.12, 1.1, 0.7, 1.08, 1.14, 1.12, 1.04, 0.82),
     growth=1.11,
     customers=(
-        # A slow payer by habit, three weeks past due as a rule: the forecast
-        # reads that off the payments, and the floor waits on him.
-        Customer(KVARNHEIM_DEVELOPER, 0.42, terms=30, late=21, org="956123489"),
+        Customer(KVARNHEIM_DEVELOPER, 0.42, terms=30, late=9, org="956123489"),
         Customer("Bergtun Boligbyggelag", 0.17, terms=30, late=2, org="967234590"),
         Customer("Kvitveis Sameie", 0.08, terms=30, late=4, org="978345601"),
         Customer("Ravnefjell Eiendom AS", 0.12, terms=30, late=3, org="989456712"),
