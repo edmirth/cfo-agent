@@ -261,7 +261,10 @@ ASLEFJORD = Spec(
         Supplier("Skyline Systemer AS", 6420, monthly=11_800, terms=14, day=1),
         Supplier("Skiltlaget Tverrdal AS", 7320, monthly=18_000, terms=30, day=20),
     ),
-    payroll=0.115, headcount=9, fte=8.6, payday=25, invoice_day=0,
+    # Invoiced on the 20th, before payday: from the 25th on, a month-end
+    # invoicer's open month reads as payroll in and sales missing, and
+    # the quiet week's books are called provisional for a week a month.
+    payroll=0.115, headcount=9, fte=8.6, payday=25, invoice_day=20,
     opening_bank=4_200_000, opening_assets=1_400_000, opening_stock=3_900_000,
     inbox=0, budget_revenue=0.99, budget_payroll=0.12, dividend=500_000,
     profile={
@@ -295,8 +298,9 @@ tomt.
 
 ## Kundene
 
-Faste håndverkere på konto med 30 dager, og kontantsalg i butikken. Ingen
-kunde står for mer enn rundt en åttendedel.
+Faste håndverkere på konto med 30 dager, fakturert samlet den 20. hver
+måned, og kontantsalg i butikken. Ingen kunde står for mer enn rundt en
+åttendedel.
 
 ## Leverandører
 
