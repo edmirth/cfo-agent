@@ -7,11 +7,11 @@ kanban-plugin: board
 ## Backlog
 
 - [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
+	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
 - [ ] 18. Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
 - [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 - [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 21. Add budget-vs-actual variance per line, with the cause named @agent #kpi
-- [ ] 22. Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them.
 - [ ] 23. Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work.
 - [ ] 24. Should we assign the ai agent to do the 13 week cash brief? could it be better at calculating it, and what tools would it need, should we give it coding tools so it could calculate it for us.
 - [ ] 25. Propose a weekly payment run with its cash effect @edmir #liquidity
@@ -43,8 +43,6 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
-- [ ] Make an "Mock Up" company, where we have their accountant data and use their numbers instead of using URT number, so that we can present the product without showing any confidential numbers. But we have all the numbers it needs so we can show the ability of the ai agent.
-- [ ] Lets add the new branding guidelines that we have made on to the frontend on our platform so we have the same style on it.
 
 
 ## Doing
@@ -53,6 +51,12 @@ kanban-plugin: board
 
 ## Done
 
+- [x] Make an "Mock Up" company, where we have their accountant data and use their numbers instead of using URT number, so that we can present the product without showing any confidential numbers. But we have all the numbers it needs so we can show the ability of the ai agent. ✓ 2026-10-24
+	  - Demo mode (PRs #50, #51): Lindeskar, Kvarnheim and Aslefjord with whole generated books; ./demo.sh starts them on ports 8101–8103. Nothing in demo mode reaches the real ledger.
+- [x] Lets add the new branding guidelines that we have made on to the frontend on our platform so we have the same style on it. ✓ 2026-10-24
+	  - Arvaka redesign of frontend-react (PRs #44, #47): brand tokens, Newsreader and Geist, Arvaka in the copy, the Brief restructured.
+- [x] 22. Make the 13 Week Cash brief stronger, and more accurate so that the user gets the right information it needs. Go on to the deep side of building it right, and the AI CFO Agent to understand it and build them. ✓ 2026-10-24
+	  - PRs #52–#61: running costs with their VAT and this month's remainder, fixed bills in the committed line, costs spread by when they are paid, overdue invoices by age, unexplained receivables not counted on, seasons and trend, each customer's own lateness, and sales as the company invoices. Also #54: structured JSON output for the written jobs.
 - [x] The daily summary is cut off for being too long (since 10 Oct), so the front page shows an old one @edmir #agent ✓ 2026-10-11
 	  - Caps raised (summary and Monday brief 4 000, morning watch 8 000); a cut-off answer is now kept in job_runs.details. Live: today's summary written, 1 156 tokens.
 - [x] 16. Flag customers with bankruptcy or dissolution notices from Brønnøysund @agent #warnings ✓ 2026-10-11
