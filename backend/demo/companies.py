@@ -92,7 +92,7 @@ LINDESKAR = Spec(
     company_md="""---
 lonn_utbetalingsdag: 20
 ferie_utbetalingsmnd: 6
-likviditetsgulv_kr: 2 000 000
+likviditetsgulv_kr: 2 500 000
 purring_etter_dager: 14
 lonnsandel_mal_pct: 75
 ---
