@@ -1,0 +1,108 @@
+/* The text pages (kontakt, om oss, personvern, …), built by
+   scripts/build_site_pages.py. Colours and type follow the landing page. */
+
+.doc {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: clamp(48px, 8vw, 112px) clamp(20px, 5.5vw, 80px) 120px;
+  color: #33312c;
+}
+.doc h1 {
+  margin: 0 0 24px;
+  font-family: "Newsreader", serif;
+  font-weight: 400;
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: #0f0e0d;
+  text-wrap: balance;
+}
+.doc h2 {
+  margin: 56px 0 16px;
+  font-family: "Newsreader", serif;
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #0f0e0d;
+}
+.doc p,
+.doc li {
+  font-size: 16px;
+  line-height: 26px;
+}
+.doc p {
+  margin: 0 0 16px;
+}
+.doc .lede {
+  font-size: 18px;
+  line-height: 28px;
+  color: #524f49;
+}
+.doc ul {
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+.doc li {
+  margin-bottom: 8px;
+}
+.doc strong {
+  font-weight: 500;
+  color: #0f0e0d;
+}
+.doc a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.doc .table-wrap {
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+.doc table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 22px;
+}
+.doc th,
+.doc td {
+  padding: 12px 16px 12px 0;
+  border-bottom: 1px solid #e5e5e3;
+  text-align: left;
+  vertical-align: top;
+}
+.doc th {
+  font-weight: 500;
+  color: #706d66;
+}
+.doc tbody th {
+  width: 30%;
+}
+.doc .updated {
+  margin-top: 56px;
+  font-size: 14px;
+  color: #706d66;
+}
+
+/* Drafts: what still has to be filled in or checked is marked, and the page
+   says it is a draft. */
+.todo {
+  background: #fdf0b8;
+  border-radius: 3px;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.todo-block {
+  font-size: 15px;
+}
+.draft-banner {
+  background: #fdf0b8;
+  color: #0f0e0d;
+  padding: 12px clamp(20px, 5.5vw, 80px);
+  font-size: 14px;
+  text-align: center;
+}
+.draft-banner .todo {
+  background: #f6dc6b;
+}

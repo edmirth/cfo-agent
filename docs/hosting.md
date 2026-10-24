@@ -44,6 +44,18 @@ purpose:
 styles are inline, so a word is changed where it stands. A new design from
 Claude Design is converted again rather than merged by hand.
 
+**The text pages.** Kontakt, Om oss, Samarbeid med regnskapsføreren,
+Personvern and Databehandleravtale are written in `site-pages/`, one file
+each, and built into `site/<slug>/` with the front page's own nav and footer:
+
+    python3 scripts/build_site_pages.py
+
+Edit the file in `site-pages/`, never the built page, and run the script
+after a change to the front page's nav or footer too. A page marked
+`status: utkast` shows a draft banner, marks what is missing in yellow and
+asks search engines to stay away; remove the line when the page is approved.
+They are in Norwegian only for now, and the English front page links to them.
+
 ### On Render
 
 1. **New → Static Site**, this repository, branch `main`.
