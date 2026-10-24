@@ -160,7 +160,9 @@ KVARNHEIM = Spec(
     season=(0.78, 0.84, 0.98, 1.08, 1.12, 1.1, 0.7, 1.08, 1.14, 1.12, 1.04, 0.82),
     growth=1.11,
     customers=(
-        Customer(KVARNHEIM_DEVELOPER, 0.42, terms=30, late=9, org="956123489"),
+        # A slow payer by habit, three weeks past due as a rule: the forecast
+        # reads that off the payments, and the floor waits on him.
+        Customer(KVARNHEIM_DEVELOPER, 0.42, terms=30, late=21, org="956123489"),
         Customer("Bergtun Boligbyggelag", 0.17, terms=30, late=2, org="967234590"),
         Customer("Kvitveis Sameie", 0.08, terms=30, late=4, org="978345601"),
         Customer("Ravnefjell Eiendom AS", 0.12, terms=30, late=3, org="989456712"),

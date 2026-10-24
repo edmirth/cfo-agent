@@ -1803,9 +1803,10 @@ def briefing(data: dict | None) -> str:
                        if c["days"] > 0), key=lambda x: -x[1])[:3]
         named = (" De tregeste: " + ", ".join(f"{n} {d} dager" for n, d in slow) + "."
                  if slow else "")
+        overall = (f"kundene betaler vanligvis {h['company']} dager etter "
+                   f"forfall, og " if h.get("company") is not None else "")
         out.append(f"**Når kundene betaler** — målt på et år med innbetalinger: "
-                   f"kundene betaler vanligvis {h['company']} dager etter forfall, "
-                   f"og hver kunde med minst {payment_habits.MIN_CUSTOMER} betalte "
+                   f"{overall}hver kunde med minst {payment_habits.MIN_CUSTOMER} betalte "
                    f"fakturaer er lagt inn med sin egen vane.{named} Fakturaer "
                    f"som ikke er forfalt, er lagt på forfall pluss kundens vane.\n")
     else:

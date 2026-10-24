@@ -197,7 +197,8 @@ def habits(invoices: list, paid: dict | None) -> dict:
     company = (min(MAX_DAYS, int(_weighted_median(everything)))
                if len(everything) >= MIN_COMPANY else None)
     return {"customers": customers, "company": company,
-            "measured": company is not None, "complete": bool(paid.get("complete"))}
+            "measured": company is not None or bool(customers),
+            "complete": bool(paid.get("complete"))}
 
 
 def lag(h: dict | None, customer: str, default: int) -> int:
