@@ -37,6 +37,10 @@ kanban-plugin: board
 - [ ] 44. On the backend there is a seperate file that does the summary, isnt it better to just let the ai agent make it? so it also has the memory, and also writes the summary as well.
 - [ ] 45. Could the frontpage use any AI, and if so, what type of work would that be?
 - [ ] 46. Based on the commintements.py, it uses the bankbalance and then subtracts everything owed. But we need to make sure that the bank balance that is used is actually correct, because we need the right answer/amount.
+- [ ] 47. Check payroll against contracts each month: hours, overtime and NAV sick-pay refunds @edmir #warnings
+- [ ] 48. Draft next year's budget in October from actuals, contracts and pipeline @edmir #kpi
+- [ ] 49. Ask Arvaka by replying to the Monday email or sending a voice note @edmir #delivery
+- [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
 
 
 ## Next
