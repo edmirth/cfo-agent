@@ -615,6 +615,10 @@ def _profile(bills: list[tuple[date, date, float]]) -> dict:
     """Shares and terms by COST_PERIODS from (issued, due, amount) rows."""
     sums = [0.0] * len(COST_PERIODS)
     terms: list[list] = [[] for _ in COST_PERIODS]
+    # The day within the period the money is usually dated, not its middle:
+    # a company invoicing on the last workday was placed on the 26th, five
+    # days early, and five days decide which week the money lands in.
+    days: list[list] = [[] for _ in COST_PERIODS]
     cap = (PROFILE_WEIGHT_CAP * statistics.median([b[2] for b in bills])
            if bills else 0.0)
     count = 0
@@ -623,6 +627,7 @@ def _profile(bills: list[tuple[date, date, float]]) -> dict:
         i = next(n for n, (_, last) in enumerate(COST_PERIODS) if issued.day <= last)
         sums[i] += amount
         terms[i].append((max(0, (due - issued).days), amount))
+        days[i].append((issued.day, amount))
         count += 1
     total = sum(sums)
     if count < PROFILE_MIN_BILLS or total <= 0:
@@ -632,6 +637,7 @@ def _profile(bills: list[tuple[date, date, float]]) -> dict:
     overall = int(_weighted_median([t for ts in terms for t in ts]))
     return {"measured": True, "bills": count, "periods": [
         {"from": first, "to": last, "share": round(sums[i] / total, 4),
+         "day": int(_weighted_median(days[i])),
          "terms": (int(_weighted_median(terms[i]))
                    if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
         for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
@@ -656,7 +662,9 @@ def _cost_parts(profile: dict, month: date, today: date,
     out = []
     for p in periods:
         to = min(p["to"], last_day)
-        mid = date(month.year, month.month, (p["from"] + to) // 2)
+        # The usual day where measured; an older profile without one, the middle.
+        mid = date(month.year, month.month,
+                   min(max(p.get("day") or (p["from"] + to) // 2, p["from"]), to))
         pay = max(mid + timedelta(days=p["terms"]), today)
         out.append((pay, p["share"] / total, f"fakturert {p['from']}.–{to}."))
     return out
