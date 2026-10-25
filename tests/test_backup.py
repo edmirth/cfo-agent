@@ -76,7 +76,7 @@ def test_the_copy_outside_is_unreadable_without_the_key():
 
 
 def test_a_host_without_the_copy_outside_says_so_a_laptop_does_not():
-    saved = config.HOSTED, config.BACKUP_SUPABASE_KEY
+    saved = config.HOSTED, config.BACKUP_SUPABASE_KEY, config.DEMO
     with _folders():
         backup.make(date(2026, 10, 25))
         try:
@@ -86,8 +86,11 @@ def test_a_host_without_the_copy_outside_says_so_a_laptop_does_not():
             config.HOSTED = True
             out = asyncio.run(scheduler._offsite())
             assert out["partial"] and "Ingen kopi utenfor serveren" in out["cause"]
+            # A hosted demo has nothing worth sending out.
+            config.DEMO = "lindeskar"
+            assert asyncio.run(scheduler._offsite()) == {"skipped": True}
         finally:
-            config.HOSTED, config.BACKUP_SUPABASE_KEY = saved
+            config.HOSTED, config.BACKUP_SUPABASE_KEY, config.DEMO = saved
 
 
 class _Supabase:

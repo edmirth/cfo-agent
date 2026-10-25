@@ -267,7 +267,9 @@ async def _offsite() -> dict:
     if not copies:
         raise StepFailed("Det finnes ingen kopi på disken å sende.")
     if not backup.offsite_configured():
-        if config.HOSTED:
+        # A demo's books are made up and made again on every start; its copies
+        # stay on its own disk.
+        if config.HOSTED and not config.DEMO:
             # On a host, a copy on its own disk is no copy if the disk goes.
             return {"partial": True,
                     "cause": "Ingen kopi utenfor serveren: CFO_BACKUP_KEY og "
