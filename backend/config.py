@@ -73,6 +73,17 @@ OWNER_EMAILS = frozenset(e.strip().lower()
                          for e in (os.getenv("CFO_OWNER_EMAIL") or "").split(",")
                          if e.strip())
 
+# The nightly backup (backend/backup.py): a copy on the disk, and one
+# encrypted copy in Supabase Storage, outside the host. CFO_BACKUP_KEY
+# encrypts it (make one with scripts/backup.py key); SUPABASE_SERVICE_KEY
+# lets the server upload. Best a Supabase project of its own, so that key
+# reaches the backups and not the login. Demo mode keeps its copies at home.
+BACKUP_AT = os.getenv("CFO_BACKUP_AT", "02:00")
+BACKUP_KEY = os.getenv("CFO_BACKUP_KEY") or ""
+BACKUP_SUPABASE_URL = (os.getenv("CFO_BACKUP_SUPABASE_URL") or SUPABASE_URL).rstrip("/")
+BACKUP_SUPABASE_KEY = "" if DEMO else (os.getenv("SUPABASE_SERVICE_KEY") or "")
+BACKUP_BUCKET = os.getenv("CFO_BACKUP_BUCKET", "backups")
+
 # Email (backend/mailer.py). Resend, until the product has its own domain:
 # without one, Resend sends only from onboarding@resend.dev and only to the
 # account's own address — enough while the CEO is the one recipient.

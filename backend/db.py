@@ -145,6 +145,24 @@ def read() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def copy_to(target: Path) -> None:
+    """A whole, consistent copy of the database in `target`, for the backup.
+
+    SQLite's online backup, not a file copy: copying cfo.db while the WAL
+    holds writes not yet folded into it gives a file that is missing them, or
+    one that will not open. This takes the pages through SQLite itself and is
+    safe while the server writes.
+    """
+    _ensure(PATH)
+    src = _open(PATH)
+    dst = sqlite3.connect(target)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+
 def company_id() -> int:
     """The company every row belongs to.
 
