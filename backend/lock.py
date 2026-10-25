@@ -2,8 +2,8 @@
 
 Two servers on the same port is not the failure that happened — the OS already
 refuses that. What happened is two servers on *different* ports sharing one
-`.env`: Tripletex rotates the refresh token on every renewal and
-`tlx_oauth.py` writes the new one back, so the second process renews with a
+login: Tripletex rotates the refresh token on every renewal and
+`tlx_oauth.py` keeps the new one in the state directory, so the second process renews with a
 token the first has already replaced, Tripletex rejects it, and the account is
 locked out until somebody logs in through a browser again. Binding a port does
 not protect a file, so the lock is taken on the state directory instead.

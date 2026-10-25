@@ -1,13 +1,22 @@
 """Holder et gyldig access token for Tripletex MCP.
 
-Refresh-tokenet lagres i .env av scripts/oauth_login.py og utløper ikke.
+Refresh-tokenet kommer fra innstillingen TRIPLETEX_REFRESH_TOKEN (satt i .env
+av scripts/oauth_login.py, eller i Renders innstillinger) og utløper ikke.
 Access-tokens er kortlevde, så de veksles inn ved behov og caches til like før
-de går ut. Roterer serveren refresh-tokenet, skrives det nye tilbake til .env.
+de går ut.
+
+Tripletex roterer refresh-tokenet ved fornyelse. Det nye lagres i
+`state/tripletex.json`, på disken ved siden av databasen, ikke i .env: en
+server på Render har ingen .env å skrive til, og ved første omstart ville den
+ha tatt det gamle tokenet fra innstillingen igjen, som Tripletex da har
+forkastet. Fila husker også hvilken innstilling den startet fra. Står det et
+annet token i innstillingen enn det, er det en ny innlogging, og den vinner.
 """
 import asyncio
+import hashlib
+import json
 import logging
 import os
-import re
 import time
 from pathlib import Path
 
@@ -22,46 +31,79 @@ TOKEN_URL = "https://mcp.tripletex.no/token"
 SKEW = 90
 
 
+def _fingerprint(token: str) -> str:
+    """Which setting a stored token started from, without storing it twice."""
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
 class OAuthError(RuntimeError):
     pass
 
 
 class TokenManager:
-    def __init__(self) -> None:
+    def __init__(self, store: Path | None = None) -> None:
         self._token: str | None = None
         self._expires_at: float = 0.0
-        self._refresh = config.TRIPLETEX_REFRESH_TOKEN
+        self._refresh: str | None = None   # read on first use, not at import
         self._client_id = config.TRIPLETEX_CLIENT_ID
+        self._store = store or config.STATE / "tripletex.json"
         self._lock = asyncio.Lock()
 
     @property
     def configured(self) -> bool:
-        return bool(self._refresh and self._client_id)
+        return bool(self._current_refresh() and self._client_id)
+
+    def _current_refresh(self) -> str:
+        """The refresh token to renew with: the stored one, unless the setting is newer.
+
+        The stored token wins while the setting is the one it started from:
+        that is the same login, rotated since. A setting the file has not seen
+        is a new login, put there because the old one stopped working, so it
+        replaces the file.
+        """
+        if self._refresh is not None:
+            return self._refresh
+        setting = config.TRIPLETEX_REFRESH_TOKEN
+        stored = self._read_store()
+        if stored and setting and stored.get("from_setting") != _fingerprint(setting):
+            log.info("Ny Tripletex-innlogging i innstillingene; den erstatter den lagrede")
+            stored = None
+        if stored and stored.get("refresh_token"):
+            self._refresh = stored["refresh_token"]
+        else:
+            self._refresh = setting
+            if setting:
+                self._persist_refresh(setting)
+        return self._refresh
+
+    def _read_store(self) -> dict | None:
+        try:
+            return json.loads(self._store.read_text())
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as exc:
+            log.error("Kunne ikke lese %s (%s); bruker innstillingen", self._store, exc)
+            return None
 
     def _persist_refresh(self, value: str) -> None:
-        """The server may rotate the refresh token; keep .env in step.
+        """Keep the newest refresh token on the disk, beside the database.
 
         Written through a temporary file and renamed into place. A half-written
-        .env loses the only credential that cannot be regenerated without a
+        file loses the only credential that cannot be regenerated without a
         human at a browser, and rewriting it in place risks exactly that if the
         process dies mid-write.
         """
-        env = Path(config.ROOT) / ".env"
-        if not env.exists():
-            return
-        text = env.read_text()
-        updated, count = re.subn(r"^TRIPLETEX_REFRESH_TOKEN=.*$",
-                                 f"TRIPLETEX_REFRESH_TOKEN={value}", text,
-                                 flags=re.MULTILINE)
-        if not count:
-            log.error("Fant ingen TRIPLETEX_REFRESH_TOKEN-linje i .env; det "
-                      "roterte tokenet ble ikke lagret og går tapt ved omstart")
-            return
-        tmp = env.with_suffix(".env.tmp")
+        setting = config.TRIPLETEX_REFRESH_TOKEN
+        body = {"refresh_token": value,
+                "from_setting": _fingerprint(setting) if setting else None,
+                "saved": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        tmp = self._store.with_suffix(".tmp")
         try:
-            tmp.write_text(updated)
-            tmp.chmod(0o600)
-            os.replace(tmp, env)
+            self._store.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump(body, f)
+            os.replace(tmp, self._store)
         except OSError as exc:
             tmp.unlink(missing_ok=True)
             log.error("Kunne ikke lagre det roterte refresh-tokenet: %s", exc)
@@ -83,7 +125,7 @@ class TokenManager:
             async with httpx.AsyncClient(timeout=40) as c:
                 r = await c.post(TOKEN_URL, data={
                     "grant_type": "refresh_token",
-                    "refresh_token": self._refresh,
+                    "refresh_token": self._current_refresh(),
                     "client_id": self._client_id,
                 }, headers={"Content-Type": "application/x-www-form-urlencoded"})
 
