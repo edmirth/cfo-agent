@@ -1,0 +1,54 @@
+# The platform on Render, as a Blueprint: Render reads this file from the
+# repository and sets up the service it describes. docs/hosting.md has the
+# steps, the settings to fill in, and how to add a pilot company.
+#
+# One service per pilot company, each with its own disk, settings and
+# Tripletex login. To add one, copy the service below with a new name and
+# disk. The landing page (arvaka.no) is a static site set up by hand; see
+# docs/hosting.md.
+services:
+  - type: web
+    name: arvaka-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    # A disk needs a paid instance; Starter is the smallest.
+    plan: starter
+    branch: main
+    autoDeployTrigger: commit
+    # The one route that answers without a login.
+    healthCheckPath: /api/auth/config
+    # Everything the company has: cfo.db, company.md, the Tripletex login,
+    # the nightly copies. Kept across deploys; the image itself is not.
+    disk:
+      name: state
+      mountPath: /app/state
+      sizeGB: 1
+    envVars:
+      # sync: false — asked for in Render's dashboard, never written here.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: COMPANY_NAME
+        sync: false
+      - key: TRIPLETEX_CLIENT_ID
+        sync: false
+      - key: TRIPLETEX_REFRESH_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: CFO_OWNER_EMAIL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: CFO_MAIL_FROM
+        sync: false
+      - key: CFO_BACKUP_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: CFO_BACKUP_SUPABASE_URL
+        sync: false
+      - key: CFO_TIMEZONE
+        value: Europe/Oslo

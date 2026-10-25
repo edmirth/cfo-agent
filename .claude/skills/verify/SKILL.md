@@ -69,9 +69,13 @@ answers whether a figure the backend computed matches its source.
 
 ## Gotchas
 
-- `.env` is rewritten in place when Tripletex rotates the refresh token. If you
-  back it up, do not restore the old copy afterwards — the rotated token is the
-  valid one.
+- The rotated Tripletex refresh token is kept in `state/tripletex.json`, not
+  `.env`. Never restore an old copy of that file — the rotated token is the
+  valid one. A new login (`scripts/oauth_login.py`) writes `.env`, and a token
+  there the file has not seen wins.
+- Every route but `/api/auth/config` needs a login. For curl on the Mac, start
+  with `CFO_AUTH=off` (refused on a host), or drive a demo company:
+  `CFO_DEMO=lindeskar CFO_AUTH=off CFO_SCHEDULER=off ./.venv/bin/uvicorn main:app --app-dir backend --port 8101`.
 - Reversed date ranges on `/api/trace` return HTTP 200 with an `{"error": ...}`
   body, not a 4xx. Check the body, not just the status.
 - Tripletex returns payables as *negative* in `Leverandørreskontro`, the same

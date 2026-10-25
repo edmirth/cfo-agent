@@ -17,6 +17,7 @@ from agent import run_turn
 from mcp_client import McpError
 from overview import cached as overview_cached
 import auth
+import backup
 import brief
 import cards
 import company
@@ -55,6 +56,10 @@ try:
 except lock.AlreadyRunning as exc:
     print(f"\n! {exc}\n", flush=True)
     raise SystemExit(1) from None
+
+# A backup waiting in state/restore/ goes in now, while the lock is held and
+# before anything has opened the database.
+backup.restore_pending()
 
 # Also before anything binds: a server that would answer anyone stops here.
 auth.check_config()

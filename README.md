@@ -97,8 +97,9 @@ so no restart.
 refresh token bound to a client we cannot identify, so `scripts/oauth_login.py`
 registers our own client and runs the authorization-code flow once. Refresh
 tokens do not expire, so it stays headless afterwards.
-`backend/tlx_oauth.py` swaps the refresh token for access tokens and persists a
-rotated refresh token back to `.env`.
+`backend/tlx_oauth.py` swaps the refresh token for access tokens and keeps a
+rotated refresh token in `state/tripletex.json`, so a host with no `.env` to
+write to survives a restart. A new login in the setting replaces it.
 
 **Read-only, enforced at the toolset.** The Tripletex toolset is declared
 closed (`default_config: {enabled: false}`) and opened tool by tool from the
@@ -138,9 +139,10 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/company.py` | The company's own account of how it works, and the few settings that move numbers |
 | `backend/overview.py` | Headline figures for the front page |
 | `backend/mcp_client.py` | Direct JSON-RPC to Tripletex for the computed blocks; raises on rejected calls |
-| `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token written back to `.env` atomically |
+| `backend/tlx_oauth.py` | Access-token refresh; rotated refresh token kept in `state/tripletex.json` atomically |
 | `backend/lock.py` | One server per installation — two rotating the same token lock the account out |
-| `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00 and the Monday brief after it, caught up after sleep, retried, and said when it fails |
+| `backend/scheduler.py` | What runs unasked: the working-day morning at 07:00 and the Monday brief after it, the backup at 02:00, caught up after sleep, retried, and said when it fails |
+| `backend/backup.py` | The nightly backup: 14 copies in `state/backups/`, one encrypted copy in Supabase Storage |
 | `backend/auth.py` | The login gate: every `/api` route checks the Supabase token and the owner list; fail closed |
 | `backend/mailer.py` | Sending email: the one module that knows Resend. Idempotency key on every send |
 | `backend/brief_email.py` | The Monday brief as a phone-width email, complete on its own; sent once a week to `brev_mottakere` |

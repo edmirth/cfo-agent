@@ -44,6 +44,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
 from zoneinfo import ZoneInfo
 
+import backup
 import brief
 import brief_email
 import brreg
@@ -252,6 +253,32 @@ async def _health() -> dict:
     return found
 
 
+async def _backup() -> dict:
+    try:
+        copy = backup.make()
+    except Exception as exc:
+        raise StepFailed(f"Sikkerhetskopien ble ikke laget: {exc}") from exc
+    return {"file": copy.name, "kb": copy.stat().st_size // 1024,
+            "kept": len(backup.kept())}
+
+
+async def _offsite() -> dict:
+    copies = backup.kept()
+    if not copies:
+        raise StepFailed("Det finnes ingen kopi på disken å sende.")
+    if not backup.offsite_configured():
+        if config.HOSTED:
+            # On a host, a copy on its own disk is no copy if the disk goes.
+            return {"partial": True,
+                    "cause": "Ingen kopi utenfor serveren: CFO_BACKUP_KEY og "
+                             "SUPABASE_SERVICE_KEY er ikke satt."}
+        return {"skipped": True}
+    try:
+        return await backup.upload(copies[-1])
+    except Exception as exc:
+        raise StepFailed(f"Kopien ble lagret på disken, men ikke sendt ut: {exc}") from exc
+
+
 HEALTH_DAY = 6        # the 6th working day: last month posted, invoicing included
 
 
@@ -273,11 +300,11 @@ def first_working_day_of_week(d: date) -> bool:
     return d == workdays.forward(monday) and d.isocalendar()[1] == monday.isocalendar()[1]
 
 
-def _at(text: str) -> time:
+def _at(text: str, setting: str = "CFO_MORNING_AT") -> time:
     try:
         return time.fromisoformat(text)
     except ValueError:
-        raise SystemExit(f"CFO_MORNING_AT må være TT:MM, fikk «{text}»") from None
+        raise SystemExit(f"{setting} må være TT:MM, fikk «{text}»") from None
 
 
 # Checks and forecast first: the cards and the summary are built from them,
@@ -317,7 +344,15 @@ HEALTH = Scheduled(
     runs_on=health_day, days=f"{HEALTH_DAY}. virkedag i måneden",
     steps=(Step("health", "Helsesjekken", _health),))
 
-JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY, MAIL, HEALTH)
+# At night, every night, when nothing else writes: a copy on the disk, then
+# one outside the host. The second failing still leaves the first.
+BACKUP = Scheduled(
+    name="backup", label="Sikkerhetskopien", at=_at(config.BACKUP_AT, "CFO_BACKUP_AT"),
+    runs_on=lambda d: True, days="hver natt",
+    steps=(Step("backup", "Kopien på disken", _backup),
+           Step("offsite", "Kopien utenfor serveren", _offsite)))
+
+JOBS: tuple[Scheduled, ...] = (MORNING, WEEKLY, MAIL, HEALTH, BACKUP)
 
 
 def job(name: str) -> Scheduled:
