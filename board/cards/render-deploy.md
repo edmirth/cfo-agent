@@ -10,7 +10,7 @@ The platform runs only while the Mac runs `run.sh`. To run on Render at `app.arv
 ## Done when
 - [x] The rotated Tripletex refresh token is kept in `state/` on the disk, taken from the setting the first time; a new login put in Render's settings replaces it. Today `tlx_oauth.py` writes it to `.env`, which Render does not have, so the first restart would lock the account out
 - [x] Library versions are pinned, so Render runs what was tested, and `test_auth.test_the_page_itself_is_not_behind_the_gate` passes on a fresh install
-- [ ] A Dockerfile builds the frontend and runs the backend: one worker, no `--reload`, Render's port, and never `.env` or `state/` inside
+- [x] A Dockerfile builds the frontend and runs the backend: one worker, no `--reload`, Render's port, and never `.env` or `state/` inside
 - [ ] `render.yaml`: one web service in Frankfurt, a disk on `state/`, health check on `/api/auth/config`, deployed on merge to main
 - [ ] A nightly backup: a safe copy of `state/cfo.db` and `company.md`, the last 14 kept on the disk and one copy outside Render
 - [ ] The server refuses to start on Render with `CFO_AUTH=off`
@@ -21,3 +21,4 @@ The platform runs only while the Mac runs `run.sh`. To run on Render at `app.arv
 - 2026-10-25 (agent): claimed on @edmir's go-ahead, branch `render-deploy`. Backup outside Render: Supabase Storage, encrypted before it leaves Render (recommended in chat; @edmir did not object).
 - 2026-10-25 (agent): Tripletex login: the rotated token goes to `state/tripletex.json` (0600), with a fingerprint of the setting it started from; a different setting is a new login and wins. `.env` is no longer written by the server. Tests: `tests/test_tlx_oauth.py`.
 - 2026-10-25 (agent): versions pinned to what the Mac runs (anthropic 1.4.0, fastapi 0.141.1, starlette 1.6.0 …), transitive ones too. The failing test was the test's fake client: newer Starlette listens for a disconnect while sending a file, and the fake answered with a second request. Fixed in the test; it passes on starlette 1.6 and 1.10. Fresh install: 453 passed.
+- 2026-10-25 (agent): Dockerfile + .dockerignore. Built locally and run as Lindeskar: `/api/auth/config` 200, the page 200, an API route without login 401, no `.env` in the image. Runs as root, because a Render disk's owner is not something the image can know in advance.

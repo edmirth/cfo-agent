@@ -1,0 +1,25 @@
+# Settings and company data: from the host and the disk, never the image.
+.env
+.env.*
+state/
+state-demo/
+
+# Built in the image or not needed to run.
+.git/
+.venv/
+**/__pycache__/
+*.pyc
+frontend-react/node_modules/
+frontend-react/dist/
+frontend/
+tests/
+site/
+site-pages/
+board/
+reports/
+docs/
+.obsidian/
+.gstack/
+.claude/skills/
+.vite/
+*.log
