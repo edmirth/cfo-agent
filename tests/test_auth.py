@@ -218,3 +218,15 @@ def test_off_on_purpose_runs_open():
         assert _call("/api/auth/config")[1] == {"enabled": False}
     finally:
         config.AUTH = real
+
+
+def test_off_is_refused_on_a_public_host():
+    real = config.AUTH, config.HOSTED
+    config.AUTH, config.HOSTED = "off", True
+    try:
+        auth.check_config()
+        raise AssertionError("started open to the internet")
+    except SystemExit as exc:
+        assert "CFO_AUTH=off er ikke lov" in str(exc)
+    finally:
+        config.AUTH, config.HOSTED = real

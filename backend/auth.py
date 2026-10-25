@@ -70,6 +70,13 @@ def check_config() -> None:
     """Refuse to start a server that would answer anyone. Called at import
     of the app, beside the Tripletex lock."""
     if not enabled():
+        if config.HOSTED:
+            # On a laptop off is a shortcut; on a public address it hands a
+            # company's accounts to anyone who finds the URL.
+            raise SystemExit(
+                "CFO_AUTH=off er ikke lov på en server på nettet: da kan hvem "
+                "som helst se regnskapet. Fjern innstillingen og sett opp "
+                "innloggingen (SUPABASE_URL, SUPABASE_ANON_KEY, CFO_OWNER_EMAIL).")
         log.warning("CFO_AUTH=off: appen er åpen for alle som når porten.")
         return
     missing = [name for name, value in (("SUPABASE_URL", config.SUPABASE_URL),

@@ -54,10 +54,14 @@ SCHEDULER = os.getenv("CFO_SCHEDULER", "on").strip().lower() not in ("off", "0",
 TIMEZONE = os.getenv("CFO_TIMEZONE", "Europe/Oslo")
 MORNING_AT = os.getenv("CFO_MORNING_AT", "07:00")
 
+# On a host anyone on the internet can reach. Render sets RENDER on every
+# service it runs; CFO_HOSTED says the same for any other host.
+HOSTED = bool(os.getenv("RENDER") or os.getenv("CFO_HOSTED"))
+
 # Who may open the app (backend/auth.py). Supabase signs the CEO in; this
 # server checks the token and lets in only the emails listed here.
 # CFO_AUTH=off opens every route to anyone who reaches the port: for a laptop
-# that knows it, never for a server anyone else can reach.
+# that knows it, never for a server anyone else can reach (refused if HOSTED).
 AUTH = os.getenv("CFO_AUTH", "supabase").strip().lower()
 SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
 # Public by design: the browser needs it to talk to Supabase. Not a secret.
