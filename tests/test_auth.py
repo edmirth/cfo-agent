@@ -40,9 +40,15 @@ def _call(path: str, token: str | None = None, method: str = "GET"):
              "method": method, "scheme": "http", "path": path, "raw_path": path.encode(),
              "query_string": b"", "headers": headers, "client": ("127.0.0.1", 1),
              "server": ("127.0.0.1", 8000), "root_path": ""}
-    sent = []
+    sent, asked = [], []
 
     async def receive():
+        # The request once, then a client that stays connected: Starlette
+        # listens for a disconnect while it sends a file, and a second
+        # request message is a protocol error, not a client.
+        if asked:
+            await asyncio.Future()
+        asked.append(True)
         return {"type": "http.request", "body": b"", "more_body": False}
 
     async def send(message):
