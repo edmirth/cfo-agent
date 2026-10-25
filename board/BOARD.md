@@ -42,7 +42,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 51. Make the platform deployable on Render: Tripletex login kept on the disk, pinned versions, Dockerfile, nightly backup @edmir #platform
 - [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
 - [ ] 52. Move the platform from the Mac to app.arvaka.no: a test run with a demo company, then the switch-over @edmir #platform
 - [ ] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery
@@ -54,6 +53,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 51. Make the platform deployable on Render: Tripletex login kept on the disk, pinned versions, Dockerfile, nightly backup @edmir #platform
 
 
 ## Done

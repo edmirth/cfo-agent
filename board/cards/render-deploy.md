@@ -18,3 +18,4 @@ The platform runs only while the Mac runs `run.sh`. To run on Render at `app.arv
 
 ## Log
 - 2026-10-25 (agent): created on @edmir's call. Open for @edmir: where the backup copy outside Render goes (Supabase Storage in Stockholm needs no new provider). Related: [[tripletex-login-expiry]] (card 18): on a server, nobody sees the terminal when the Tripletex login expires, as it did on 2026-10-07.
+- 2026-10-25 (agent): claimed on @edmir's go-ahead, branch `render-deploy`. Backup outside Render: Supabase Storage, encrypted before it leaves Render (recommended in chat; @edmir did not object).
