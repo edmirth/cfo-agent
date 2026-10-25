@@ -17,3 +17,4 @@ The playbook's decision queue is reached by "app cards, magic links from email" 
 ## Log
 - 2026-10-04 (agent): created from the AI CFO Strategy Playbook gap analysis
 - 2026-10-04 (agent): priority 11 in Next: turns the brief's decisions into one-tap approvals.
+- 2026-10-25 (agent): the server and the web page it waited for are now [[render-deploy]] and [[platform-switch-over]] (cards 51, 52). This waits on those.

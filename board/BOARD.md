@@ -25,8 +25,6 @@ kanban-plugin: board
 - [ ] 33. Move chat sessions from an in-process dict into a shared store @either #platform
 - [ ] 34. Build an in-app screen to connect a customer's own accounting system @either #platform
 - [ ] 35. Push urgent alerts to the CEO's phone @edmir #delivery
-- [ ] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
-- [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 - [ ] 15. Hold the agent's output for human review while a customer is new (Wait until the first customer outside the pilot is onboarded) @either #review
 - [ ] 38. give the project agent tool to use the web as well to get information. It could be for indusrey or other stuff.
 - [ ] 39. Could autoresearch of ai agent be something that could help here for future fetaure so it could find stuff for the company and give it benefits or find something based on the data.
@@ -40,11 +38,16 @@ kanban-plugin: board
 - [ ] 47. Check payroll against contracts each month: hours, overtime and NAV sick-pay refunds @edmir #warnings
 - [ ] 48. Draft next year's budget in October from actuals, contracts and pipeline @edmir #kpi
 - [ ] 49. Ask Arvaka by replying to the Monday email or sending a voice note @edmir #delivery
-- [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
 
 
 ## Next
 
+- [ ] 51. Make the platform deployable on Render: Tripletex login kept on the disk, pinned versions, Dockerfile, nightly backup @edmir #platform
+- [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
+- [ ] 52. Move the platform from the Mac to app.arvaka.no: a test run with a demo company, then the switch-over @edmir #platform
+- [ ] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery
+- [ ] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
+- [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
 
