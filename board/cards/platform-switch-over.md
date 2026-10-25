@@ -18,3 +18,4 @@ Once [[render-deploy]] is merged, the platform moves to Render, first as a demo 
 
 ## Log
 - 2026-10-25 (agent): created on @edmir's call. Waits on [[render-deploy]]. Render's Hobby plan includes two custom domains, both used by arvaka.no and www; `app.arvaka.no` is a third, $0.25 a month. Pick a switch-over time outside 07:00 to 08:00 on a working day.
+- 2026-10-25 (agent): claimed on @edmir's go-ahead, branch `platform-switch-over`. Decided with @edmir: the test run is a service of its own, `arvaka-demo` (Lindeskar), kept online afterwards for sales demos; the real company is `arvaka-app`.
