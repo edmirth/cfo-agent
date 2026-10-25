@@ -141,3 +141,26 @@ def test_aslefjord_is_a_quiet_week():
     assert out["light"] == "green"
     assert out["cards"] == [] and out["preflight"] == "clean"
     assert out["low"] > 2_000_000
+
+
+def test_a_hosted_demo_on_an_empty_disk_opens_on_its_own_description():
+    # render.yaml's arvaka-demo is never seeded: seeding wipes the folder
+    # under the running server. Its start writes what seeding would have.
+    probe = ("import sys; sys.path.insert(0, 'backend'); "
+             "from demo.seed import prepare; print('WROTE', prepare())")
+    with tempfile.TemporaryDirectory() as tmp:
+        state = Path(tmp) / "disk"
+        env = {**os.environ, "CFO_DEMO": "lindeskar", "CFO_STATE": str(state),
+               "CFO_DB": str(Path(tmp) / "demo.db"), "CFO_AUTH": "off"}
+
+        def start():
+            r = subprocess.run([sys.executable, "-c", probe], cwd=ROOT, env=env,
+                               capture_output=True, text=True, timeout=60)
+            return next(l for l in r.stdout.splitlines() if l.startswith("WROTE"))
+
+        assert start() == "WROTE ['company.md', 'profile.json']"
+        assert (state / "company.md").read_text(encoding="utf-8") == SPECS["lindeskar"].company_md
+        # An edit made on the page is not undone by the next start.
+        (state / "company.md").write_text("endret", encoding="utf-8")
+        assert start() == "WROTE []"
+        assert (state / "company.md").read_text(encoding="utf-8") == "endret"

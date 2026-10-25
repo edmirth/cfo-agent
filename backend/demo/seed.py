@@ -34,18 +34,46 @@ def wipe() -> None:
     state.mkdir(parents=True)
 
 
-async def run() -> int:
-    from demo.companies import SPECS
-    spec = SPECS[config.DEMO]
-    wipe()
-    (config.STATE / "company.md").write_text(spec.company_md, encoding="utf-8")
-    if spec.profile:
+def _describe(spec, only_missing: bool = False) -> list[str]:
+    """Write the company's own company.md and industry profile. Returns what it wrote."""
+    wrote = []
+    config.STATE.mkdir(parents=True, exist_ok=True)
+    rulebook = config.STATE / "company.md"
+    if not (only_missing and rulebook.exists()):
+        rulebook.write_text(spec.company_md, encoding="utf-8")
+        wrote.append("company.md")
+    store = config.STATE / "profile.json"
+    if spec.profile and not (only_missing and store.exists()):
         import json
         import industry
         profile = {**spec.profile, "bestemt": date.today().isoformat(),
                    "vurderte": [k.id for k in industry.CATALOGUE], "bevis": {}}
-        (config.STATE / "profile.json").write_text(
-            json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+        store.write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+        wrote.append("profile.json")
+    return wrote
+
+
+def prepare() -> list[str]:
+    """At a demo server's start: the company's description, if its folder lacks it.
+
+    A hosted demo (render.yaml) starts on an empty disk and is never seeded,
+    because seeding wipes the folder under the running server. Without this it
+    would open on no rulebook at all, with the wrong floor and an industry
+    guessed by the model. Nothing is wiped and no job is run; the front page's
+    «Kjør nå» writes the brief.
+    """
+    from demo.companies import SPECS
+    wrote = _describe(SPECS[config.DEMO], only_missing=True)
+    if wrote:
+        log.info("Demoselskapet fikk sin egen beskrivelse: %s", ", ".join(wrote))
+    return wrote
+
+
+async def run() -> int:
+    from demo.companies import SPECS
+    spec = SPECS[config.DEMO]
+    wipe()
+    _describe(spec)
 
     import scheduler  # noqa: E402 — after the state folder exists
     failed = []

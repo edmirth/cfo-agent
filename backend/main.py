@@ -60,6 +60,9 @@ except lock.AlreadyRunning as exc:
 # A backup waiting in state/restore/ goes in now, while the lock is held and
 # before anything has opened the database.
 backup.restore_pending()
+if config.DEMO:
+    from demo.seed import prepare as _prepare_demo
+    _prepare_demo()
 
 # Also before anything binds: a server that would answer anyone stops here.
 auth.check_config()

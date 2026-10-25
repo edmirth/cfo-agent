@@ -3,9 +3,9 @@
 # steps, the settings to fill in, and how to add a pilot company.
 #
 # One service per pilot company, each with its own disk, settings and
-# Tripletex login. To add one, copy the service below with a new name and
-# disk. The landing page (arvaka.no) is a static site set up by hand; see
-# docs/hosting.md.
+# Tripletex login. To add one, copy arvaka-app with a new name and disk.
+# arvaka-demo runs a made-up company for showing the product. The landing
+# page (arvaka.no) is a static site set up by hand; see docs/hosting.md.
 services:
   - type: web
     name: arvaka-app
@@ -30,10 +30,10 @@ services:
         sync: false
       - key: COMPANY_NAME
         sync: false
-      - key: TRIPLETEX_CLIENT_ID
-        sync: false
-      - key: TRIPLETEX_REFRESH_TOKEN
-        sync: false
+      # TRIPLETEX_CLIENT_ID and TRIPLETEX_REFRESH_TOKEN are not asked for
+      # here on purpose. They are added by hand at the switch-over, after
+      # run.sh is stopped on the Mac: two servers renewing one login lock the
+      # Tripletex account out. Until then the service runs without Tripletex.
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
@@ -52,3 +52,43 @@ services:
         sync: false
       - key: CFO_TIMEZONE
         value: Europe/Oslo
+
+  # Lindeskar Renhold AS, made-up books (backend/demo/). Nothing here reaches
+  # a real ledger, sends mail or asks Brønnøysund. For showing the product
+  # from any phone; the test run of card 52.
+  - type: web
+    name: arvaka-demo
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    plan: starter
+    branch: main
+    autoDeployTrigger: commit
+    healthCheckPath: /api/auth/config
+    disk:
+      name: state-demo
+      mountPath: /app/state
+      sizeGB: 1
+    envVars:
+      - key: CFO_DEMO
+        value: lindeskar
+      # A demo keeps its files in state-demo/<company>/ on the Mac; here they
+      # go on the disk, so they survive a deploy.
+      - key: CFO_STATE
+        value: /app/state
+      # The books end the day the server starts, so a morning run each day
+      # would only spend model calls on the same books. Restart the service
+      # and press «Kjør nå» on the front page to bring it up to date.
+      - key: CFO_SCHEDULER
+        value: "off"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: CFO_OWNER_EMAIL
+        sync: false
+      - key: CFO_TIMEZONE
+        value: Europe/Oslo
+
