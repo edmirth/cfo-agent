@@ -119,8 +119,10 @@ def _fernet():
     try:
         return Fernet(config.BACKUP_KEY.encode())
     except ValueError as exc:
-        raise BackupError("CFO_BACKUP_KEY er ikke en gyldig nøkkel. Lag en ny med "
-                          "scripts/backup.py key.") from exc
+        raise BackupError("CFO_BACKUP_KEY er ikke en gyldig nøkkel: tom, kuttet, eller "
+                          "med mellomrom eller anførselstegn rundt. Lim inn nøkkelen "
+                          "fra passordbehandleren på nytt. (En ny nøkkel fra "
+                          "scripts/backup.py key åpner ikke kopier som alt er laget.)") from exc
 
 
 def encrypt(data: bytes) -> bytes:
@@ -192,7 +194,14 @@ async def fetch(name: str, into: Path) -> Path:
         r = await c.get(_storage(f"object/{config.BACKUP_BUCKET}/{company_slug()}/{name}"),
                         headers=_headers())
     if r.status_code != 200:
-        raise BackupError(f"Fant ikke {name} i Supabase ({r.status_code}).")
+        # Supabase answers 400 for a file that is not there as well as for a
+        # wrong key, so say where it looked: a COMPANY_NAME that differs from
+        # the one the copy was made under looks in another folder.
+        raise BackupError(
+            f"Fant ikke {name} i Supabase, i mappa «{company_slug()}/» i bøtta "
+            f"«{config.BACKUP_BUCKET}» ({r.status_code}: {r.text[:120]}). Mappa kommer "
+            f"fra COMPANY_NAME («{config.COMPANY_NAME}»); den må være den samme som "
+            f"da kopien ble laget. «scripts/backup.py list» viser hva som ligger der.")
     into.mkdir(parents=True, exist_ok=True)
     target = into / name
     target.write_bytes(r.content)
