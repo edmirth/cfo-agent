@@ -39,6 +39,8 @@ kanban-plugin: board
 - [ ] 48. Draft next year's budget in October from actuals, contracts and pipeline @edmir #kpi
 - [ ] 49. Ask Arvaka by replying to the Monday email or sending a voice note @edmir #delivery
 - [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
+- [ ] 55. Run the tests on GitHub for every PR, and let Render deploy only when they pass @edmir #platform
+- [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
 
 
 ## Next
