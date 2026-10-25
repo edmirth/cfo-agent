@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personvern — Arvaka</title>
+    <meta name="description" content="Hvilke personopplysninger Arvaka behandler, hvorfor, og hvilke rettigheter du har." />
+    <link rel="canonical" href="https://arvaka.no/personvern/" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#FAFAF9" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/assets/fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/newsreader.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/assets/site.css" />
+    <link rel="stylesheet" href="/assets/pages.css" />
+  </head>
+  <body>
+    <!-- Built by scripts/build_site_pages.py from site-pages/personvern.html. Edit that, not this. -->
+    <nav
+        style="
+          position: sticky;
+          top: 0px;
+          z-index: 10;
+          background: rgb(250, 250, 249);
+          border-bottom: 1px solid rgb(229, 229, 227);
+        "
+      >
+        <div
+          style="
+            max-width: 1440px;
+            margin: 0px auto;
+            padding: 0px clamp(20px, 5.5vw, 80px);
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+          "
+        >
+          <a
+            href="/"
+            style="
+              display: flex;
+              align-items: baseline;
+              gap: 2px;
+              flex-shrink: 0;
+              font-family: Newsreader, serif;
+              font-size: 26px;
+              font-weight: 400;
+              letter-spacing: -0.04em;
+              color: rgb(15, 14, 13);
+              text-decoration: none;
+            "
+            >Arvaka<span
+              style="
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                border-radius: 9999px;
+                background: rgb(19, 91, 69);
+              "
+            ></span
+          ></a>
+          <div
+            class="nav-links"
+            style="
+              display: flex;
+              gap: clamp(16px, 2.2vw, 32px);
+              font-size: 14px;
+              font-weight: 500;
+              flex-wrap: nowrap;
+              white-space: nowrap;
+              min-width: 0px;
+              overflow-x: auto;
+              scrollbar-width: none;
+            "
+          >
+            <a href="/#how" class="scp0" style="color: rgb(51, 49, 44); text-decoration: none"
+              >Slik fungerer det</a
+            ><a
+              href="/#deliverables"
+              class="scp0"
+              style="color: rgb(51, 49, 44); text-decoration: none"
+              >Dette får du</a
+            ><a href="/#pricing" class="scp0" style="color: rgb(51, 49, 44); text-decoration: none"
+              >Priser</a
+            ><a href="/#security" class="scp0" style="color: rgb(51, 49, 44); text-decoration: none"
+              >Sikkerhet</a
+            >
+          </div>
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 16px;
+              flex-shrink: 0;
+              white-space: nowrap;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                gap: 2px;
+                padding: 2px;
+                border-radius: 9999px;
+                background: rgb(242, 241, 240);
+                font-size: 12px;
+                font-weight: 500;
+              "
+            >
+              <a
+                class="scp1"
+                style="
+                  all: unset;
+                  color: rgb(15, 14, 13);
+                  align-items: center;
+                  background: rgb(255, 255, 255);
+                  border-radius: 9999px;
+                  cursor: pointer;
+                  display: inline-flex;
+                  height: 24px;
+                  padding: 0px 10px;
+                "
+                href="/"
+                hreflang="no"
+                lang="no"
+                aria-current="page"
+                >NO</a
+              ><a
+                class="scp1"
+                style="
+                  all: unset;
+                  color: rgb(112, 109, 102);
+                  align-items: center;
+                  background: transparent;
+                  border-radius: 9999px;
+                  cursor: pointer;
+                  display: inline-flex;
+                  height: 24px;
+                  padding: 0px 10px;
+                "
+                href="/en/"
+                hreflang="en"
+                lang="en"
+                >EN</a
+              >
+            </div>
+            <a
+              href="https://app.arvaka.no"
+              style="
+                font-size: 14px;
+                font-weight: 500;
+                color: rgb(51, 49, 44);
+                text-decoration: none;
+              "
+              >Logg inn</a
+            ><a
+              href="/#start"
+              class="scp2 nav-book"
+              style="
+                display: inline-flex;
+                align-items: center;
+                height: 32px;
+                padding: 0px 16px;
+                border-radius: 9999px;
+                white-space: nowrap;
+                background: rgb(15, 54, 42);
+                color: rgb(250, 250, 249);
+                font-size: 14px;
+                font-weight: 500;
+                text-decoration: none;
+                transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+              "
+              >Book en samtale</a
+            >
+          </div>
+        </div>
+      </nav>
+    <div class="draft-banner" role="note">
+  <strong>Utkast.</strong> Denne siden er ikke godkjent ennå. Tekst i
+  <span class="todo">gult</span> må fylles inn eller sjekkes før den publiseres.
+</div>
+    <main class="doc">
+<h1>Personvernerklæring</h1>
+<p class="lede">
+  Her står hvilke personopplysninger Arvaka behandler, hvorfor vi gjør det, hvem som hjelper oss,
+  og hvilke rettigheter du har.
+</p>
+
+<h2>Hvem som er ansvarlig</h2>
+<p>
+  Arvaka AS, org.nr. <span class="todo">[organisasjonsnummer]</span>, er behandlingsansvarlig
+  for opplysningene som beskrives her. Spørsmål om personvern sendes til
+  <span class="todo">[personvern@arvaka.no]</span>.
+</p>
+<p>
+  Når vi leser regnskapet til en kunde, er det kunden som er behandlingsansvarlig, og vi er
+  databehandler. Det er regulert i <a href="/databehandleravtale/">databehandleravtalen</a>.
+</p>
+
+<h2>Når du besøker arvaka.no</h2>
+<ul>
+  <li>
+    Vi bruker ingen informasjonskapsler (cookies), ingen analyseverktøy og ingen sporing.
+  </li>
+  <li>
+    Skrifter og bilder lastes fra arvaka.no. Nettleseren din kontakter ingen andre når du
+    besøker siden.
+  </li>
+  <li>
+    Vertsleverandøren vår, Render, kan føre tekniske logger over forespørsler, med IP-adresse,
+    tidspunkt og hvilken side som ble hentet, for drift og sikkerhet. Vi bruker dem ikke til å
+    følge enkeltpersoner. <span class="todo">[Sjekk hvor lenge Render lagrer loggene.]</span>
+  </li>
+</ul>
+
+<h2>Når du tar kontakt eller booker en samtale</h2>
+<p>
+  Vi behandler navnet ditt, e-postadressen din og det du skriver til oss, for å svare deg.
+  Grunnlaget er vår berettigede interesse i å svare på henvendelser (personvernforordningen
+  artikkel 6 nr. 1 bokstav f). Booker du en samtale, behandler
+  <span class="todo">[bookingverktøyet]</span> navn, e-post og tidspunkt på våre vegne.
+</p>
+<p>
+  Blir det ikke noe avtale, sletter vi henvendelsen etter
+  <span class="todo">[12 måneder]</span>.
+</p>
+
+<h2>Når du bruker plattformen</h2>
+<p>Har bedriften din avtale med oss og du har fått tilgang, behandler vi:</p>
+<ul>
+  <li>
+    <strong>Innloggingen din:</strong> e-postadressen og passordet ditt. Passordet lagres ikke i
+    klartekst. Innloggingen håndteres av Supabase, med lagring i Stockholm.
+  </li>
+  <li>
+    <strong>Det du skriver og bestemmer:</strong> meldinger i chatten og valgene du tar på saker
+    lagres, slik at Arvaka husker dem mellom samtaler.
+  </li>
+  <li>
+    <strong>Mandagsbrevet:</strong> sendes på e-post til adressene bedriften har valgt, gjennom
+    Resend.
+  </li>
+  <li>
+    <strong>Tid i appen:</strong> mens appen er åpen og i fokus, registrerer vi ett signal i
+    minuttet. Vi registrerer ikke hva du leser eller klikker på. Det bruker vi til å forstå
+    hvor mye tid tjenesten krever, og til å gjøre den bedre.
+  </li>
+</ul>
+<p>
+  Grunnlaget er vår berettigede interesse i å levere og forbedre tjenesten bedriften din har
+  avtale om (artikkel 6 nr. 1 bokstav f).
+</p>
+
+<h2>Regnskapsdataene</h2>
+<p>
+  Arvaka leser regnskapet med bare lesetilgang. Regnskapsdata kan inneholde personopplysninger,
+  for eksempel navn på kunder og leverandører som er enkeltpersoner. Vi behandler dem bare for
+  å levere tjenesten, etter instruks fra kunden. KI-modellen vi bruker, leveres av Anthropic,
+  som etter sine kommersielle vilkår ikke trener modeller på dataene.
+  <span class="todo">[Sjekk at dette står i avtalen vår med Anthropic.]</span> Alt om dette står
+  i <a href="/databehandleravtale/">databehandleravtalen</a>, også hvilke underleverandører vi
+  bruker og hvor de behandler dataene.
+</p>
+
+<h2>Hvem vi deler med</h2>
+<p>
+  Vi selger ikke personopplysninger og deler dem ikke for markedsføring. Vi deler dem bare med
+  underleverandørene som hjelper oss å levere tjenesten, og som er listet i
+  <a href="/databehandleravtale/">databehandleravtalen</a>. Noen av dem behandler data i USA;
+  det står der på hvilket grunnlag.
+</p>
+
+<h2>Hvor lenge vi lagrer</h2>
+<ul>
+  <li>Henvendelser som ikke blir en avtale: <span class="todo">[12 måneder]</span>.</li>
+  <li>
+    Brukerkontoer: så lenge bedriften har avtale med oss, og slettes
+    <span class="todo">[30 dager]</span> etter at avtalen er over.
+  </li>
+  <li>Tekniske logger: <span class="todo">[periode]</span>.</li>
+</ul>
+
+<h2>Dine rettigheter</h2>
+<p>
+  Du kan be om innsyn i opplysningene vi har om deg, og be oss rette eller slette dem. Du kan
+  også be oss begrense behandlingen, få opplysningene utlevert i et vanlig format, og protestere
+  mot behandling som bygger på berettiget interesse. Skriv til
+  <span class="todo">[personvern@arvaka.no]</span>, så svarer vi innen 30 dager.
+</p>
+<p>
+  Mener du at vi behandler opplysninger i strid med regelverket, kan du klage til Datatilsynet
+  (<a href="https://www.datatilsynet.no">datatilsynet.no</a>).
+</p>
+
+<p class="updated">Sist oppdatert <span class="todo">[dato]</span>.</p>
+    </main>
+    <footer
+        style="
+          background: rgb(15, 14, 13);
+          color: rgb(250, 250, 249);
+          padding: 96px clamp(20px, 5.5vw, 80px) 0px;
+          overflow: hidden;
+        "
+      >
+        <div style="max-width: 1280px; margin: 0px auto">
+          <div
+            style="
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+              gap: 40px;
+              font-size: 14px;
+            "
+          >
+            <div style="display: flex; flex-direction: column; gap: 12px">
+              <span style="color: rgb(143, 139, 133)">Tjeneste</span
+              ><a href="/#how" style="color: rgb(250, 250, 249)">Mandagsbrief</a
+              ><a href="/#deliverables" style="color: rgb(250, 250, 249)">Ledelsesrapport</a
+              ><a href="/#deliverables" style="color: rgb(250, 250, 249)">Beslutningskø</a
+              ><a href="/#pricing" style="color: rgb(250, 250, 249)">Priser</a>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px">
+              <span style="color: rgb(143, 139, 133)">For regnskapsførere</span
+              ><a href="/regnskapsforer/" style="color: rgb(250, 250, 249)">Samarbeid med regnskapsføreren</a
+              ><a href="/#security" style="color: rgb(250, 250, 249)">Sikkerhet</a>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px">
+              <span style="color: rgb(143, 139, 133)">Selskap</span
+              ><a href="/om-oss/" style="color: rgb(250, 250, 249)">Om oss</a
+              ><a href="/kontakt/" style="color: rgb(250, 250, 249)">Kontakt</a>
+            </div>
+          </div>
+          <p
+            style="
+              margin: 64px 0px 0px;
+              font-size: 13px;
+              line-height: 20px;
+              color: rgb(143, 139, 133);
+              max-width: 640px;
+            "
+          >
+            Arvaka leverer økonomisk analyse og anbefalinger. Vi fører ikke regnskap, leverer ikke
+            lovpålagte rapporter og signerer ikke årsregnskap — det ligger hos regnskapsføreren.
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              flex-wrap: wrap;
+              margin-top: 24px;
+              padding-top: 24px;
+              border-top: 1px solid rgb(51, 49, 44);
+              font-size: 14px;
+              color: rgb(143, 139, 133);
+            "
+          >
+            <span>© 2026 Arvaka AS</span
+            ><span style="display: flex; gap: 24px"
+              ><a href="/personvern/" style="color: rgb(143, 139, 133)">Personvern</a
+              ><a href="/databehandleravtale/" style="color: rgb(143, 139, 133)">Databehandleravtale</a></span
+            >
+          </div>
+        </div>
+        <div
+          style="
+            font-family: Newsreader, serif;
+            font-weight: 300;
+            font-size: clamp(96px, 21vw, 320px);
+            line-height: 0.8;
+            letter-spacing: -0.05em;
+            color: rgb(19, 91, 69);
+            margin: 48px 0px -0.12em -0.04em;
+            white-space: nowrap;
+          "
+        >
+          Arvaka<span style="color: rgb(208, 242, 137)">.</span>
+        </div>
+      </footer>
+  </body>
+</html>
