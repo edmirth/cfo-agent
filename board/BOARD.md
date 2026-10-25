@@ -38,6 +38,7 @@ kanban-plugin: board
 - [ ] 47. Check payroll against contracts each month: hours, overtime and NAV sick-pay refunds @edmir #warnings
 - [ ] 48. Draft next year's budget in October from actuals, contracts and pipeline @edmir #kpi
 - [ ] 49. Ask Arvaka by replying to the Monday email or sending a voice note @edmir #delivery
+- [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
 
 
 ## Next
