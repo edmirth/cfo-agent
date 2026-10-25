@@ -119,6 +119,14 @@ class _Supabase:
             _Supabase.objects[path] = content
         return r
 
+    async def get(self, url, headers):
+        path = url.split("/object/backups/", 1)[1]
+
+        class R:
+            status_code = 200 if path in _Supabase.objects else 404
+            content = _Supabase.objects.get(path, b"")
+        return R()
+
     async def request(self, method, url, headers, json):
         assert method == "DELETE"
         for p in json["prefixes"]:
@@ -143,6 +151,13 @@ def test_the_upload_is_encrypted_and_keeps_fourteen_there_too():
             assert _Supabase.deleted == [f"{slug}/{slug}-2026-10-01.tar.gz.enc"]
             body = _Supabase.objects[f"{slug}/{slug}-2026-10-15.tar.gz.enc"]
             assert backup.decrypt(body)[:2] == b"\x1f\x8b"      # a gzip, once opened
+
+            # A lost disk: list what is outside, fetch the newest back in.
+            names = asyncio.run(backup.remote())
+            assert len(names) == backup.KEEP and names[-1].endswith("2026-10-15.tar.gz.enc")
+            inbox = Path(tempfile.mkdtemp()) / "restore"
+            got = asyncio.run(backup.fetch(names[-1], inbox))
+            assert got.read_bytes() == body
     finally:
         backup.httpx.AsyncClient, config.BACKUP_SUPABASE_KEY, config.BACKUP_SUPABASE_URL = saved
 

@@ -174,6 +174,31 @@ async def upload(copy: Path) -> dict:
     return {"object": f"{bucket}/{prefix}/{name}", "bytes": len(body), "dropped": len(dropped)}
 
 
+async def remote() -> list[str]:
+    """The copies outside the host for this company, oldest first."""
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.post(_storage(f"object/list/{config.BACKUP_BUCKET}"), headers=_headers(),
+                         json={"prefix": company_slug(), "limit": 1000,
+                               "sortBy": {"column": "name", "order": "asc"}})
+    if r.status_code != 200:
+        raise BackupError(f"Supabase svarte {r.status_code}: {r.text[:200]}")
+    return sorted(o["name"] for o in r.json()
+                  if NAME.match(o.get("name", "").removesuffix(".enc")))
+
+
+async def fetch(name: str, into: Path) -> Path:
+    """Fetch one copy from outside the host into `into`, still encrypted."""
+    async with httpx.AsyncClient(timeout=120) as c:
+        r = await c.get(_storage(f"object/{config.BACKUP_BUCKET}/{company_slug()}/{name}"),
+                        headers=_headers())
+    if r.status_code != 200:
+        raise BackupError(f"Fant ikke {name} i Supabase ({r.status_code}).")
+    into.mkdir(parents=True, exist_ok=True)
+    target = into / name
+    target.write_bytes(r.content)
+    return target
+
+
 # ------------------------------------------------------------ restoring
 def open_copy(path: Path, into: Path) -> list[str]:
     """Unpack a copy (encrypted or not) into an empty folder. Returns what it held."""

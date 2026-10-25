@@ -8,6 +8,13 @@
     ./.venv/bin/python scripts/backup.py now
         Tar en kopi nå, som nattjobben gjør, og sender den ut hvis det er satt opp.
 
+    ./.venv/bin/python scripts/backup.py list
+        Kopiene utenfor serveren, eldste først.
+
+    ./.venv/bin/python scripts/backup.py fetch <navn>
+        Henter en kopi utenfor serveren inn i state/restore/. Start serveren
+        på nytt, så legges den inn (docs/hosting.md, «Restoring a backup»).
+
     ./.venv/bin/python scripts/backup.py open <kopi.tar.gz[.enc]> <ny mappe>
         Pakker ut en kopi, kryptert eller ikke, i en tom mappe. Selve
         tilbakeføringen er beskrevet i docs/hosting.md.
@@ -35,6 +42,20 @@ def main(argv: list[str]) -> int:
             print(f"✓ Utenfor serveren: {out['object']}")
         else:
             print("· Ikke sendt ut: CFO_BACKUP_KEY og SUPABASE_SERVICE_KEY er ikke satt.")
+        return 0
+
+    if argv[:1] in (["list"], ["fetch"]) and not backup.offsite_configured():
+        print("! CFO_BACKUP_KEY og SUPABASE_SERVICE_KEY er ikke satt.")
+        return 1
+
+    if argv[:1] == ["list"]:
+        for name in asyncio.run(backup.remote()):
+            print(name)
+        return 0
+
+    if argv[:1] == ["fetch"] and len(argv) == 2:
+        target = asyncio.run(backup.fetch(argv[1], backup.SOURCE / "restore"))
+        print(f"✓ Hentet til {target}. Start serveren på nytt for å legge den inn.")
         return 0
 
     if argv[:1] == ["open"] and len(argv) == 3:

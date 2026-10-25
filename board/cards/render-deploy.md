@@ -14,7 +14,7 @@ The platform runs only while the Mac runs `run.sh`. To run on Render at `app.arv
 - [x] `render.yaml`: one web service in Frankfurt, a disk on `state/`, health check on `/api/auth/config`, deployed on merge to main
 - [x] A nightly backup: a safe copy of `state/cfo.db` and `company.md`, the last 14 kept on the disk and one copy outside Render
 - [x] The server refuses to start on Render with `CFO_AUTH=off`
-- [ ] `docs/hosting.md` covers the platform: first deploy, adding a pilot company, moving `state/` from the Mac, restoring a backup
+- [x] `docs/hosting.md` covers the platform: first deploy, adding a pilot company, moving `state/` from the Mac, restoring a backup
 
 ## Log
 - 2026-10-25 (agent): created on @edmir's call. Open for @edmir: where the backup copy outside Render goes (Supabase Storage in Stockholm needs no new provider). Related: [[tripletex-login-expiry]] (card 18): on a server, nobody sees the terminal when the Tripletex login expires, as it did on 2026-10-07.
@@ -25,3 +25,6 @@ The platform runs only while the Mac runs `run.sh`. To run on Render at `app.arv
 - 2026-10-25 (agent): `config.HOSTED` (Render sets `RENDER`; `CFO_HOSTED` for any other host); `auth.check_config()` refuses `CFO_AUTH=off` there. Checked in the image with `RENDER=true CFO_AUTH=off`: refuses with the reason.
 - 2026-10-25 (agent): nightly backup as scheduler job `backup` (02:00, every night): `backend/backup.py`, `scripts/backup.py` (key / now / open). Tried on the real data: 135 kB, opens with all 36 cards, integrity ok. The upload to Supabase Storage is tested against a fake only; the first real one waits for a bucket and a service key. Also the rulebook's neighbours (definitions, profile, summary) go in; the Tripletex token does not.
 - 2026-10-25 (agent): `render.yaml`: one Docker web service, Frankfurt, Starter, a 1 GB disk on `/app/state`, health check `/api/auth/config`, deploy on every commit to main. Not yet read by Render itself; card 52 is where it meets the real thing.
+- 2026-10-25 (agent): restoring is a copy left in `state/restore/` and a restart; the server swaps it in at start-up, before anything opens the database, and keeps what was there in `before-restore-<time>/`. `scripts/backup.py list` / `fetch` bring a copy back from Supabase. Checked end to end in Docker: the Mac's real copy went in on start-up, 36 cards and 11 forecasts. `docs/hosting.md` has first deploy, adding a company, moving from the Mac, restoring.
+- 2026-10-25 (agent): verified: 463 tests pass on the Mac and on a fresh install; the image builds and runs; a demo server answers health, overview, preflight, commitments, cashflow, cards, rules, dashboard, and the schedule lists the backup at 02:00. Not verified until card 52: Render reading `render.yaml`, and a real upload to Supabase Storage.
+- 2026-10-25 (agent): found while verifying: the real Tripletex login has expired (`invalid_grant: Session not found`; last good call 2026-10-23 08:26). Not caused by this card: the server sent the same token the old code would have. Fix: `./.venv/bin/python scripts/oauth_login.py`, which @edmir runs (it needs a browser). Same failure as card 18.
