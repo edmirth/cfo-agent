@@ -19,15 +19,20 @@ host's settings and nowhere near the copy. Supabase holds a file it cannot
 read; whoever restores needs the key. Lose the key and the copies outside the
 host are lost with it, so keep it in a password manager too.
 
-Restoring is by hand, on purpose: `docs/hosting.md`, «Restoring a backup».
+**Restoring** is a copy put in `state/restore/` and a restart: at start-up,
+before anything opens the database, the server checks the copy, moves what
+is there now aside into `state/before-restore-<time>/`, and puts the copy in
+its place. Swapping `cfo.db` under a running server would corrupt it; this
+way nothing has it open. `docs/hosting.md`, «Restoring a backup».
 """
 import logging
 import os
 import re
 import sqlite3
 import tarfile
+import shutil
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx2 as httpx
@@ -185,3 +190,55 @@ def open_copy(path: Path, into: Path) -> list[str]:
             names = tar.getnames()
             tar.extractall(into, filter="data")
     return names
+
+
+def restore_pending() -> str | None:
+    """Put a copy waiting in `state/restore/` in place. Called at start-up,
+    after the server lock and before anything opens the database.
+
+    Returns the copy's name, or None when there is nothing to restore. A copy
+    that will not open or check out is left where it is and the server starts
+    on what it has: a failed restore must not cost the data that is there.
+    """
+    inbox = SOURCE / "restore"
+    waiting = sorted(p for p in inbox.iterdir()
+                     if p.name.endswith((".tar.gz", ".tar.gz.enc"))) if inbox.exists() else []
+    if not waiting:
+        return None
+    if len(waiting) > 1:
+        log.error("Mer enn én kopi i %s; legg bare den som skal tilbake der. "
+                  "Ingenting ble tilbakeført.", inbox)
+        return None
+    copy = waiting[0]
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    unpacked = SOURCE / f".restoring-{stamp}"
+    try:
+        open_copy(copy, unpacked)
+        conn = sqlite3.connect(unpacked / "cfo.db")
+        try:
+            verdict = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            conn.close()
+        if verdict != "ok":
+            raise BackupError(f"databasen i kopien er skadet ({verdict})")
+    except Exception as exc:  # noqa: BLE001 — start on what is there instead
+        shutil.rmtree(unpacked, ignore_errors=True)
+        log.error("Kunne ikke tilbakeføre %s: %s. Serveren starter på dataene "
+                  "den har.", copy.name, exc)
+        return None
+
+    aside = SOURCE / f"before-restore-{stamp}"
+    aside.mkdir()
+    for current in [db.PATH, db.PATH.with_name(db.PATH.name + "-wal"),
+                    db.PATH.with_name(db.PATH.name + "-shm"),
+                    *(SOURCE / name for name in FILES)]:
+        if current.exists():
+            os.replace(current, aside / current.name)
+    for restored in unpacked.iterdir():
+        target = db.PATH if restored.name == "cfo.db" else SOURCE / restored.name
+        os.replace(restored, target)
+    unpacked.rmdir()
+    os.replace(copy, aside / copy.name)       # so the next restart does not do it again
+    log.warning("Tilbakeført fra %s. Det som lå der før, er flyttet til %s.",
+                copy.name, aside.name)
+    return copy.name

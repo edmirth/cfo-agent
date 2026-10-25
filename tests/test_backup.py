@@ -161,3 +161,55 @@ def test_the_company_in_a_file_name():
         assert backup.company_slug() == "aerlig-ostby-sonn-as"
     finally:
         config.DEMO, config.COMPANY_NAME = saved
+
+
+@contextmanager
+def _own_database():
+    saved = db.PATH
+    db.PATH = Path(tempfile.mkdtemp()) / "cfo.db"
+    try:
+        yield db.PATH
+    finally:
+        db.PATH = saved
+
+
+def _counter(path: Path) -> int:
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute("select value from counters where series = 'restore-test'").fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
+def test_a_copy_left_in_restore_is_put_in_place_at_start_and_the_old_kept_aside():
+    key = Fernet.generate_key().decode()
+    with _own_database() as path, _folders(key) as root:
+        with db.tx() as conn:
+            db.next_ref(conn, "restore-test", "R")
+        copy = backup.make(date(2026, 10, 25))
+        with db.tx() as conn:                      # written after the copy
+            db.next_ref(conn, "restore-test", "R")
+        assert _counter(path) == 2
+
+        (root / "restore").mkdir()
+        sealed = root / "restore" / (copy.name + ".enc")
+        sealed.write_bytes(backup.encrypt(copy.read_bytes()))
+        assert backup.restore_pending() == sealed.name
+
+        assert _counter(path) == 1
+        [aside] = root.glob("before-restore-*")
+        assert _counter(aside / "cfo.db") == 2
+        assert (aside / sealed.name).exists() and not any((root / "restore").iterdir())
+        assert backup.restore_pending() is None    # the next start does nothing
+
+
+def test_a_copy_that_will_not_open_leaves_the_data_alone():
+    with _own_database() as path, _folders(Fernet.generate_key().decode()) as root:
+        with db.tx() as conn:
+            db.next_ref(conn, "restore-test", "R")
+        (root / "restore").mkdir()
+        (root / "restore" / "broken.tar.gz.enc").write_bytes(b"not a copy")
+        assert backup.restore_pending() is None
+        assert _counter(path) == 1
+        assert not list(root.glob("before-restore-*"))
