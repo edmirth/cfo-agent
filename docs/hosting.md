@@ -99,7 +99,7 @@ built from the `Dockerfile`.
 |---|---|
 | The image | The code and the built frontend. Rebuilt on every deploy; nothing in it survives one |
 | The disk, at `/app/state` | Everything the company has: `cfo.db`, `company.md` and the files beside it, `tripletex.json` (the rotated Tripletex login), `backups/` |
-| Render's settings | The keys and the first Tripletex login. Never in the repository, never in the image |
+| Render's settings | The keys, and the first Tripletex login once it is added by hand. Never in the repository, never in the image |
 | Supabase Storage | The nightly copy, encrypted. Supabase cannot read it |
 
 **What is different from the Mac.** The server refuses to start with
@@ -121,23 +121,27 @@ disk cannot run two copies side by side.
 
    Put it in a password manager now. Without it the copies in Supabase cannot
    be opened, by anyone.
-3. **The Tripletex login.** For the company's own Tripletex, from a Mac:
-   `scripts/oauth_login.py` writes `TRIPLETEX_CLIENT_ID` and
-   `TRIPLETEX_REFRESH_TOKEN` to `.env`. It writes to *this* folder's `.env`,
-   so for another company than the one the Mac runs, do it in a separate copy
-   of the repository, or the Mac's own login is replaced.
+3. **Not the Tripletex login yet.** The Blueprint does not ask for it, on
+   purpose: a service that renews the same login as the Mac locks the
+   account out. It is added by hand at the switch-over, after `run.sh` is
+   stopped (below). For a new pilot company, whose login the Mac never
+   held, it can go in at once: `scripts/oauth_login.py` writes
+   `TRIPLETEX_CLIENT_ID` and `TRIPLETEX_REFRESH_TOKEN` to *this* folder's
+   `.env`, so run it in a separate copy of the repository, or the Mac's own
+   login is replaced.
 
 ### First deploy
 
 1. Render: **New → Blueprint**, this repository, branch `main`. Render reads
-   `render.yaml` and shows the service `arvaka-app` with a 1 GB disk.
-2. Fill in the settings it asks for:
+   `render.yaml` and shows two services, each with a 1 GB disk: `arvaka-app`
+   for the company and `arvaka-demo` for the made-up one (below).
+2. Fill in the settings it asks for. `arvaka-demo` asks only for the first
+   four that apply to it: the Anthropic key and the login.
 
    | Setting | Where it comes from |
    |---|---|
    | `ANTHROPIC_API_KEY` | console.anthropic.com |
    | `COMPANY_NAME` | The company's name, as on its letters |
-   | `TRIPLETEX_CLIENT_ID`, `TRIPLETEX_REFRESH_TOKEN` | Step 3 above |
    | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | The login project, as in `.env` |
    | `CFO_OWNER_EMAIL` | The CEO's email; more separated by commas |
    | `RESEND_API_KEY`, `CFO_MAIL_FROM` | As in `.env` (card 53 moves the sender to `cfo@arvaka.no`) |
@@ -154,7 +158,29 @@ disk cannot run two copies side by side.
    `https://app.arvaka.no` and add it under Redirect URLs. Without it a login
    link sends the CEO back to the Mac's address.
 
-After that, every merge to `main` deploys by itself.
+After that, every merge to `main` deploys by itself. Until the switch-over
+`arvaka-app` runs without Tripletex: its pages say so, and its morning run
+fails and says why. That is expected.
+
+### The demo (`arvaka-demo`)
+
+Lindeskar Renhold AS, with made-up books (`backend/demo/`): a cleaning
+company in a yellow week, one customer late. Nothing in it reaches a real
+ledger, sends mail or asks Brønnøysund. It is for showing the product from
+any phone, and it was the test run before the real company moved.
+
+- **On a fresh disk** it starts with Lindeskar's own rulebook and profile, but
+  no brief yet. Sign in and press **Kjør nå** on the front page: the morning
+  and the Monday brief are written from the demo's books in a minute or two.
+- **The books end the day the server starts**, and the morning run is off
+  (`CFO_SCHEDULER=off`), so it does not spend model calls on the same books
+  every day. Before a presentation: **Manual Deploy → Restart service**, then
+  **Kjør nå**.
+- **Who can sign in** is its own `CFO_OWNER_EMAIL`; add a prospect's email
+  there for a demo they open themselves.
+- **An address of its own**, say `demo.arvaka.no`, the same way as
+  `app.arvaka.no` (another $0.25 a month on the Hobby plan), and add it to
+  the Redirect URLs in Supabase too.
 
 ### Adding a pilot company
 
@@ -168,17 +194,23 @@ after it.
 ### Moving `state/` from the Mac
 
 The Mac and the server must never run at the same time on one Tripletex
-login: each renewal replaces the token, and the other is locked out.
+login: each renewal replaces the token, and the other is locked out. Pick a
+time outside 07:00 to 08:00 on a working day, so the morning run is not
+caught halfway.
 
 1. Stop `run.sh` on the Mac.
 2. Take a copy and send it out, with the backup settings in the Mac's `.env`:
 
        ./.venv/bin/python scripts/backup.py now
 
-3. Put the Mac's newest Tripletex token in Render's `TRIPLETEX_REFRESH_TOKEN`.
-   It is in `state/tripletex.json` (or `.env`, if that file is not there yet):
+3. In `arvaka-app` on Render, **Environment → Add environment variable**:
+   `TRIPLETEX_CLIENT_ID` from the Mac's `.env`, and `TRIPLETEX_REFRESH_TOKEN`
+   with the Mac's newest token, which is in `state/tripletex.json`:
 
        python3 -c "import json; print(json.load(open('state/tripletex.json'))['refresh_token'])"
+
+   Save without deploying (**Save, rebuild and deploy** is fine too; the
+   restart in step 5 is the one that counts).
 
 4. In the service on Render, **Shell**:
 
@@ -187,7 +219,12 @@ login: each renewal replaces the token, and the other is locked out.
 
 5. **Manual Deploy → Restart service.** At start-up the copy is put in place
    (see below), and the server opens on the Mac's data.
-6. Do not start `run.sh` on the Mac again for this company.
+6. Check the front page on `app.arvaka.no` shows the figures the Mac did.
+7. Take the Tripletex login off the Mac, so it cannot be started on it by
+   mistake: delete the `TRIPLETEX_CLIENT_ID` and `TRIPLETEX_REFRESH_TOKEN`
+   lines from `.env`, and `state/tripletex.json`. The Mac then runs the demo
+   companies (`./demo.sh`), or its own separate login with
+   `CFO_SCHEDULER=off` and no `RESEND_API_KEY`.
 
 ### Restoring a backup
 
