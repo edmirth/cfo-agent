@@ -12,7 +12,9 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 TRIPLETEX_CLIENT_ID = os.getenv("TRIPLETEX_CLIENT_ID") or ""
 TRIPLETEX_REFRESH_TOKEN = os.getenv("TRIPLETEX_REFRESH_TOKEN") or ""
 TRIPLETEX_MCP_URL = os.getenv("TRIPLETEX_MCP_URL", "https://mcp.tripletex.no")
-COMPANY_NAME = os.getenv("COMPANY_NAME", "Selskapet")
+# `or`, not a default to getenv: a host that lists a setting but leaves it
+# empty (Render, for one) hands over "" and would otherwise keep it.
+COMPANY_NAME = os.getenv("COMPANY_NAME") or "Selskapet"
 
 # Demo mode (backend/demo/): CFO_DEMO names a made-up company, and the whole
 # server runs on its books instead of Tripletex. Nothing that reaches the real
@@ -88,4 +90,5 @@ BACKUP_BUCKET = os.getenv("CFO_BACKUP_BUCKET", "backups")
 # without one, Resend sends only from onboarding@resend.dev and only to the
 # account's own address — enough while the CEO is the one recipient.
 RESEND_API_KEY = "" if DEMO else (os.getenv("RESEND_API_KEY") or "")
-MAIL_FROM = os.getenv("CFO_MAIL_FROM", "CFO <onboarding@resend.dev>")
+# Empty counts as unset: Resend refuses an email with no sender.
+MAIL_FROM = os.getenv("CFO_MAIL_FROM") or "CFO <onboarding@resend.dev>"
