@@ -84,74 +84,82 @@ export function Selskapet() {
         lead="Arvaka leser dette hver gang den svarer. Skriv hvordan dere faktisk jobber — når lønnen utbetales, hvem kundene er, hvilke måneder som alltid er tunge. Det avgjør om et tall leses som et problem eller som en helt vanlig måned."
       />
 
-      <section>
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          spellCheck={false}
-          rows={24}
-          aria-label="Om selskapet"
-          className="min-h-[60vh] resize-y p-5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px] leading-6"
-        />
-        <div className="mt-4 flex items-center gap-4">
-          <Button onClick={save} disabled={saving}>
-            Lagre
-          </Button>
-          <span
-            className={
-              "text-sm " +
-              (status.tone === "ok"
-                ? "text-good-text"
-                : status.tone === "bad"
-                  ? "text-bad-text"
-                  : "text-muted-foreground")
-            }
-          >
-            {status.msg}
-          </span>
-        </div>
-      </section>
-
-      <section>
-        <SectionHead title="Innstillinger som flytter tall" />
-        <p className="text-muted-foreground -mt-2 mb-6 max-w-[62ch] text-[15px] leading-6">
-          Linjene mellom <code className="bg-muted rounded-sm px-1 py-0.5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">---</code>{" "}
-          øverst i teksten. Alt annet leses av Arvaka, men endrer ingen regnestykker.
-        </p>
-        <ul className="divide-border divide-y border-y text-sm">
-          {Object.entries(co?.known_settings || {}).map(([key, what]) => {
-            const value = co?.settings?.[key]
-            const rule = rules?.[key as keyof Rules]
-            const used = rule && ruleValue(key, rule)
-            return (
-              <li key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3.5">
-                <code className="font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">{key}</code>
-                <span className="text-muted-foreground flex-1 text-[13px]">{what}</span>
-                <b className="font-medium tabular-nums">
-                  {value != null ? (
-                    // A rule the company set reads with its unit, «2 000 000 kr», not 2000000.
-                    rule && !rule.assumed && used ? used : value
-                  ) : (
-                    <span className="text-muted-foreground font-sans font-normal">
-                      ikke satt
-                      {rule?.assumed && used
-                        ? ` · bruker ${used} (${rule.basis === "standard" ? "standard" : rule.basis})`
-                        : ""}
-                    </span>
-                  )}
-                </b>
-              </li>
-            )
-          })}
-        </ul>
-        {!!co?.notes?.length && (
-          <div className="text-bad-text mt-5 rounded-md bg-[color-mix(in_oklab,var(--negative)_10%,transparent)] px-4 py-3 text-sm">
-            {co.notes.map((n, i) => (
-              <p key={i}>{n}</p>
-            ))}
+      {/* På en bred skjerm står innstillingene ved siden av teksten de leses
+          fra, i stedet for under den med tomrom til høyre. Først fra 2xl:
+          teksten er brutt for hånd rundt 72 tegn, og et smalere felt brøt
+          linjene en gang til midt i setningen. */}
+      <div className="grid gap-14 2xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] 2xl:gap-x-16">
+        <section>
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+            rows={24}
+            aria-label="Om selskapet"
+            className="min-h-[60vh] resize-y p-5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px] leading-6"
+          />
+          <div className="mt-4 flex items-center gap-4">
+            <Button onClick={save} disabled={saving}>
+              Lagre
+            </Button>
+            <span
+              className={
+                "text-sm " +
+                (status.tone === "ok"
+                  ? "text-good-text"
+                  : status.tone === "bad"
+                    ? "text-bad-text"
+                    : "text-muted-foreground")
+              }
+            >
+              {status.msg}
+            </span>
           </div>
-        )}
-      </section>
+        </section>
+
+        <section>
+          <SectionHead title="Innstillinger som flytter tall" />
+          <p className="text-muted-foreground -mt-2 mb-6 max-w-[62ch] text-[15px] leading-6">
+            Linjene mellom <code className="bg-muted rounded-sm px-1 py-0.5 font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">---</code>{" "}
+            øverst i teksten. Alt annet leses av Arvaka, men endrer ingen regnestykker.
+          </p>
+          <ul className="divide-border divide-y border-y text-sm">
+            {Object.entries(co?.known_settings || {}).map(([key, what]) => {
+              const value = co?.settings?.[key]
+              const rule = rules?.[key as keyof Rules]
+              const used = rule && ruleValue(key, rule)
+              return (
+                <li key={key} className="grid gap-1 py-3.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <code className="font-[ui-monospace,SFMono-Regular,Menlo,monospace] text-[13px]">{key}</code>
+                    <b className="font-medium tabular-nums">
+                      {value != null ? (
+                        // A rule the company set reads with its unit, «2 000 000 kr», not 2000000.
+                        rule && !rule.assumed && used ? used : value
+                      ) : (
+                        <span className="text-muted-foreground font-sans font-normal">
+                          ikke satt
+                          {rule?.assumed && used
+                            ? ` · bruker ${used} (${rule.basis === "standard" ? "standard" : rule.basis})`
+                            : ""}
+                        </span>
+                      )}
+                    </b>
+                  </div>
+                  <span className="text-muted-foreground text-[13px] leading-5 text-pretty">{what}</span>
+                </li>
+              )
+            })}
+          </ul>
+          {!!co?.notes?.length && (
+            <div className="text-bad-text mt-5 rounded-md bg-[color-mix(in_oklab,var(--negative)_10%,transparent)] px-4 py-3 text-sm">
+              {co.notes.map((n, i) => (
+                <p key={i}>{n}</p>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

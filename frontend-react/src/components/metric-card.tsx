@@ -94,7 +94,12 @@ export function MetricCard({
     <Card size="sm" className="gap-4 px-1">
       <CardContent className="grid gap-4">
         <div className="grid gap-2">
-          <span className="label">{label}</span>
+          {/* Perioden står oppe ved etiketten. Nede ved setningen presset den
+              setningen over tre linjer i et smalt kort. */}
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="label">{label}</span>
+            {span && <span className="text-muted-foreground shrink-0 text-xs">{span}</span>}
+          </div>
           {loading ? (
             <Skeleton className="h-9 w-28" />
           ) : (
@@ -144,10 +149,7 @@ export function MetricCard({
           </div>
         )}
 
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-muted-foreground min-w-0 text-[13px] leading-5">{note}</p>
-          {span && <span className="text-muted-foreground shrink-0 text-xs">{span}</span>}
-        </div>
+        <p className="text-muted-foreground text-[13px] leading-5 text-pretty">{note}</p>
       </CardContent>
     </Card>
   )

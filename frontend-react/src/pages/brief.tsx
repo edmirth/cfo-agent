@@ -377,7 +377,7 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
   const { amount: floor, tag } = floorOf({ rules })
   const data = cash.weeks.map((w) => ({ ...w, week: w.label.replace("Uke ", "") }))
   return (
-    <ChartContainer config={chartConfig} className="h-[280px] w-full">
+    <ChartContainer config={chartConfig} className="h-[260px] w-full sm:h-[300px] xl:h-[340px]">
       <LineChart data={data} margin={{ left: 8, right: 16, top: 16, bottom: 8 }}>
         <CartesianGrid vertical={false} stroke="var(--border)" />
         <XAxis
@@ -385,8 +385,10 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
           tickLine={false}
           axisLine={false}
           tickMargin={10}
-          // Alle tretten, nå kurven har hele bredden å stå på.
-          interval={0}
+          // Alle tretten når det er plass; på en smal skjerm hoppes annenhver
+          // over i stedet for at tallene skrives oppå hverandre.
+          interval="preserveStartEnd"
+          minTickGap={6}
         />
         <YAxis
           tickLine={false}
@@ -571,7 +573,7 @@ function sentLine(sent: NonNullable<WeeklyBrief["sent"]>) {
 function LowPoint({ low }: { low: WeeklyBrief["low_point"] }) {
   const gap = Math.abs(low.amount - low.floor)
   return (
-    <aside className="border-border border-t pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pb-2 lg:pl-10">
+    <aside className="border-border border-t pt-6 xl:border-t-0 xl:border-l xl:pt-0 xl:pb-2 xl:pl-12">
       <p className="label">Laveste punkt</p>
       <p className="mt-3 text-[clamp(40px,4vw,52px)] leading-none font-light tracking-[-0.03em] whitespace-nowrap">
         {kr(low.amount)}
@@ -774,8 +776,9 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
         </div>
         {/* Dommen til venstre, det ene tallet den hviler på til høyre: på en
             bred skjerm fyller de to bredden sammen i stedet for at setningen
-            står alene mot venstre kant. */}
-        <div className="grid gap-x-16 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:items-end">
+            står alene mot venstre kant. Først fra xl: ved 1024 px med menyen
+            åpen ble setningen klemt til seks linjer ved siden av tallet. */}
+        <div className="grid gap-x-16 gap-y-10 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] xl:items-end 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] 2xl:gap-x-20">
         <div className="min-w-0">
         {d.weekly && !failed && <Status light={d.weekly.light} className="mb-4" />}
         {loading && !d.cash && d.weekly === undefined ? (
@@ -788,7 +791,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
             Får ikke tak i regnskapet akkurat nå. Spørsmålsfeltet virker fortsatt.
           </h1>
         ) : (
-          <h1 className="font-heading max-w-[18ch] text-[clamp(34px,4.4vw,58px)] leading-[1.05] tracking-[-0.03em] text-balance">
+          <h1 className="font-heading max-w-[22ch] text-[clamp(34px,4.4vw,58px)] leading-[1.05] tracking-[-0.03em] text-balance">
             {d.weekly ? stop(d.weekly.sentence) : headline(d, signals)}
           </h1>
         )}
@@ -821,7 +824,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
       {top ? (
         <section
           aria-labelledby="trenger-deg"
-          className="bg-tint arv-rise rounded-xl px-6 py-7 sm:px-10 sm:py-9"
+          className="bg-tint arv-rise rounded-xl px-6 py-7 sm:px-10 sm:py-9 xl:px-12 xl:py-10"
           style={{ "--i": 1 } as React.CSSProperties}
         >
           <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
@@ -834,7 +837,9 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
               </a>
             )}
           </div>
-          <DecisionBody c={top} state={deck} facts={false} />
+          {/* Tallene bak saken står ved siden av når blokken er bred nok, der
+              det ellers ville stått tomt. Smalt holdes knappene nær teksten. */}
+          <DecisionBody c={top} state={deck} facts="wide" />
         </section>
       ) : deck.deck && d.weekly?.light === "green" ? (
         <p className="font-heading arv-rise text-[28px] leading-tight tracking-[-0.015em]">
@@ -933,7 +938,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
                 </p>
               </div>
             ) : (
-              <Skeleton className="h-[280px] w-full" />
+              <Skeleton className="h-[260px] w-full sm:h-[300px] xl:h-[340px]" />
             )}
           </CardContent>
         </Card>
@@ -945,7 +950,9 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
           title="Nøkkeltall"
           aside={d.dash?.industry ? `Målt mot ${d.dash.industry.toLowerCase()}` : undefined}
         />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Fire i bredden først når hvert kort får plass til tallet sitt; ved
+            1024 px med menyen åpen ble de 160 px smale. */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-4">
           {metrics(d).map((c) => (
             <MetricCard
               key={c.label}
@@ -960,7 +967,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
           ))}
         </div>
         {!!d.dash?.kpis?.length && (
-          <div className="mt-10 grid gap-x-12 sm:grid-cols-2">
+          <div className="mt-12 grid gap-x-12 sm:grid-cols-2 2xl:grid-cols-3">
             {d.dash.kpis.map((k) => (
               <KpiRow key={k.id} k={k} />
             ))}
@@ -968,32 +975,39 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
         )}
       </section>
 
-      {/* ── 6. Arvaka om driften: prosa i lesebredde ── */}
-      <section>
-        <SummaryCard
-          data={d.sum}
-          loading={loading && !d.sum}
-          refreshing={rewriting}
-          onRefresh={rewrite}
-          onAsk={() =>
-            ask(
-              "Gå gjennom hvordan det går i selskapet nå: omsetning, lønnskostnad, driftsresultat og penger på konto de siste månedene. Hva har endret seg, og hva bør jeg gjøre noe med?",
-              "Hvordan det går",
-            )
-          }
-        />
-      </section>
-
-      {/* ── Verdt å følge med på: signalene, som rolige rader ── */}
-      {signals.length > 0 && (
+      {/* ── 6 og 7: Arvaka om driften ved siden av det som er verdt å følge
+          med på. Prosaen holder lesebredden, så på en bred skjerm får lista
+          resten av plassen i stedet for at halve siden står tom. ── */}
+      <div
+        className={`grid gap-16 sm:gap-20 ${
+          signals.length ? "xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-16 2xl:gap-x-24" : ""
+        }`}
+      >
         <section>
-          <SectionHead
-            title="Verdt å følge med på"
-            aside={fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
+          <SummaryCard
+            data={d.sum}
+            loading={loading && !d.sum}
+            refreshing={rewriting}
+            onRefresh={rewrite}
+            onAsk={() =>
+              ask(
+                "Gå gjennom hvordan det går i selskapet nå: omsetning, lønnskostnad, driftsresultat og penger på konto de siste månedene. Hva har endret seg, og hva bør jeg gjøre noe med?",
+                "Hvordan det går",
+              )
+            }
           />
-          <SignalList signals={signals} seen={had} onAsk={(s: Signal) => ask(s.ask, s.title)} />
         </section>
-      )}
+
+        {signals.length > 0 && (
+          <section>
+            <SectionHead
+              title="Verdt å følge med på"
+              aside={fresh ? `${fresh} nytt siden sist du var her` : "Ingenting nytt siden sist"}
+            />
+            <SignalList signals={signals} seen={had} onAsk={(s: Signal) => ask(s.ask, s.title)} />
+          </section>
+        )}
+      </div>
 
       {/* ── Bunnlinja: hvor ferske tallene er, og det som ikke kjørte ── */}
       <footer className="border-border text-muted-foreground grid gap-3 border-t pt-6 text-[13px] leading-5">

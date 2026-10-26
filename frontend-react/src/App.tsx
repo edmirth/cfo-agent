@@ -89,11 +89,13 @@ function Shell() {
           </a>
           <SidebarTrigger />
         </div>
-        {/* Forsiden er et oppslag med fire kort ved siden av hverandre og
-            trenger bredden. Chatten er tekst og skal beholde lesebredden. */}
+        {/* Sidene bruker bredden skjermen gir, opp til 1440 px: på en stor
+            skjerm sto alt før i en smal stripe midt på med tomrom på begge
+            sider. Luften rundt vokser med skjermen. Chatten er tekst og skal
+            beholde lesebredden. */}
         <div
-          className={`mx-auto w-full px-5 pt-4 pb-24 sm:px-10 ${
-            onChat ? "max-w-4xl" : "max-w-[1120px]"
+          className={`mx-auto w-full px-5 pt-4 pb-24 ${
+            onChat ? "max-w-4xl sm:px-10" : "max-w-[1440px] sm:px-8 lg:px-12 2xl:px-16"
           }`}
         >
           {onChat ? (

@@ -110,59 +110,66 @@ export function Helsesjekk() {
           hver måned.
         </p>
       ) : (
-        <article className="max-w-[680px] space-y-10">
-          <p className="font-heading text-[28px] leading-[1.2] tracking-[-0.015em] text-pretty print:text-[22px]">
-            {data.summary}
-          </p>
+        // På en bred skjerm står listen til regnskapsføreren ved siden av
+        // dokumentet i stedet for under det, der halve siden ellers sto tom.
+        // Utskriften er smalere enn xl og blir én spalte, som før.
+        <div className="grid gap-10 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:gap-x-16 2xl:gap-x-24">
+          <article className="max-w-[680px] space-y-10">
+            <p className="font-heading text-[28px] leading-[1.2] tracking-[-0.015em] text-pretty print:text-[22px]">
+              {data.summary}
+            </p>
 
-          {data.sections.map((s) => (
-            <section key={s.key} className="break-inside-avoid">
-              <h2 className="font-heading mb-3 text-[24px] leading-tight tracking-[-0.01em] print:text-[18px]">
-                {s.title}
-              </h2>
-              <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] text-[17px] leading-[28px] text-pretty print:text-[11pt] print:leading-[1.5]">
-                {datesNo(s.text)}
-              </p>
-            </section>
-          ))}
+            {data.sections.map((s) => (
+              <section key={s.key} className="break-inside-avoid">
+                <h2 className="font-heading mb-3 text-[24px] leading-tight tracking-[-0.01em] print:text-[18px]">
+                  {s.title}
+                </h2>
+                <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] text-[17px] leading-[28px] text-pretty print:text-[11pt] print:leading-[1.5]">
+                  {datesNo(s.text)}
+                </p>
+              </section>
+            ))}
+          </article>
 
-          <Separator />
+          <div className="max-w-[680px] space-y-10 xl:self-start xl:border-l xl:pl-12 2xl:pl-16">
+            <Separator className="xl:hidden" />
 
-          <section className="break-before-page">
-            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="font-heading text-[24px] leading-tight tracking-[-0.01em]">
-                Til regnskapsføreren
-              </h2>
-              {data.cleanup_text && (
-                <Button variant="outline" size="sm" onClick={copy} className="print:hidden">
-                  <Copy /> {copied ? "Kopiert" : "Kopier teksten"}
-                </Button>
+            <section className="break-before-page">
+              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="font-heading text-[24px] leading-tight tracking-[-0.01em]">
+                  Til regnskapsføreren
+                </h2>
+                {data.cleanup_text && (
+                  <Button variant="outline" size="sm" onClick={copy} className="print:hidden">
+                    <Copy /> {copied ? "Kopiert" : "Kopier teksten"}
+                  </Button>
+                )}
+              </div>
+              {data.cleanup.length ? (
+                <>
+                  <p className="text-muted-foreground mb-5 text-[15px]">{data.cleanup_intro}</p>
+                  <ol className="divide-border border-border divide-y border-y">
+                    {data.cleanup.map((c, i) => (
+                      <li key={c.id} className="flex gap-4 py-3.5 text-[15px] leading-6">
+                        <span className="text-muted-foreground w-5 shrink-0 text-right">{i + 1}</span>
+                        <span className="text-pretty">{datesNo(c.text)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : (
+                <p className="text-[15px]">Ingenting å rydde: kontrollene fant ikke noe.</p>
               )}
-            </div>
-            {data.cleanup.length ? (
-              <>
-                <p className="text-muted-foreground mb-5 text-[15px]">{data.cleanup_intro}</p>
-                <ol className="divide-border border-border divide-y border-y">
-                  {data.cleanup.map((c, i) => (
-                    <li key={c.id} className="flex gap-4 py-3.5 text-[15px] leading-6">
-                      <span className="text-muted-foreground w-5 shrink-0 text-right">{i + 1}</span>
-                      <span className="text-pretty">{datesNo(c.text)}</span>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <p className="text-[15px]">Ingenting å rydde: kontrollene fant ikke noe.</p>
-            )}
-          </section>
+            </section>
 
-          <p className="text-muted-foreground text-[13px]">
-            Laget {dateNo(data.made_on)} fra tallene i Tripletex
-            {data.written_by === "engine" &&
-              " — skrevet ut fra tallene alene denne gangen, uten Arvakas egne ord"}
-            .
-          </p>
-        </article>
+            <p className="text-muted-foreground text-[13px]">
+              Laget {dateNo(data.made_on)} fra tallene i Tripletex
+              {data.written_by === "engine" &&
+                " — skrevet ut fra tallene alene denne gangen, uten Arvakas egne ord"}
+              .
+            </p>
+          </div>
+        </div>
       )}
     </div>
   )
