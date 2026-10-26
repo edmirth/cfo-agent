@@ -14,7 +14,7 @@ Once [[render-deploy]] is merged, the platform moves to Render, first as a demo 
 - [x] The Tripletex token is gone from the Mac's `.env`; the Mac runs the demo companies, or its own separate login with the morning run and email off
 - [x] DNS at domene.no: a CNAME `app` to the service's `onrender.com` address, and the certificate issued
 - [x] Supabase: Site URL `https://app.arvaka.no`, also under Redirect URLs
-- [ ] The 07:00 morning run happens on Render on the next working day
+- [x] The 07:00 morning run happens on Render on the next working day
 
 ## Log
 - 2026-10-25 (agent): created on @edmir's call. Waits on [[render-deploy]]. Render's Hobby plan includes two custom domains, both used by arvaka.no and www; `app.arvaka.no` is a third, $0.25 a month. Pick a switch-over time outside 07:00 to 08:00 on a working day.
@@ -25,3 +25,4 @@ Once [[render-deploy]] is merged, the platform moves to Render, first as a demo 
 - 2026-10-25 (agent): the Tripletex login taken off the Mac: the lines gone from `.env` and its two backups, `state/tripletex.json` deleted. While doing it the agent printed three secrets into the chat; card 54 rotates them.
 - 2026-10-25 (agent+@edmir): app.arvaka.no: Custom Domain in Render, CNAME `app` → `arvaka-app.onrender.com` in domene.no's zone editor, certificate issued (Google Trust Services, to 2027-01-23). Supabase Site URL `https://app.arvaka.no`, added under Redirect URLs beside the two onrender.com addresses. @edmir signed in on the phone at app.arvaka.no.
 - Left: the 07:00 morning run on Render on Monday 2026-10-26.
+- 2026-10-26 (agent+@edmir): the Monday run on Render, from its log: the brief for 2026-W44 written by the model at 07:02 (GUL, 4 decisions), the email accepted by Resend and delivered. Gmail put it in Spam, as mail from Resend's shared `onboarding@resend.dev` tends to go; marked not spam. Done.

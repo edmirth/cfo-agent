@@ -55,11 +55,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 52. Move the platform from the Mac to app.arvaka.no: a test run with a demo company, then the switch-over @edmir #platform
 
 
 ## Done
 
+- [x] 52. Move the platform from the Mac to app.arvaka.no: a test run with a demo company, then the switch-over @edmir #platform ✓ 2026-10-26
 - [x] 51. Make the platform deployable on Render: Tripletex login kept on the disk, pinned versions, Dockerfile, nightly backup @edmir #platform ✓ 2026-10-25
 - [x] Make an "Mock Up" company, where we have their accountant data and use their numbers instead of using URT number, so that we can present the product without showing any confidential numbers. But we have all the numbers it needs so we can show the ability of the ai agent. ✓ 2026-10-24
 	  - Demo mode (PRs #50, #51): Lindeskar, Kvarnheim and Aslefjord with whole generated books; ./demo.sh starts them on ports 8101–8103. Nothing in demo mode reaches the real ledger.
