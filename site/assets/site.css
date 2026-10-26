@@ -26,3 +26,18 @@ a:hover{text-decoration:underline}
 @media (max-width: 640px) {
   .nav-links, .nav-book { display: none !important; }
 }
+
+/* "Dette får du": beside the list, the intro stays in view while the list
+   scrolls. Once the two stack (under about 1012 px) it stuck 120 px from
+   the top and the list scrolled straight through it, so there it scrolls
+   with the page. */
+@media (max-width: 1023px) {
+  .deliv-intro { position: static !important; }
+}
+
+/* Its rows on a phone: the frequency goes above the title, so the text
+   gets the width instead of wrapping a word per line between two columns. */
+@media (max-width: 640px) {
+  .deliv-row { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 6px !important; }
+  .deliv-row > :first-child { grid-column: 1 / -1; }
+}

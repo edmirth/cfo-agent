@@ -16,7 +16,7 @@ serves the folder as it is.
 |---|---|
 | `site/index.html` | The page in Norwegian |
 | `site/en/index.html` | The page in English |
-| `site/assets/site.css` | The fonts, the page's base styles, its hover and focus states, and the phone nav |
+| `site/assets/site.css` | The fonts, the page's base styles, its hover and focus states, the phone nav, and «Dette får du» on narrow screens |
 | `site/assets/site.js` | «Slik fungerer det»: the five stories taking turns |
 | `site/assets/fonts/` | Geist, Geist Mono and Newsreader, with their licences (SIL Open Font License) |
 
