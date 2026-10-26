@@ -3,6 +3,7 @@
  * allerede tar vare på; ingenting er anslått. */
 import { useEffect, useState, type ReactNode } from "react"
 
+import { PageHeader, SectionHead } from "@/components/brand"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { get } from "@/lib/api"
@@ -54,7 +55,7 @@ function hours(h: number | null | undefined) {
 
 function Head({ children }: { children: ReactNode }) {
   return (
-    <th className="text-muted-foreground py-2 pr-4 text-left font-mono text-[10px] font-normal tracking-[0.1em] uppercase">
+    <th className="label pr-6 pb-3 text-left whitespace-nowrap">
       {children}
     </th>
   )
@@ -74,20 +75,12 @@ export function Maling() {
   }, [])
 
   return (
-    <div className="space-y-8 pt-6">
-      <header>
-        <p className="text-muted-foreground mb-3 font-mono text-[11px] tracking-[0.16em] uppercase">
-          Måling · for produkteieren
-        </p>
-        <h1 className="font-heading text-[30px] leading-tight font-semibold tracking-tight">
-          Virker det?
-        </h1>
-        <p className="text-muted-foreground mt-2.5 max-w-[62ch] text-sm">
-          Målt slik spilleboka sier: tid hos daglig leder, hvor mye av det forberedte arbeidet som
-          godkjennes uten endringer, fall i banken varslet i forkant, og hva agenten koster.
-          Kunden ser ikke denne siden.
-        </p>
-      </header>
+    <div className="space-y-14">
+      <PageHeader
+        eyebrow="Måling · for produkteieren"
+        title="Virker det?"
+        lead="Målt slik spilleboka sier: tid hos daglig leder, hvor mye av det forberedte arbeidet som godkjennes uten endringer, fall i banken varslet i forkant, og hva agenten koster. Kunden ser ikke denne siden."
+      />
 
       {data === undefined ? (
         <Skeleton className="h-48 w-full" />
@@ -96,8 +89,8 @@ export function Maling() {
       ) : (
         <>
           <section>
-            <h2 className="mb-1 text-[17px] font-semibold">Uke for uke</h2>
-            <p className="text-muted-foreground mb-4 text-sm">
+            <SectionHead title="Uke for uke" />
+            <p className="text-muted-foreground -mt-2 mb-6 max-w-[72ch] text-[15px] leading-6">
               Tid i appen er minutter den var åpen og i fokus. Målet er under{" "}
               {data.target_minutes} minutter i uka.
             </p>
@@ -121,22 +114,22 @@ export function Maling() {
                       const over = w.minutes > data.target_minutes
                       return (
                         <tr key={w.week}>
-                          <td className="py-2 pr-4">
+                          <td className="py-3 pr-6">
                             <span className="font-medium">{w.week.split("-W")[1].replace(/^0/, "")}</span>
                             <span className="text-muted-foreground ml-2 text-xs">
                               fra {dateNo(w.from)}
                             </span>
                           </td>
-                          <td className={`py-2 pr-4 ${over ? "text-amber-600 dark:text-amber-500" : ""}`}>
+                          <td className={`py-3 pr-6 ${over ? "text-warn-text" : ""}`}>
                             {w.minutes} min
                           </td>
-                          <td className="py-2 pr-4">{d?.decided ?? 0}</td>
-                          <td className="py-2 pr-4">{d?.approved ?? 0}</td>
-                          <td className="py-2 pr-4">
+                          <td className="py-3 pr-6">{d?.decided ?? 0}</td>
+                          <td className="py-3 pr-6">{d?.approved ?? 0}</td>
+                          <td className="py-3 pr-6">
                             {d?.unedited_pct != null ? `${d.unedited_pct.toLocaleString("nb-NO")} %` : "–"}
                           </td>
-                          <td className="py-2 pr-4">{hours(d?.median_hours_to_decide)}</td>
-                          <td className="py-2 pr-4" title={w.cost ? Object.entries(w.cost.by_job)
+                          <td className="py-3 pr-6">{hours(d?.median_hours_to_decide)}</td>
+                          <td className="py-3 pr-6" title={w.cost ? Object.entries(w.cost.by_job)
                             .map(([j, u]) => `${JOBS[j] ?? j}: $${u.toFixed(2)}`).join("\n") : ""}>
                             {w.cost ? `$${w.cost.usd.toFixed(2)}` : "–"}
                             {w.cost?.unpriced ? (
@@ -158,8 +151,8 @@ export function Maling() {
           </section>
 
           <section>
-            <h2 className="mb-1 text-[17px] font-semibold">Fall i banken, og hvor tidlig de ble varslet</h2>
-            <p className="text-muted-foreground mb-4 text-sm">
+            <SectionHead title="Fall i banken, og hvor tidlig de ble varslet" />
+            <p className="text-muted-foreground -mt-2 mb-6 max-w-[72ch] text-[15px] leading-6">
               Et fall er en uke banken stengte under gulvet på {kr(data.floor.kr)} kr (
               {data.floor.said}). Varselet er hvor mange uker før den første lagrede prognosen viste
               det samme.
@@ -167,12 +160,12 @@ export function Maling() {
             {data.dips.length ? (
               <ul className="divide-border divide-y border-y text-sm">
                 {data.dips.map((d) => (
-                  <li key={d.week} className="flex flex-wrap justify-between gap-x-6 gap-y-1 py-2.5">
+                  <li key={d.week} className="flex flex-wrap justify-between gap-x-6 gap-y-1 py-3.5">
                     <span>
                       Uke {d.week.split("-W")[1].replace(/^0/, "")}: {kr(d.balance)} kr den{" "}
                       {dateNo(d.on)}
                     </span>
-                    <span className={d.weeks_ahead == null ? "text-destructive" : ""}>
+                    <span className={d.weeks_ahead == null ? "text-bad-text" : ""}>
                       {d.weeks_ahead == null
                         ? "Ikke varslet på forhånd"
                         : d.weeks_ahead === 0

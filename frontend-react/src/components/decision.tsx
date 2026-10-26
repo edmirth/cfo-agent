@@ -201,7 +201,14 @@ function Draft({ c, state }: { c: DeckCard; state: DeckState }) {
 }
 
 /** Den åpne saken: hva, hvorfor, tallene, og knappene. Første valg er
- *  hovedknappen; de andre er sekundære. */
+ *  hovedknappen; de andre er sekundære.
+ *
+ *  Når saken selv er bred nok, står tallene i en egen kolonne til høyre.
+ *  Over hele bredden sto etikett og beløp en meter fra hverandre. Er den
+ *  smal, står de mellom teksten og knappene, som før: venstrekolonnen er da
+ *  `contents`, og rekkefølgen settes med `order`. Bredden måles på saken,
+ *  ikke skjermen, så den samme saken oppfører seg likt i Brief og i Saker.
+ *  `facts="wide"` viser tallene bare når de får sin egen kolonne. */
 export function DecisionBody({
   c,
   state,
@@ -209,49 +216,69 @@ export function DecisionBody({
 }: {
   c: DeckCard
   state: DeckState
-  facts?: boolean
+  facts?: boolean | "wide"
 }) {
   const u = urgency(c.urgency)
+  const showFacts = !!facts && !!c.evidence?.length
   return (
-    <div className="grid gap-5">
-      <div className="grid gap-2">
-        <span className="label flex items-center gap-2">
-          <Dot tone={u.tone} />
-          {u.word}
-          {c.amount && !said(c.title, c.amount) ? ` · ${kr(c.amount)} kr` : ""}
-        </span>
-        <h3 className="text-[20px] leading-[28px] font-medium tracking-[-0.005em] text-pretty">
-          {c.title}
-        </h3>
-        <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] max-w-[68ch] text-[15px] leading-6 text-pretty">
-          {datesNo(c.body)}
-        </p>
-      </div>
+    <div className="@container">
+      <div
+        className={`grid gap-5 ${
+          showFacts
+            ? "@3xl:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] @3xl:items-start @3xl:gap-x-12 @5xl:gap-x-16"
+            : ""
+        }`}
+      >
+        <div className={showFacts ? "contents @3xl:grid @3xl:gap-5" : "grid gap-5"}>
+          <div className="order-1 grid gap-2">
+            <span className="label flex items-center gap-2">
+              <Dot tone={u.tone} />
+              {u.word}
+              {c.amount && !said(c.title, c.amount) ? ` · ${kr(c.amount)} kr` : ""}
+            </span>
+            <h3 className="text-[20px] leading-[28px] font-medium tracking-[-0.005em] text-pretty">
+              {c.title}
+            </h3>
+            <p className="text-[var(--gray-700)] dark:text-[var(--gray-300)] max-w-[68ch] text-[15px] leading-6 text-pretty">
+              {datesNo(c.body)}
+            </p>
+          </div>
 
-      {facts && !!c.evidence?.length && <Facts evidence={c.evidence} />}
-      {c.draft && <Draft c={c} state={state} />}
+          {c.draft && (
+            <div className="order-3">
+              <Draft c={c} state={state} />
+            </div>
+          )}
 
-      {state.failed?.id === c.id && (
-        <p className="text-bad-text text-sm" role="alert">
-          {state.failed.msg}
-        </p>
-      )}
+          {state.failed?.id === c.id && (
+            <p className="text-bad-text order-4 text-sm" role="alert">
+              {state.failed.msg}
+            </p>
+          )}
 
-      {!!c.options?.length && (
-        <div className="flex flex-wrap gap-2">
-          {c.options.map((o, i) => (
-            <Button
-              key={o.id}
-              variant={i === 0 ? "default" : "secondary"}
-              disabled={state.busy === c.id}
-              onClick={() => state.decide(c.id, o.id)}
-              title={o.effect}
-            >
-              {o.label}
-            </Button>
-          ))}
+          {!!c.options?.length && (
+            <div className="order-5 flex flex-wrap gap-2">
+              {c.options.map((o, i) => (
+                <Button
+                  key={o.id}
+                  variant={i === 0 ? "default" : "secondary"}
+                  disabled={state.busy === c.id}
+                  onClick={() => state.decide(c.id, o.id)}
+                  title={o.effect}
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {showFacts && (
+          <div className={`order-2 @3xl:order-none ${facts === "wide" ? "hidden @3xl:block" : ""}`}>
+            <Facts evidence={c.evidence ?? []} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -281,14 +308,14 @@ export function DecisionRow({
       }`}
     >
       {!open && (
-        <CollapsibleTrigger className="hover:bg-tint flex w-full items-center gap-4 rounded-md px-6 py-4 text-left transition-colors duration-150">
+        <CollapsibleTrigger className="hover:bg-tint flex w-full items-center gap-4 rounded-md px-6 py-4 text-left transition-colors duration-150 sm:px-8">
           <Dot tone={u.tone} />
           <span className="min-w-0 flex-1 text-[15px] font-medium text-pretty">{c.title}</span>
           <span className="label hidden shrink-0 sm:inline">{u.word}</span>
           <ChevronDown className="text-muted-foreground size-4 shrink-0 stroke-[1.5]" />
         </CollapsibleTrigger>
       )}
-      <CollapsibleContent className="px-6 pt-6 pb-7">
+      <CollapsibleContent className="px-6 pt-6 pb-7 sm:px-8 sm:pt-7 sm:pb-8">
         <DecisionBody c={c} state={state} />
       </CollapsibleContent>
     </Collapsible>
