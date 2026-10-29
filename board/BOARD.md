@@ -41,6 +41,7 @@ kanban-plugin: board
 - [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
 - [ ] 55. Run the tests on GitHub for every PR, and let Render deploy only when they pass @edmir #platform
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
+- [ ] 57. Send the Monday email from arvaka.no instead of Resend's test address, so it reaches the inbox and pilot customers @edmir #platform
 
 
 ## Next
