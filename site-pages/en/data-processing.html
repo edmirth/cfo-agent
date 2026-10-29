@@ -1,0 +1,229 @@
+<!--
+title: Data processing agreement
+description: The agreement governing how Arvaka processes personal data in your accounts, and which subprocessors we use.
+status: ferdig
+-->
+<h1>Data processing agreement</h1>
+<p class="lede">
+  When Arvaka reads your accounts, we process personal data on your behalf. That is governed by
+  a data processing agreement, as GDPR Article 28 requires. It is entered into before onboarding
+  and applies for as long as you are a customer. The
+  <a href="/databehandleravtale/">Norwegian version</a> is the governing one.
+</p>
+
+<h2>The agreement is the EU's standard clauses</h2>
+<p>
+  We use the European Commission's standard contractual clauses between controllers and
+  processors,
+  <a href="https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32021D0915"
+    >Implementing Decision (EU) 2021/915</a
+  >. They are part of the EEA Agreement and apply in Norway. We have changed nothing in them.
+  What we decide ourselves are the choices the clauses let the parties make, a few additions
+  that do not conflict with them, and the four annexes. All of that is on this page. In case of
+  conflict, the standard clauses prevail.
+</p>
+<p>
+  Arvaka is being set up as a Norwegian limited company (AS). The agreement is signed with the
+  company's name, organisation number and address once it is registered, and before we process
+  data for any customer.
+</p>
+
+<h2>Choices in the standard clauses</h2>
+<ul>
+  <li>
+    <strong>Clause 5, docking clause:</strong> not included. The agreement is between the
+    customer and Arvaka.
+  </li>
+  <li>
+    <strong>Clause 7.7, subprocessors:</strong> option 2, general written authorisation. The
+    customer approves the subprocessors in Annex IV. We notify the customer at least 30 days
+    before we engage a new subprocessor or replace one, and the customer can object to the
+    change.
+  </li>
+</ul>
+
+<h2>Additions</h2>
+<p>The standard clauses let the parties add terms that do not conflict with them. We have added:</p>
+<ul>
+  <li>
+    <strong>Own purposes:</strong> We do not use the data for our own purposes, do not sell it,
+    and do not use it to train AI models.
+  </li>
+  <li>
+    <strong>Security breaches:</strong> We notify the customer without undue delay, and no later
+    than 48 hours after we became aware of the breach. We say what we know, and follow up with
+    more when we know more.
+  </li>
+  <li>
+    <strong>Audits:</strong> The customer, or an auditor the customer has chosen, may audit us on
+    30 days' notice.
+  </li>
+  <li>
+    <strong>When the agreement ends:</strong> The accounts themselves are in the customer's
+    accounting system and stay there. What we have stored, such as forecasts, cards,
+    conversations and the customer's own description of the business, we delete within 30
+    days, including from backups, unless the customer has asked to receive it first.
+  </li>
+  <li>
+    <strong>Governing law:</strong> The agreement is governed by Norwegian law. Disputes are
+    settled by Oslo District Court (Oslo tingrett).
+  </li>
+</ul>
+
+<h2>Annex I: The parties</h2>
+<div class="table-wrap">
+  <table>
+    <tbody>
+      <tr>
+        <th>Controller</th>
+        <td>The customer: the business that uses Arvaka. Filled in on signing.</td>
+      </tr>
+      <tr>
+        <th>Processor</th>
+        <td>
+          Arvaka, kontakt@arvaka.no. The company's name, organisation number and address are
+          filled in once the limited company is registered.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>Annex II: The processing</h2>
+<div class="table-wrap">
+  <table>
+    <tbody>
+      <tr>
+        <th>What we do</th>
+        <td>
+          Read accounting data from the customer's accounting system (Tripletex) with read-only
+          access, calculate forecasts and key figures, store the results, write analyses and
+          answers with an AI model, and send the Monday brief by email.
+        </td>
+      </tr>
+      <tr>
+        <th>Whom the data concerns</th>
+        <td>
+          The customer's employees, the customer's customers and suppliers who are individuals
+          or sole proprietorships, contact persons, and the users of the service.
+        </td>
+      </tr>
+      <tr>
+        <th>What data</th>
+        <td>
+          Names and contact details from the accounts. Invoices, payments and balances linked to
+          customers and suppliers. Payroll as total cost and number of full-time equivalents;
+          individual payslips are not read. Users' email addresses, messages in the chat and
+          choices on cards.
+        </td>
+      </tr>
+      <tr>
+        <th>Special categories</th>
+        <td>
+          The service is not designed to process special categories of personal data, such as
+          health data. Voucher texts in the accounts may nevertheless contain such data. It is
+          then processed only as part of the accounting data.
+        </td>
+      </tr>
+      <tr>
+        <th>How often</th>
+        <td>Continuously, for as long as the agreement applies: every working-day morning, and when users ask.</td>
+      </tr>
+      <tr>
+        <th>Where the data is stored</th>
+        <td>
+          The platform and database at Render in Frankfurt (EU). Login at Supabase in Stockholm
+          (EU). Encrypted backups at Supabase in Ireland (EU).
+        </td>
+      </tr>
+      <tr>
+        <th>For how long</th>
+        <td>
+          For as long as the agreement applies, and then until it is deleted under the addition
+          on when the agreement ends.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>Annex III: Security measures</h2>
+<ul>
+  <li>
+    <strong>Read-only access.</strong> Access to the accounting system is closed by default and
+    opened one tool at a time, for reading only. No tools that write are available.
+  </li>
+  <li><strong>No individual payslips.</strong> The tools that read them are not opened.</li>
+  <li>
+    <strong>Closed login.</strong> Only email addresses the customer has had added can get in.
+    No one can sign up on their own. Every request to the server is checked.
+  </li>
+  <li>
+    <strong>Encrypted connections.</strong> All traffic between the browser, the server and the
+    subprocessors goes over HTTPS.
+  </li>
+  <li>
+    <strong>Each customer separate.</strong> Each customer's data is in its own database, on its
+    own disk.
+  </li>
+  <li>
+    <strong>Traceable runs.</strong> Every job and every call to the AI model is recorded with
+    time and outcome.
+  </li>
+  <li>
+    <strong>Backups.</strong> Every night a copy of the customer's database is taken and checked
+    before it is stored. Copies are kept for 14 days on the server's disk, and for 14 days
+    encrypted at Supabase in Ireland. The key that opens them is kept separate from the copies.
+  </li>
+  <li>
+    <strong>Access at Arvaka.</strong> Only Arvaka's founder has access to the operating
+    environment, the databases and the backups, with a personal login.
+  </li>
+</ul>
+
+<h2>Annex IV: Subprocessors</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>What they do for us</th>
+        <th>Where the data is stored</th>
+        <th>Transfer basis</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Render Services, Inc.</td>
+        <td>Running the platform and the database</td>
+        <td>Frankfurt, Germany (EU)</td>
+        <td>EU–US Data Privacy Framework, and the EU standard contractual clauses for transfers (2021/914)</td>
+      </tr>
+      <tr>
+        <td>Supabase</td>
+        <td>Login (email address and password) and encrypted backups</td>
+        <td>Stockholm, Sweden and Dublin, Ireland (EU)</td>
+        <td>The EU standard contractual clauses for transfers (2021/914)</td>
+      </tr>
+      <tr>
+        <td>Anthropic, PBC</td>
+        <td>The AI model that reads accounting figures and writes analyses and answers</td>
+        <td>USA</td>
+        <td>The EU standard contractual clauses for transfers (2021/914)</td>
+      </tr>
+      <tr>
+        <td>Resend</td>
+        <td>Sending the Monday brief by email</td>
+        <td>USA</td>
+        <td>EU–US Data Privacy Framework</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p>
+  Tripletex is the customer's own accounting system, not our subprocessor: we read from it with
+  the access the customer gives us. To warn about bankruptcy and liquidation, we look up the
+  customer's customers and suppliers in the open data of the Brønnøysund Register Centre.
+</p>
+
+<p class="updated">Last updated 29 October 2026.</p>
