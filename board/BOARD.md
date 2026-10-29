@@ -46,7 +46,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
 - [ ] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery
 - [ ] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
 - [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
@@ -56,6 +55,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform
 
 
 ## Done
