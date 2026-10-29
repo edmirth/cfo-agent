@@ -8,12 +8,12 @@ created: 2026-10-24
 The landing page is built (`site/`, steps in `docs/hosting.md`), with drafts of Kontakt, Om oss, Samarbeid med regnskapsføreren, Personvern and Databehandleravtale. What is left before arvaka.no points at it is mostly decisions and accounts only @edmir can make.
 
 ## Done when
-- [ ] A booking page exists, and «Book en samtale» links to it (it goes to /kontakt/ until then)
-- [ ] A contact email on arvaka.no works, and is on the pages
+- [x] A booking page exists, and «Book en samtale» links to it (it goes to /kontakt/ until then)
+- [x] A contact email on arvaka.no works, and is on the pages
 - [ ] The five pages are approved: the yellow filled in, `status: utkast` removed in `site-pages/`, `python3 scripts/build_site_pages.py` run
-- [ ] The databehandleravtale is reviewed by a lawyer, or replaced by the EU standard clauses (2021/915) with its appendices
+- [x] The databehandleravtale is reviewed by a lawyer, or replaced by the EU standard clauses (2021/915) with its appendices
 - [ ] English versions of the five pages, linked from /en/ (it links to the Norwegian drafts today)
-- [ ] Static site on Render with the headers in `docs/hosting.md`; arvaka.no and www.arvaka.no point at it
+- [x] Static site on Render with the headers in `docs/hosting.md`; arvaka.no and www.arvaka.no point at it
 - [x] The features the page promises and the platform does not have yet are on the board: 10, 25, 27, 40, 42, 47, 48, 49
 
 ## Log
@@ -23,3 +23,4 @@ The landing page is built (`site/`, steps in `docs/hosting.md`), with drafts of 
 - 2026-10-29 (agent+@edmir): step 1 decided. No company on the pages yet (Arvaka AS is not in Brønnøysund): «Arvaka» and kontakt@arvaka.no as the one responsible, with a note that the company details come when the AS is founded. Email: kontakt@arvaka.no, personvern@ as an alias, on Workspace. Booking: a Google Calendar booking page. DPA: replaced by the EU standard clauses (2021/915) with our appendices; a lawyer can look before the first paying customer. No phone. Om oss without names for now. The deadlines in the drafts kept: 30 days' notice of a new subprocessor, 48 h for a breach, deletion 30 days after the end, enquiries kept 12 months, Oslo tingrett.
 - 2026-10-29 (agent+@edmir): kontakt@ and personvern@arvaka.no made as aliases on @edmir's Workspace user; a test email to kontakt@ arrived. The box stays open until the address is on the pages.
 - 2026-10-29 (agent+@edmir): booking page made in edmir@arvaka.no's Google Calendar, «Samtale med Arvaka», 30 min with Meet, form asks name and email only: https://calendar.google.com/calendar/appointments/schedules/AcZssZ2ykIEjm0Hdoxhqkt7iwLEYogh-C6NjDWfuLwido-kEd7Y6pdiJWOBFW_GG7UySEvpWNN21EzuK — opens logged out. The box stays open until «Book en samtale» links to it.
+- 2026-10-29 (agent): steps 2 and 3 written, for @edmir to read before merging (the merge publishes them). Every yellow placeholder filled from the step 1 decisions; the five pages set to `status: ferdig` and rebuilt. «Book en samtale» at the bottom of both front pages now opens the booking page; the contact page has it and kontakt@arvaka.no, no phone. The DPA is now EU's standard clauses (2021/915, in the EEA Agreement since EEA Joint Committee decision 336/2022): clause 7.7 option 2 with 30 days' notice, clause 5 left out, our additions (no own use or training, 48 h breach notice, audit on 30 days' notice, deletion within 30 days, Norwegian law and Oslo tingrett), and annexes I–IV. Transfer bases checked against each provider's own terms: Render DPF and SCCs, Supabase SCCs (the contracting entity is in Singapore, not on the DPF list), Anthropic SCCs (its commercial terms: «may not train models on Customer Content»), Resend DPF; Google Workspace (email and booking) named in personvern, DPF. Render keeps no logs for the static site; the app's logs hold IP addresses and are kept 7 or 14 days by workspace plan, so personvern says at most 14 days. The backups (14 nights on the disk, 14 encrypted in Supabase, Ireland) are in annex III.
