@@ -53,11 +53,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
 
 
 ## Done
 
+- [x] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery ✓ 2026-10-30
 - [x] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery ✓ 2026-10-30
 - [x] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform ✓ 2026-10-29
 - [x] 52. Move the platform from the Mac to app.arvaka.no: a test run with a demo company, then the switch-over @edmir #platform ✓ 2026-10-26
