@@ -52,6 +52,9 @@ services:
         sync: false
       - key: CFO_TIMEZONE
         value: Europe/Oslo
+      # The Monday email links its decisions here.
+      - key: CFO_APP_URL
+        value: https://app.arvaka.no
 
   # Lindeskar Renhold AS, made-up books (backend/demo/). Nothing here reaches
   # a real ledger, sends mail or asks Brønnøysund. For showing the product

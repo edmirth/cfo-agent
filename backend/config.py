@@ -94,3 +94,7 @@ BACKUP_BUCKET = os.getenv("CFO_BACKUP_BUCKET", "backups")
 RESEND_API_KEY = "" if DEMO else (os.getenv("RESEND_API_KEY") or "")
 # Empty counts as unset: Resend refuses an email with no sender.
 MAIL_FROM = os.getenv("CFO_MAIL_FROM") or "CFO <onboarding@resend.dev>"
+# Where the app is, as a phone reaches it: the Monday email links its
+# decisions and the full brief there. Unset, as on a laptop no phone can reach,
+# the email has no links and is complete on its own.
+APP_URL = (os.getenv("CFO_APP_URL") or "").rstrip("/")

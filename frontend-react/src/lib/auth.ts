@@ -11,6 +11,9 @@ let enabled = true
 const listeners = new Set<(why?: string) => void>()
 
 /** Henter oppsettet fra serveren og lager klienten. Kalles én gang, før appen tegnes. */
+/** Der man skulle (#saker/K016), husket mens en innloggingslenke er på vei. */
+export const AFTER_LOGIN = "arvaka:etter-innlogging"
+
 export async function initAuth(): Promise<{ enabled: boolean }> {
   const res = await fetch("/api/auth/config")
   if (!res.ok) throw new Error(`/api/auth/config: HTTP ${res.status}`)
