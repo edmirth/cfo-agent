@@ -134,6 +134,23 @@ def test_where_the_app_can_be_reached_the_email_links_each_decision_to_its_card(
     assert len(page.encode()) < 30_000
 
 
+def test_a_kept_briefs_links_say_which_brief_they_came_from():
+    # So the app can count the tap; a brief not yet kept has no id to give.
+    saved, config.APP_URL = config.APP_URL, "https://app.example.no"
+    try:
+        b = dict(BRIEF, body=brief.render(BRIEF), id=42)
+        page = brief_email.render_html(b)
+        text = brief_email.text(b)
+    finally:
+        config.APP_URL = saved
+    assert 'href="https://app.example.no/?fra=brev&amp;b=42#saker/K016"' in page
+    assert 'href="https://app.example.no/?fra=brev&amp;b=42#saker"' in page
+    assert 'href="https://app.example.no/?fra=brev&amp;b=42" style' in page
+    assert "Hele brevet og sakene: https://app.example.no/?fra=brev&b=42" in text
+    # No open pixel: the email loads nothing.
+    assert "<img" not in page
+
+
 # ------------------------------------------------------------------ sending
 def test_sent_once_a_week_by_the_schedule_and_marked_sent():
     _tmp.db()

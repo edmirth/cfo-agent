@@ -9,10 +9,20 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { get } from "@/lib/api"
 import { dateNo, kr } from "@/lib/format"
 
+type Letter = {
+  report_id: number
+  period: string
+  sent_at: string
+  taps: { brief: number; card: number; saker: number }
+  tapped: number
+  first_visit_minutes: number | null
+  minutes_first_day: number
+}
 type Week = {
   week: string
   from: string
   minutes: number
+  letter: Letter | null
   decisions: {
     decided: number
     approved: number
@@ -51,6 +61,25 @@ const JOBS: Record<string, string> = {
 function hours(h: number | null | undefined) {
   if (h == null) return "–"
   return h < 24 ? `${h.toLocaleString("nb-NO")} t` : `${(h / 24).toFixed(1).replace(".", ",")} d`
+}
+
+/** «12 min», «3 t 5 min», «2 d» etter at brevet gikk. */
+function after(min: number | null) {
+  if (min == null) return "Ikke åpnet"
+  if (min < 60) return `${min} min`
+  if (min < 24 * 60) return `${Math.floor(min / 60)} t ${min % 60} min`
+  return `${Math.round(min / (24 * 60))} d`
+}
+
+function sentAt(stamp: string) {
+  return new Date(stamp).toLocaleString("nb-NO", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Oslo",
+  })
 }
 
 function Head({ children }: { children: ReactNode }) {
@@ -151,6 +180,60 @@ export function Maling() {
           </section>
 
           <section>
+            <SectionHead title="Mandagsbrevet" />
+            <p className="text-muted-foreground -mt-2 mb-6 max-w-[72ch] text-[15px] leading-6">
+              Trykk er gangene noen kom inn i appen fra en lenke i e-posten. Første besøk er tiden fra
+              brevet gikk til appen var åpen, og minuttene er tid i appen det første døgnet. Bare for
+              brukere som har sagt ja til å bli målt; ingen åpningspiksel.
+            </p>
+            <Card>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-sm tabular-nums">
+                  <thead>
+                    <tr>
+                      <Head>Uke</Head>
+                      <Head>Sendt</Head>
+                      <Head>Trykk</Head>
+                      <Head>Brevet · saker · Saker</Head>
+                      <Head>Første besøk</Head>
+                      <Head>Minutter første døgn</Head>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-border divide-y">
+                    {data.weeks.map((w) => {
+                      const l = w.letter
+                      return (
+                        <tr key={w.week}>
+                          <td className="py-3 pr-6 font-medium">
+                            {w.week.split("-W")[1].replace(/^0/, "")}
+                          </td>
+                          {l ? (
+                            <>
+                              <td className="py-3 pr-6 whitespace-nowrap">{sentAt(l.sent_at)}</td>
+                              <td className="py-3 pr-6">{l.tapped}</td>
+                              <td className="text-muted-foreground py-3 pr-6">
+                                {l.taps.brief} · {l.taps.card} · {l.taps.saker}
+                              </td>
+                              <td className={`py-3 pr-6 ${l.first_visit_minutes == null ? "text-muted-foreground" : ""}`}>
+                                {after(l.first_visit_minutes)}
+                              </td>
+                              <td className="py-3 pr-6">{l.minutes_first_day} min</td>
+                            </>
+                          ) : (
+                            <td className="text-muted-foreground py-3 pr-6" colSpan={5}>
+                              Ikke sendt
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </section>
+
+          <section>
             <SectionHead title="Fall i banken, og hvor tidlig de ble varslet" />
             <p className="text-muted-foreground -mt-2 mb-6 max-w-[72ch] text-[15px] leading-6">
               Et fall er en uke banken stengte under gulvet på {kr(data.floor.kr)} kr (
@@ -185,10 +268,6 @@ export function Maling() {
             )}
           </section>
 
-          <p className="text-muted-foreground text-xs">
-            E-post åpnet og lenker trykket på måles ikke ennå: det krever eget domene og at appen er
-            på nett. Til da er tid i appen målet på daglig leders tid.
-          </p>
         </>
       )}
     </div>

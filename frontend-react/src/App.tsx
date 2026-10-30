@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { Wordmark } from "@/components/brand"
+import { ConsentPrompt } from "@/components/consent-prompt"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { api, get } from "@/lib/api"
 import { AFTER_LOGIN, authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
+import { getConsent, sendTap, setConsent, takeTap, type Tap } from "@/lib/measure"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
 import { Helsesjekk } from "@/pages/helsesjekk"
@@ -36,8 +38,34 @@ function useTheme() {
   }, [])
 }
 
+/** Kort 37: spør om måling første gang, og meld fra om et trykk fra
+ * mandagsbrevet: med en gang ved et ja, etter svaret om brukeren ikke er spurt
+ * ennå, og aldri ved et nei. Serveren lagrer uansett ingenting uten et ja. */
+function useMeasure() {
+  const [asking, setAsking] = useState(false)
+  const pending = useRef<Tap | null>(null)
+  useEffect(() => {
+    pending.current ??= takeTap()
+    getConsent()
+      .then((yes) => {
+        if (yes === null) return setAsking(true)
+        if (yes && pending.current) sendTap(pending.current)
+        pending.current = null
+      })
+      .catch(() => {})
+  }, [])
+  const answer = async (measure: boolean) => {
+    await setConsent(measure)
+    setAsking(false)
+    if (measure && pending.current) sendTap(pending.current)
+    pending.current = null
+  }
+  return { asking, answer }
+}
+
 /** Tid i appen, for produkteieren (#maling): ett signal i minuttet mens
- * appen er synlig og i fokus. Bare at den er i bruk, ikke hva som leses. */
+ * appen er synlig og i fokus. Bare at den er i bruk, ikke hva som leses, og
+ * serveren tar bare vare på det for den som har sagt ja. */
 function useActiveMinutes() {
   useEffect(() => {
     const ping = () => {
@@ -55,6 +83,7 @@ function Shell() {
   const hash = useHash()
   useTheme()
   useActiveMinutes()
+  const { asking, answer } = useMeasure()
   const [company, setCompany] = useState("")
   const [sakerCount, setSakerCount] = useState(0)
   const { convs, remove } = useConversations()
@@ -114,6 +143,7 @@ function Shell() {
             <Brief onCount={setSakerCount} />
           )}
         </div>
+        {asking && <ConsentPrompt onAnswer={answer} />}
       </SidebarInset>
     </SidebarProvider>
   )
@@ -138,17 +168,20 @@ function useGate(): { gate: Gate; denied: string | null } {
         // Lenken fra e-posten kommer tilbake med ?code=. Når den er byttet
         // mot en økt, har den gjort jobben sin og skal ikke ligge i adressen.
         if (data.session && new URLSearchParams(window.location.search).has("code")) {
-          // Og kom man fra en lenke til en sak, er det dit man skal.
+          // Og kom man fra en lenke til en sak, er det dit man skal, med
+          // mandagsbrevets merke (?fra=brev&b=…) så trykket telles.
           const before = window.location.hash
-          let hash = before
+          let kept = before
           try {
-            hash ||= localStorage.getItem(AFTER_LOGIN) ?? ""
+            kept = localStorage.getItem(AFTER_LOGIN) || before
             localStorage.removeItem(AFTER_LOGIN)
           } catch {
             // Uten lagring havner man på forsiden.
           }
-          window.history.replaceState(null, "", window.location.pathname + hash)
-          if (hash !== before) window.dispatchEvent(new HashChangeEvent("hashchange"))
+          window.history.replaceState(null, "", window.location.pathname + kept)
+          if (window.location.hash !== before) {
+            window.dispatchEvent(new HashChangeEvent("hashchange"))
+          }
         }
         const sub = auth.onAuthStateChange((_event, session) => {
           setGate(session ? "in" : "out")

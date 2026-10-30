@@ -52,12 +52,85 @@ def test_a_changed_draft_is_recorded_as_edited_and_kept():
 
 def test_time_in_the_app_is_counted_in_minutes_once_each():
     _fresh()
+    metrics.set_consent("ceo@example.no", True)
     t = datetime(2026, 10, 12, 8, 0, tzinfo=timezone.utc)
     for s in (0, 20, 40, 65, 130):                       # seconds: three distinct minutes
         metrics.ping("ceo@example.no", t + timedelta(seconds=s))
     metrics.ping("ceo@example.no", t + timedelta(days=7))
     with db.read() as conn:
         assert metrics.minutes(conn, db.company_id()) == {"2026-W42": 3, "2026-W43": 1}
+
+
+# ------------------------------------------------------------- consent
+def _brief(sent_at: str | None, period: str = "2026-W42") -> int:
+    facts = {"sent": {"at": sent_at, "to": ["ceo@example.no"], "id": "r1"}} if sent_at else {}
+    with db.tx() as conn:
+        return conn.execute(
+            "INSERT INTO reports (company_id, kind, period, written_at, body, facts, status) "
+            "VALUES (?, 'weekly_brief', ?, ?, '…', ?, ?)",
+            (db.company_id(), period, "2026-10-12T05:00:00+00:00", db.dumps(facts),
+             "sent" if sent_at else "final")).lastrowid
+
+
+def _kept() -> tuple[int, int]:
+    with db.read() as conn:
+        return (conn.execute("SELECT count(*) FROM activity").fetchone()[0],
+                conn.execute("SELECT count(*) FROM email_taps").fetchone()[0])
+
+
+def test_nothing_is_measured_before_a_yes_or_after_a_no():
+    _fresh()
+    rid = _brief("2026-10-12T05:01:00+00:00")
+    assert metrics.consent("ceo@example.no") is None
+    # Not asked yet: the app's minute and the tap are both dropped.
+    assert not metrics.ping("ceo@example.no")
+    assert not metrics.tap("ceo@example.no", rid, "brief")
+    metrics.set_consent("ceo@example.no", False)
+    assert metrics.consent("ceo@example.no") is False
+    assert not metrics.ping("ceo@example.no")
+    assert not metrics.tap("ceo@example.no", rid, "card", "K016")
+    assert _kept() == (0, 0)
+    # A yes is for that user only, and can be taken back.
+    metrics.set_consent("ceo@example.no", True)
+    assert metrics.ping("ceo@example.no") and not metrics.ping("cfo@example.no")
+    metrics.set_consent("ceo@example.no", False)
+    assert not metrics.ping("ceo@example.no", datetime(2026, 10, 13, tzinfo=timezone.utc))
+    assert _kept() == (1, 0)
+
+
+def test_a_tap_is_kept_once_for_a_real_brief_and_a_known_link():
+    _fresh()
+    rid = _brief("2026-10-12T05:01:00+00:00")
+    metrics.set_consent("ceo@example.no", True)
+    assert metrics.tap("ceo@example.no", rid, "card", "K016")
+    assert metrics.tap("ceo@example.no", rid, "saker", "K016")     # card only kept for a card
+    assert not metrics.tap("ceo@example.no", rid + 99, "brief")     # no such brief
+    assert not metrics.tap("ceo@example.no", rid, "chat")           # not a link the email has
+    with db.read() as conn:
+        rows = [tuple(r) for r in conn.execute(
+            "SELECT report_id, link, card_id FROM email_taps ORDER BY id")]
+    assert rows == [(rid, "card", "K016"), (rid, "saker", None)]
+
+
+def test_each_letter_sent_with_its_taps_and_how_soon_the_app_was_open():
+    _fresh()
+    metrics.set_consent("ceo@example.no", True)
+    _brief(None, "2026-W41")                                         # written, never sent
+    rid = _brief("2026-10-12T05:01:30+00:00")
+    metrics.tap("ceo@example.no", rid, "card", "K016")
+    metrics.tap("ceo@example.no", rid, "card", "K017")
+    metrics.tap("ceo@example.no", rid, "brief")
+    sent = datetime(2026, 10, 12, 5, 1, tzinfo=timezone.utc)
+    metrics.ping("ceo@example.no", sent - timedelta(minutes=30))   # before it: not counted
+    for m in (47, 48, 49):                                           # 05:48–05:50 UTC
+        metrics.ping("ceo@example.no", sent + timedelta(minutes=m))
+    metrics.ping("ceo@example.no", sent + timedelta(days=2))        # another day: not counted
+    out = {w["week"]: w["letter"] for w in metrics.report(MON)["weeks"]}
+    assert out["2026-W41"] is None
+    assert out["2026-W42"] == {
+        "report_id": rid, "period": "2026-W42", "sent_at": "2026-10-12T05:01:30+00:00",
+        "taps": {"brief": 1, "card": 2, "saker": 0}, "tapped": 3,
+        "first_visit_minutes": 47, "minutes_first_day": 3}
 
 
 # ------------------------------------------------------------- measuring
