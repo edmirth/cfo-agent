@@ -87,8 +87,10 @@ BACKUP_SUPABASE_KEY = "" if DEMO else (os.getenv("SUPABASE_SERVICE_KEY") or "")
 BACKUP_BUCKET = os.getenv("CFO_BACKUP_BUCKET", "backups")
 
 # Email (backend/mailer.py). Resend, until the product has its own domain:
-# without one, Resend sends only from onboarding@resend.dev and only to the
-# account's own address — enough while the CEO is the one recipient.
+# arvaka.no is verified in Resend, so the hosted app sends as
+# `Arvaka <cfo@arvaka.no>` (CFO_MAIL_FROM in Render). The default is Resend's
+# test sender, which only delivers to the Resend account's own address and
+# tends to land in Spam: enough for a laptop, not for a customer.
 RESEND_API_KEY = "" if DEMO else (os.getenv("RESEND_API_KEY") or "")
 # Empty counts as unset: Resend refuses an email with no sender.
 MAIL_FROM = os.getenv("CFO_MAIL_FROM") or "CFO <onboarding@resend.dev>"
