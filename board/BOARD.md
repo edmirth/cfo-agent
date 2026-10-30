@@ -41,12 +41,10 @@ kanban-plugin: board
 - [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
 - [ ] 55. Run the tests on GitHub for every PR, and let Render deploy only when they pass @edmir #platform
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
-- [ ] 57. Send the Monday email from arvaka.no instead of Resend's test address, so it reaches the inbox and pilot customers @edmir #platform
 
 
 ## Next
 
-- [ ] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery
 - [ ] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery
 - [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
@@ -55,6 +53,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery
 
 
 ## Done
