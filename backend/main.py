@@ -351,12 +351,44 @@ async def health_check() -> dict:
         return _panel(exc, "Helsesjekken")
 
 
+def _who(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    return user.email if user else "local"
+
+
 @app.post("/api/activity")
 async def activity(request: Request) -> dict:
-    """Appen er åpen og i fokus dette minuttet. Bare det, ikke hva som leses."""
-    user = getattr(request.state, "user", None)
-    metrics.ping(user.email if user else "local")
-    return {"ok": True}
+    """Appen er åpen og i fokus dette minuttet. Bare det, ikke hva som leses,
+    og bare for den som har sagt ja til å bli målt."""
+    return {"ok": True, "recorded": metrics.ping(_who(request))}
+
+
+@app.get("/api/consent")
+async def get_consent(request: Request) -> dict:
+    """Om brukeren lar oss måle bruken: ja, nei, eller ikke spurt ennå (null)."""
+    return {"measure": metrics.consent(_who(request))}
+
+
+class ConsentIn(BaseModel):
+    measure: bool
+
+
+@app.post("/api/consent")
+async def post_consent(request: Request, body: ConsentIn) -> dict:
+    metrics.set_consent(_who(request), body.measure)
+    return {"measure": body.measure}
+
+
+class TapIn(BaseModel):
+    brief: int
+    link: str
+    card: str | None = None
+
+
+@app.post("/api/email-tap")
+async def email_tap(request: Request, body: TapIn) -> dict:
+    """Kom inn i appen fra en lenke i mandagsbrevet. Lagres bare med et ja."""
+    return {"recorded": metrics.tap(_who(request), body.brief, body.link, body.card)}
 
 
 @app.get("/api/metrics")

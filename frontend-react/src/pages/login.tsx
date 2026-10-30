@@ -47,10 +47,12 @@ export function Login({ denied }: { denied?: string | null }) {
     setBusy(true)
     setError(null)
     // Lenken i e-posten fører til forsiden, så det man kom for (en sak fra
-    // mandagsbrevet, #saker/K016) huskes her og hentes fram etter innloggingen.
-    // Kan åpnes i en annen fane, derfor localStorage og ikke sessionStorage.
+    // mandagsbrevet, ?fra=brev&b=8#saker/K016) huskes her og hentes fram etter
+    // innloggingen. Kan åpnes i en annen fane, derfor localStorage og ikke
+    // sessionStorage.
     try {
-      if (window.location.hash) localStorage.setItem(AFTER_LOGIN, window.location.hash)
+      const kept = window.location.search + window.location.hash
+      if (kept) localStorage.setItem(AFTER_LOGIN, kept)
     } catch {
       // Uten lagring havner man på forsiden, som før.
     }

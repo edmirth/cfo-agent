@@ -7,6 +7,7 @@ import { api, get } from "@/lib/api"
 import type { Rule, Rules } from "@/lib/api"
 import { kr, pct } from "@/lib/format"
 import { authFetch } from "@/lib/auth"
+import { getConsent, setConsent } from "@/lib/measure"
 
 type Company = {
   exists: boolean
@@ -15,6 +16,68 @@ type Company = {
   notes: string[]
   used_in_calculations: string[]
   known_settings: Record<string, string>
+}
+
+/** Kort 37: om brukeren lar oss telle tid i appen og trykk fra mandagsbrevet.
+ * Samme spørsmål som ved første innlogging, og like lett å si nei til her. */
+function Measuring() {
+  const [yes, setYes] = useState<boolean | null | undefined>(undefined)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    getConsent()
+      .then(setYes)
+      .catch(() => setFailed(true))
+  }, [])
+  const flip = async () => {
+    const next = !yes
+    setFailed(false)
+    try {
+      await setConsent(next)
+      setYes(next)
+    } catch {
+      setFailed(true)
+    }
+  }
+  return (
+    <section className="max-w-[62ch]">
+      <SectionHead title="Måling av bruken" />
+      <div className="flex items-start justify-between gap-6">
+        <p className="text-muted-foreground text-[15px] leading-6">
+          Arvaka kan telle hvor mange minutter du bruker i appen, og når du kommer inn fra en lenke i
+          mandagsbrevet. Det hjelper oss å gjøre tjenesten bedre. Vi ser aldri hva du leser, og det
+          gjelder bare deg.
+        </p>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!yes}
+          aria-label="Tell tid i appen og trykk fra mandagsbrevet"
+          disabled={yes === undefined}
+          onClick={flip}
+          className={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+            yes ? "bg-primary" : "bg-[var(--gray-300)] dark:bg-[var(--gray-700)]"
+          }`}
+        >
+          <span
+            className={`bg-background inline-block size-5 rounded-full shadow transition-transform ${
+              yes ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+      <p className="mt-2 text-sm">
+        {failed ? (
+          <span className="text-bad-text">Fikk ikke lagret valget. Prøv igjen.</span>
+        ) : yes === undefined ? null : yes ? (
+          "På: tid og trykk telles."
+        ) : (
+          <span className="text-muted-foreground">
+            {yes === null ? "Ikke valgt ennå: ingenting telles." : "Av: ingenting telles."}
+          </span>
+        )}
+      </p>
+    </section>
+  )
 }
 
 /** En regel slik den brukes, med enheten den har. */
@@ -160,6 +223,7 @@ export function Selskapet() {
           )}
         </section>
       </div>
+      <Measuring />
     </div>
   )
 }

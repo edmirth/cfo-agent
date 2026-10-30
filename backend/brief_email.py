@@ -9,7 +9,9 @@ reads wrong.
 **Links where the app can be reached.** With `CFO_APP_URL` set, as on the
 host, each decision links to its card, where it is decided, and a button opens
 the brief in the app. Without it, as on a laptop no phone can reach, there are
-no links: one that leads nowhere is worse than none.
+no links: one that leads nowhere is worse than none. Each link says it came
+from this brief (`?fra=brev&b=<id>`), so the app can count the tap — for a
+user who has said yes to that (`metrics.tap`). No open pixel.
 
 **The stored brief, never a fresh one.** What goes out is the brief kept in
 `reports` for this week, exactly as the web app shows it. Sending writes
@@ -49,14 +51,17 @@ def subject(b: dict) -> str:
     return f"Mandagsbrevet uke {week}: {brief.LIGHTS[b['light']]}"
 
 
-def _url(link: str = "") -> str | None:
+def _url(b: dict, link: str = "") -> str | None:
     """Where an app link («#saker/K016», or "" for the brief) is from a phone,
-    or None when the app cannot be reached from one."""
-    return f"{config.APP_URL}/{link}" if config.APP_URL else None
+    marked as a tap from brief `b`; None when the app cannot be reached."""
+    if not config.APP_URL:
+        return None
+    mark = f"?fra=brev&b={b['id']}" if b.get("id") else ""
+    return f"{config.APP_URL}/{mark}{link}"
 
 
 def text(b: dict) -> str:
-    there = f"\n\nHele brevet og sakene: {_url()}" if _url() else ""
+    there = f"\n\nHele brevet og sakene: {_url(b)}" if _url(b) else ""
     return (f"{b['body']}{there}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
             f"{brief._day(b['made_on'])}. Tallene er hentet fra Tripletex.")
 
@@ -104,20 +109,20 @@ def render_html(b: dict) -> str:
             tail = (f' <span style="color:{MUTED}">· {_e(brief._kr(amount))} kr</span>'
                     if amount and not said else "")
             link = c.get("link")
-            items.append(f"{_a(_url(link) if link else None, _e(c['title']))}{tail}")
+            items.append(f"{_a(_url(b, link) if link else None, _e(c['title']))}{tail}")
         if d["more"]:
-            more = _a(_url("#saker"), f'og {d["more"]} til i appen, under Saker')
+            more = _a(_url(b, "#saker"), f'og {d["more"]} til i appen, under Saker')
             items.append(f'<span style="color:{MUTED}">{more}</span>')
         decisions = _list(items)
         decisions_title = f"Trenger deg ({d['count']})"
     else:
         decisions = _p("Ingenting trenger deg denne uka.")
         decisions_title = "Trenger deg"
-    button = (f'<tr><td style="padding:20px 0 0"><a href="{_e(_url())}" '
+    button = (f'<tr><td style="padding:20px 0 0"><a href="{_e(_url(b))}" '
               f'style="display:inline-block;background:{BRAND};color:#ffffff;'
               f'font:600 14px/1 {FONT};text-decoration:none;padding:12px 18px;'
               f'border-radius:8px">Åpne brevet i appen</a></td></tr>'
-              if _url() else "")
+              if _url(b) else "")
     books = _p(_e(b["books"]["text"]), 13, MUTED)
     if b["books"]["lines"]:
         books += _list([f'<span style="font-size:13px;color:{MUTED}">{_e(x)}</span>'
