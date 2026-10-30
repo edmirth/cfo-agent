@@ -146,6 +146,7 @@ disk cannot run two copies side by side.
    | `CFO_OWNER_EMAIL` | The CEO's email; more separated by commas |
    | `RESEND_API_KEY` | As in `.env` |
    | `CFO_MAIL_FROM` | `Arvaka <cfo@arvaka.no>` (arvaka.no is verified in Resend; cfo@ is an alias in Google Workspace, so replies arrive) |
+   | `CFO_APP_URL` | Set in `render.yaml`: `https://app.arvaka.no`. The Monday email links each decision and the full brief there; without it the email has no links |
    | `CFO_BACKUP_KEY` | Step 2 above |
    | `SUPABASE_SERVICE_KEY`, `CFO_BACKUP_SUPABASE_URL` | Step 1 above |
 

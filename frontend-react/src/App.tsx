@@ -4,7 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { Wordmark } from "@/components/brand"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { api, get } from "@/lib/api"
-import { authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
+import { AFTER_LOGIN, authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
 import { Helsesjekk } from "@/pages/helsesjekk"
@@ -138,7 +138,17 @@ function useGate(): { gate: Gate; denied: string | null } {
         // Lenken fra e-posten kommer tilbake med ?code=. Når den er byttet
         // mot en økt, har den gjort jobben sin og skal ikke ligge i adressen.
         if (data.session && new URLSearchParams(window.location.search).has("code")) {
-          window.history.replaceState(null, "", window.location.pathname + window.location.hash)
+          // Og kom man fra en lenke til en sak, er det dit man skal.
+          const before = window.location.hash
+          let hash = before
+          try {
+            hash ||= localStorage.getItem(AFTER_LOGIN) ?? ""
+            localStorage.removeItem(AFTER_LOGIN)
+          } catch {
+            // Uten lagring havner man på forsiden.
+          }
+          window.history.replaceState(null, "", window.location.pathname + hash)
+          if (hash !== before) window.dispatchEvent(new HashChangeEvent("hashchange"))
         }
         const sub = auth.onAuthStateChange((_event, session) => {
           setGate(session ? "in" : "out")

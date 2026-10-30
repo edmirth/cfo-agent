@@ -9,7 +9,7 @@ import { useId, useState, type FormEvent } from "react"
 import { Wordmark } from "@/components/brand"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { supabase } from "@/lib/auth"
+import { AFTER_LOGIN, supabase } from "@/lib/auth"
 
 /** Supabase svarer på engelsk. Det daglig leder trenger å vite, på norsk. */
 function said(message: string): string {
@@ -46,6 +46,14 @@ export function Login({ denied }: { denied?: string | null }) {
     }
     setBusy(true)
     setError(null)
+    // Lenken i e-posten fører til forsiden, så det man kom for (en sak fra
+    // mandagsbrevet, #saker/K016) huskes her og hentes fram etter innloggingen.
+    // Kan åpnes i en annen fane, derfor localStorage og ikke sessionStorage.
+    try {
+      if (window.location.hash) localStorage.setItem(AFTER_LOGIN, window.location.hash)
+    } catch {
+      // Uten lagring havner man på forsiden, som før.
+    }
     const { error } = await supabase().auth.signInWithOtp({
       email,
       // Ingen ny konto av en lenke: bare den som allerede har tilgang, får en.

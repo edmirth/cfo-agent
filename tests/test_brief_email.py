@@ -91,15 +91,20 @@ def test_recipients_from_the_rulebook_and_a_typo_is_said_not_sent_to():
 
 # ----------------------------------------------------------------- the email
 def test_the_email_is_complete_on_its_own_and_reads_on_a_phone():
-    b = dict(BRIEF, body=brief.render(BRIEF))
-    page = brief_email.render_html(b)
+    saved, config.APP_URL = config.APP_URL, ""
+    try:
+        b = dict(BRIEF, body=brief.render(BRIEF))
+        page = brief_email.render_html(b)
+        text = brief_email.text(b)
+    finally:
+        config.APP_URL = saved
     assert brief_email.subject(b) == "Mandagsbrevet uke 42: GUL"
     for said in ("Stramt i desember", "932 040 kr", "Kundefordringer",
                  "Trenger deg (4)", "og 1 til i appen", "2 bilag ligger ubokført.",
                  "Treffsikkerhet", 'name="viewport"', "max-width:560px"):
         assert said in page, said
-    # No links: the app cannot be reached from a phone yet.
-    assert "<a " not in page and "href" not in page
+    # No links: without CFO_APP_URL the app cannot be reached from a phone.
+    assert "<a " not in page and "href" not in page and "http" not in text
     # A title that says its amount is not followed by it again; one that does
     # not, is.
     assert page.count("57 056 kr") == 1 and "· 23 813 kr" in page
@@ -107,7 +112,26 @@ def test_the_email_is_complete_on_its_own_and_reads_on_a_phone():
     assert "Purr &lt;Backe &amp; Co&gt;" in page
     # Well under the size at which Gmail cuts a message off.
     assert len(page.encode()) < 30_000
-    assert brief_email.text(b).startswith("GUL — Stramt i desember")
+    assert text.startswith("GUL — Stramt i desember")
+
+
+def test_where_the_app_can_be_reached_the_email_links_each_decision_to_its_card():
+    saved, config.APP_URL = config.APP_URL, "https://app.example.no"
+    try:
+        b = dict(BRIEF, body=brief.render(BRIEF))
+        page = brief_email.render_html(b)
+        text = brief_email.text(b)
+    finally:
+        config.APP_URL = saved
+    for card in ("K016", "K017", "K018"):
+        assert f'href="https://app.example.no/#saker/{card}"' in page, card
+    # The rest of the deck, and the brief as the app shows it.
+    assert 'href="https://app.example.no/#saker"' in page
+    assert 'href="https://app.example.no/" style' in page and "Åpne brevet i appen</a>" in page
+    # A linked title is still escaped text.
+    assert ">Purr &lt;Backe &amp; Co&gt;</a>" in page
+    assert "Hele brevet og sakene: https://app.example.no/" in text
+    assert len(page.encode()) < 30_000
 
 
 # ------------------------------------------------------------------ sending

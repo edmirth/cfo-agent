@@ -1,11 +1,15 @@
 """The Monday brief, as the email the CEO reads on the phone.
 
-Complete on its own: the app runs on a Mac nobody's phone can reach, so a
-"read more" link would lead nowhere. Everything the brief says is in the
-email — the light, the low point, what changed, the decisions spelled out,
-the books and the record. One narrow column, inline styles, nothing to load:
-mail apps strip stylesheets and block images, and a brief that needs either
-is a brief that reads wrong.
+Complete on its own: everything the brief says is in the email — the light,
+the low point, what changed, the decisions spelled out, the books and the
+record. One narrow column, inline styles, nothing to load: mail apps strip
+stylesheets and block images, and a brief that needs either is a brief that
+reads wrong.
+
+**Links where the app can be reached.** With `CFO_APP_URL` set, as on the
+host, each decision links to its card, where it is decided, and a button opens
+the brief in the app. Without it, as on a laptop no phone can reach, there are
+no links: one that leads nowhere is worse than none.
 
 **The stored brief, never a fresh one.** What goes out is the brief kept in
 `reports` for this week, exactly as the web app shows it. Sending writes
@@ -22,6 +26,7 @@ from datetime import date
 
 import brief
 import company
+import config
 import db
 import job_runs
 import mailer
@@ -30,6 +35,7 @@ log = logging.getLogger("cfo.brief_email")
 
 COLOURS = {"green": "#059669", "yellow": "#d97706", "red": "#dc2626"}
 INK, MUTED, RULE = "#111827", "#6b7280", "#e5e7eb"
+BRAND = "#0f362a"    # the dark green of arvaka.no
 FONT = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,"
         "sans-serif")
 
@@ -43,8 +49,15 @@ def subject(b: dict) -> str:
     return f"Mandagsbrevet uke {week}: {brief.LIGHTS[b['light']]}"
 
 
+def _url(link: str = "") -> str | None:
+    """Where an app link («#saker/K016», or "" for the brief) is from a phone,
+    or None when the app cannot be reached from one."""
+    return f"{config.APP_URL}/{link}" if config.APP_URL else None
+
+
 def text(b: dict) -> str:
-    return (f"{b['body']}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
+    there = f"\n\nHele brevet og sakene: {_url()}" if _url() else ""
+    return (f"{b['body']}{there}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
             f"{brief._day(b['made_on'])}. Tallene er hentet fra Tripletex.")
 
 
@@ -65,6 +78,13 @@ def _list(items: list[str]) -> str:
             f'color:{INK}">{rows}</ul>')
 
 
+def _a(url: str | None, label: str) -> str:
+    """`label` (already escaped) as a link to `url`, or as it is without one."""
+    if not url:
+        return label
+    return f'<a href="{_e(url)}" style="color:inherit;text-decoration:underline">{label}</a>'
+
+
 def _p(s: str, size: int = 15, color: str = INK) -> str:
     return f'<p style="margin:0;font:{size}px/1.5 {FONT};color:{color}">{s}</p>'
 
@@ -83,15 +103,21 @@ def render_html(b: dict) -> str:
             said = amount and brief._kr(amount) in c["title"]
             tail = (f' <span style="color:{MUTED}">· {_e(brief._kr(amount))} kr</span>'
                     if amount and not said else "")
-            items.append(f"{_e(c['title'])}{tail}")
+            link = c.get("link")
+            items.append(f"{_a(_url(link) if link else None, _e(c['title']))}{tail}")
         if d["more"]:
-            items.append(f'<span style="color:{MUTED}">og {d["more"]} til i appen, '
-                         f'under Saker</span>')
+            more = _a(_url("#saker"), f'og {d["more"]} til i appen, under Saker')
+            items.append(f'<span style="color:{MUTED}">{more}</span>')
         decisions = _list(items)
         decisions_title = f"Trenger deg ({d['count']})"
     else:
         decisions = _p("Ingenting trenger deg denne uka.")
         decisions_title = "Trenger deg"
+    button = (f'<tr><td style="padding:20px 0 0"><a href="{_e(_url())}" '
+              f'style="display:inline-block;background:{BRAND};color:#ffffff;'
+              f'font:600 14px/1 {FONT};text-decoration:none;padding:12px 18px;'
+              f'border-radius:8px">Åpne brevet i appen</a></td></tr>'
+              if _url() else "")
     books = _p(_e(b["books"]["text"]), 13, MUTED)
     if b["books"]["lines"]:
         books += _list([f'<span style="font-size:13px;color:{MUTED}">{_e(x)}</span>'
@@ -118,6 +144,7 @@ Mandagsbrevet · uke {_e(week)}</div>
 </td></tr>
 {_section("Endret siden forrige mandag", changed)}
 {_section(decisions_title, decisions)}
+{button}
 <tr><td style="padding:18px 0 0"><div style="border-top:1px solid {RULE};padding-top:12px">
 {books}
 <div style="height:6px"></div>
