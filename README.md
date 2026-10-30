@@ -73,8 +73,10 @@ Recipients are `brev_mottakere` in the settings at the top of Selskapet,
 comma-separated; without it, the brief goes to `CFO_OWNER_EMAIL`. The front
 page's brief card has **Send på e-post nå** for a test. A failed send is said
 at the top of the front page and retried every half hour, three times; it is
-never sent twice in a week unless sent by hand. With a domain later: verify
-it in Resend and set `CFO_MAIL_FROM`; nothing else changes.
+never sent twice in a week unless sent by hand. arvaka.no is verified in
+Resend (region Ireland), and the hosted app sends as `Arvaka <cfo@arvaka.no>`
+through `CFO_MAIL_FROM`; without it, Resend's test sender reaches only the
+Resend account's own address.
 
 ## How it works
 

@@ -144,7 +144,8 @@ disk cannot run two copies side by side.
    | `COMPANY_NAME` | The company's name, as on its letters |
    | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | The login project, as in `.env` |
    | `CFO_OWNER_EMAIL` | The CEO's email; more separated by commas |
-   | `RESEND_API_KEY`, `CFO_MAIL_FROM` | As in `.env` (card 53 moves the sender to `cfo@arvaka.no`) |
+   | `RESEND_API_KEY` | As in `.env` |
+   | `CFO_MAIL_FROM` | `Arvaka <cfo@arvaka.no>` (arvaka.no is verified in Resend; cfo@ is an alias in Google Workspace, so replies arrive) |
    | `CFO_BACKUP_KEY` | Step 2 above |
    | `SUPABASE_SERVICE_KEY`, `CFO_BACKUP_SUPABASE_URL` | Step 1 above |
 
