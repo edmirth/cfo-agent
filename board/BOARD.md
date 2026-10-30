@@ -49,6 +49,7 @@ kanban-plugin: board
 - [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 - [ ] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery
+- [ ] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery
 
 
 ## Doing
