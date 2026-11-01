@@ -52,11 +52,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics
 
 
 ## Done
 
+- [x] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics ✓ 2026-11-01
 - [x] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery ✓ 2026-10-30
 - [x] 53. Send the Monday brief from cfo@arvaka.no: verify arvaka.no in Resend @edmir #delivery ✓ 2026-10-30
 - [x] 50. Put arvaka.no live: booking link, contact email, approved pages, English versions @edmir #platform ✓ 2026-10-29
