@@ -13,8 +13,10 @@ see this company's books is ours to say.
 
 **Fail closed.** The check is a middleware in front of every `/api/*` route,
 not a dependency each route has to remember: a route added tomorrow is
-covered today. `/api/auth/config` is the one open route — it hands the browser
-the project URL and its public key, which it needs before anyone can sign in.
+covered today. `/api/auth/config` is open — it hands the browser the project
+URL and its public key, which it needs before anyone can sign in — and so are
+the two routes of a decision link from the Monday email (`card_links`), which
+answer only to that link's own token and open only its one card.
 A server without auth configured does not start, unless `CFO_AUTH=off` says
 on purpose that it should run open.
 
@@ -39,7 +41,7 @@ import config
 
 log = logging.getLogger("cfo.auth")
 
-OPEN = frozenset({"/api/auth/config"})
+OPEN = frozenset({"/api/auth/config", "/api/link", "/api/link/decide"})
 AUDIENCE = "authenticated"
 LEEWAY_S = 30                    # clock skew between us and Supabase
 JWKS_TTL_S = 3600
