@@ -13,6 +13,11 @@ no links: one that leads nowhere is worse than none. Each link says it came
 from this brief (`?fra=brev&b=<id>`), so the app can count the tap — for a
 user who has said yes to that (`metrics.tap`). No open pixel.
 
+**A decision opens without a password.** When the email is sent, each decision
+gets a link of its own (`card_links`) that opens its card and decides it once,
+for a week, without a login (`#godkjenn/<token>`). The stored brief stays as it
+was: the links belong to one email, and a brief sent again gets new ones.
+
 **The stored brief, never a fresh one.** What goes out is the brief kept in
 `reports` for this week, exactly as the web app shows it. Sending writes
 nothing new and calls no model, so a retried send costs nothing and says
@@ -27,6 +32,7 @@ import uuid
 from datetime import date
 
 import brief
+import card_links
 import company
 import config
 import db
@@ -94,7 +100,10 @@ def _p(s: str, size: int = 15, color: str = INK) -> str:
     return f'<p style="margin:0;font:{size}px/1.5 {FONT};color:{color}">{s}</p>'
 
 
-def render_html(b: dict) -> str:
+def render_html(b: dict, links: dict[str, str] | None = None) -> str:
+    """The email. `links` is {card id: token} from `card_links.mint`: a decision
+    with one links to its card without a login, one without to `#saker/<id>`."""
+    links = links or {}
     colour = COLOURS[b["light"]]
     week = b["period"].split("-W")[1].lstrip("0")
     d = b["decisions"]
@@ -108,7 +117,7 @@ def render_html(b: dict) -> str:
             said = amount and brief._kr(amount) in c["title"]
             tail = (f' <span style="color:{MUTED}">· {_e(brief._kr(amount))} kr</span>'
                     if amount and not said else "")
-            link = c.get("link")
+            link = f"#godkjenn/{links[c['id']]}" if c["id"] in links else c.get("link")
             items.append(f"{_a(_url(b, link) if link else None, _e(c['title']))}{tail}")
         if d["more"]:
             more = _a(_url(b, "#saker"), f'og {d["more"]} til i appen, under Saker')
@@ -187,10 +196,13 @@ async def send(today: date | None = None, force: bool | None = None) -> dict:
     if b["status"] == "sent" and not force:
         return {"skipped": True, "period": b["period"], "sent": b.get("sent")}
     to = company.recipients()
+    # Only where a phone can reach the app, and for a brief that is kept.
+    links = (card_links.mint([c["id"] for c in b["decisions"]["top"]], b["id"])
+             if config.APP_URL else {})
     # Per brief and per attempt by hand: a scheduled retry of the same brief
     # carries the same key and is never delivered twice; a send someone asked
     # for is a new email.
     key = f"weekly-brief-{b['id']}" + (f"-{uuid.uuid4().hex}" if force else "")
-    mail_id = await mailer.send(to, subject(b), render_html(b), text(b), key)
+    mail_id = await mailer.send(to, subject(b), render_html(b, links), text(b), key)
     _mark_sent(b["id"], to, mail_id)
     return {"skipped": False, "period": b["period"], "to": to, "id": mail_id}

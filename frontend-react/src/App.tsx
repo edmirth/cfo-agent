@@ -4,11 +4,13 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { Wordmark } from "@/components/brand"
 import { ConsentPrompt } from "@/components/consent-prompt"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { useTheme } from "@/hooks/use-theme"
 import { api, get } from "@/lib/api"
 import { AFTER_LOGIN, authEnabled, authFetch, initAuth, onLoggedOut, supabase } from "@/lib/auth"
 import { getConsent, sendTap, setConsent, takeTap, type Tap } from "@/lib/measure"
 import { Brief } from "@/pages/brief"
 import { Chat } from "@/pages/chat"
+import { Godkjenn } from "@/pages/godkjenn"
 import { Helsesjekk } from "@/pages/helsesjekk"
 import { Login } from "@/pages/login"
 import { Maling } from "@/pages/maling"
@@ -25,17 +27,6 @@ function useHash() {
     return () => window.removeEventListener("hashchange", on)
   }, [])
   return hash
-}
-
-/** Følger systemets fargemodus; shadcn bytter på .dark. */
-function useTheme() {
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)")
-    const on = () => document.documentElement.classList.toggle("dark", mq.matches)
-    on()
-    mq.addEventListener("change", on)
-    return () => mq.removeEventListener("change", on)
-  }, [])
 }
 
 /** Kort 37: spør om måling første gang, og meld fra om et trykk fra
@@ -203,7 +194,11 @@ function useGate(): { gate: Gate; denied: string | null } {
 }
 
 export default function App() {
+  const hash = useHash()
   const { gate, denied } = useGate()
+  // En sak fra mandagsbrevet (kort 11): lenken er nøkkelen, så den åpnes uten
+  // innlogging, og uten resten av appen.
+  if (hash.startsWith("#godkjenn/")) return <Godkjenn token={hash.slice("#godkjenn/".length)} />
   if (gate === "loading") return null
   if (gate === "broken") {
     return (

@@ -19,6 +19,7 @@ from overview import cached as overview_cached
 import auth
 import backup
 import brief
+import card_links
 import cards
 import company
 import health as health_report  # not `health`: that name is the /api/health route
@@ -69,7 +70,8 @@ auth.check_config()
 
 app = FastAPI(title="CFO Agent", version="0.1.0")
 # In front of every route, so a route added later is covered without anyone
-# remembering to. Only /api/auth/config answers without a login.
+# remembering to. Only auth.OPEN answers without a login: the login config, and
+# a decision link from the Monday email, to its own token.
 app.middleware("http")(auth.middleware)
 
 DAILY_BRIEF = (
@@ -167,7 +169,7 @@ def _panel(exc: Exception, what: str) -> dict:
 
 @app.get("/api/auth/config")
 async def auth_config() -> dict:
-    """Det nettleseren trenger for å logge inn. Den eneste ruten uten innlogging."""
+    """Det nettleseren trenger for å logge inn. Åpen, som lenkene i mandagsbrevet."""
     return auth.public_config()
 
 
@@ -440,6 +442,39 @@ async def decide_card(card_id: str, req: DecisionRequest) -> dict:
         log.exception("Decision failed")
         raise HTTPException(500, "Valget ble ikke lagret. Detaljene ligger i "
                                  "serverloggen.") from exc
+
+
+class LinkRequest(BaseModel):
+    # In the body, not the path: a token in a URL ends up in access logs.
+    token: str = Field(min_length=1, max_length=card_links.TOKEN_MAX)
+
+
+class LinkDecision(LinkRequest):
+    option: str = Field(min_length=1, max_length=64)
+    draft_text: str | None = Field(default=None, max_length=20000)
+
+
+@app.post("/api/link")
+async def link_card(req: LinkRequest) -> dict:
+    """Saken en lenke i mandagsbrevet åpner. Uten innlogging: lenken selv er
+    nøkkelen, til denne ene saken."""
+    try:
+        return card_links.show(req.token)
+    except card_links.Refused as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+
+
+@app.post("/api/link/decide")
+async def link_decide(req: LinkDecision) -> dict:
+    """Avgjør saken fra lenken, slik knappen i appen gjør, og bruk lenken opp."""
+    try:
+        return card_links.decide(req.token, req.option, req.draft_text)
+    except card_links.Refused as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Decision from a link failed")
+        raise HTTPException(500, "Valget ble ikke lagret. Prøv igjen, eller logg "
+                                 "inn i appen.") from exc
 
 
 @app.get("/api/definitions")
