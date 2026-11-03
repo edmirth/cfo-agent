@@ -534,17 +534,24 @@ def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
     floor = (rules or cashflow.rules(cf))["likviditetsgulv_kr"]
     if low.get("amount") is None or low["amount"] >= floor["value"]:
         return []
+    # What the line counts on, said as it is: "bare de faste kundene" for a
+    # company that has none would name a comfort the line does not contain.
+    contracts = bool(cf.get("recurring_sales"))
     assumed = (f" Gulvet er {company.said(floor)}; sett deres eget i Selskapet "
                f"om det skal ligge et annet sted." if floor["assumed"] else "")
     return [{
         "key": f"cash:{low.get('start')}",
         "kind": "cash", "urgency": "high", "amount": low["amount"],
         "title": (f"Under gulvet i {low.get('label')}: {_kr(low['amount'])} kr "
-                  f"igjen hvis ingenting nytt faktureres"),
+                  f"igjen hvis {'bare de faste kundene' if contracts else 'ingenting nytt'} "
+                  f"faktureres"),
         "body": (f"Gulvet er {_kr(floor['value'])} kr. Dette er den bundne "
-                 f"linjen — bare det som allerede er avtalt inn og ut. "
-                 f"Fakturerer du som vanlig ligger du høyere, men da er det "
-                 f"faktureringen som må skje i tide." + assumed),
+                 f"linjen — det som allerede er avtalt inn og ut"
+                 + (", pluss kundene som faktureres fast hver måned. "
+                    "Fakturerer du utover det som vanlig" if contracts else
+                    ". Fakturerer du som vanlig")
+                 + ", ligger du høyere, men da er det faktureringen som må "
+                 "skje i tide." + assumed),
         "evidence": [{"label": "Uke", "value": f"{low.get('label')} ({low.get('start')})"},
                      {"label": "Bundet saldo", "value": f"{_kr(low['amount'])} kr"},
                      {"label": "Gulv", "value": f"{_kr(floor['value'])} kr "

@@ -223,7 +223,8 @@ function buildSignals(data: Data): Signal[] {
   if (cash) {
     const { amount: floor, said } = floorOf(data)
     // The committed line, not the expected one: this card's own words are
-    // "det som allerede er fakturert og de faste regningene", and its amount reads
+    // "det som allerede er fakturert, den faste faktureringen og de faste
+    // regningene", and its amount reads
     // committed_close. It used to key off goes_negative, which the backend
     // measured on the expected line, so the card stayed silent exactly when
     // the floor went dry while the forecast still looked healthy.
@@ -235,7 +236,7 @@ function buildSignals(data: Data): Signal[] {
         sev: "crit",
         tag: "Kontanter",
         title: `Kontoen går i minus i ${negative.label.toLowerCase()}`,
-        body: `Med det som allerede er fakturert og de faste regningene, er kontoen tom i uka fra ${dateNo(negative.start)}.`,
+        body: `Med det som allerede er fakturert${Number(cash.assumptions.fast_fakturering_mnd) > 0 ? ", den faste faktureringen" : ""} og de faste regningene, er kontoen tom i uka fra ${dateNo(negative.start)}.`,
         ask: "Gå gjennom kontantstrømmen uke for uke fram til uka vi går i minus. Hva er de største utbetalingene, og hva kan flyttes?",
         amount: week ? Math.abs(week.committed_close) : undefined,
         due: negative.start,
@@ -345,8 +346,8 @@ function headline(data: Data, list: Signal[]) {
     const { amount: floor, assumed } = floorOf(data)
     const dip = cash.weeks.findIndex((w) => w.committed_close < floor)
     const debtor = ov?.top_debtor?.name
-    // "hvis ingenting endres" is the committed line by definition — nothing
-    // new invoiced, nothing new collected.
+    // "hvis ingenting endres" is the committed line by definition — the
+    // contract customers go on being invoiced, nothing new is won.
     if (cash.goes_negative_committed) {
       return `Kontoen er tom i ${cash.goes_negative_committed.label.toLowerCase()} hvis ingenting endres.`
     }
@@ -917,7 +918,10 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
                     : d.cash.goes_negative
                       ? `, og den forventede linjen går i minus i ${d.cash.goes_negative.label.toLowerCase()}.`
                       : ". Ingen av linjene går i minus i perioden."}{" "}
-                  Bundet er det som alt er fakturert inn og ut, lønn og skattedatoer.
+                  Bundet er det som alt er fakturert inn og ut
+                  {Number(d.cash.assumptions.fast_fakturering_mnd) > 0 &&
+                    `, de faste kundene som faktureres hver måned (${kr(Number(d.cash.assumptions.fast_fakturering_mnd))} kr i måneden)`}
+                  , lønn og skattedatoer.
                   Forventet legger vanlig drift på toppen, og er et anslag.
                 </p>
                 <Collapsible>

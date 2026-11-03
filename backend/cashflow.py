@@ -9,10 +9,12 @@ only apologise.
 Two lines, never one:
 
 - **Committed** — money already invoiced in or out, plus payroll and the tax
-  dates that arrive whether or not anyone sells anything. This is the floor.
-- **Expected** — committed plus continued trading: the invoicing that normally
-  goes out each month, collected on the terms this company's customers
-  actually pay on, less the running costs.
+  dates that arrive whether or not anyone sells anything, plus the customers
+  invoiced every month on what is plainly a contract — with the VAT and the
+  running costs that come with serving them. This is the floor.
+- **Expected** — committed plus the rest of continued trading: the invoicing
+  that normally goes out each month beyond the contracts, collected on the
+  terms this company's customers actually pay on, less its running costs.
 
 Showing only the first makes a healthy company look dying; showing only the
 second hides how much of the comfort is a forecast rather than a fact. A CFO
@@ -76,6 +78,14 @@ MIN_CLOSED_MONTHS = 3
 FIXED_LOOKBACK = 4
 FIXED_MIN = 3
 FIXED_TOLERANCE = 0.15
+
+# The same reading on the other side of the ledger: a customer invoiced in each
+# of the last RECURRING_MONTHS closed months, every month within
+# RECURRING_TOLERANCE of his median, is on a contract. Wider than the bills,
+# because a contract invoice carries the odd extra; and counted at the lowest
+# of those months, because the floor is where being wrong costs most.
+RECURRING_MONTHS = 3
+RECURRING_TOLERANCE = 0.25
 
 # The months are not alike. Sales and running costs get a seasonal pattern
 # from last year — each month against last year's average, held within
@@ -584,8 +594,9 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
 
 
 def _sales_rows(history: list):
-    """(issued, due, amount) for every customer invoice in the history that
-    stands: a credited invoice and its credit note are left out together."""
+    """(issued, due, amount, customer) for every customer invoice in the
+    history that stands: a credited invoice and its credit note are left out
+    together."""
     for row in history:
         if row.get("isCredited"):
             continue
@@ -596,7 +607,7 @@ def _sales_rows(history: list):
             continue
         amount = float(row.get("amount") or row.get("amountCurrency") or 0)
         if amount > 0:
-            yield issued, due, amount
+            yield issued, due, amount, row.get("customerName") or ""
 
 
 def _sales_profile(history: list) -> dict:
@@ -608,7 +619,85 @@ def _sales_profile(history: list) -> dict:
     its money placed three weeks late, and October's invoicing paid in
     January fell outside the window altogether.
     """
-    return _profile(list(_sales_rows(history)))
+    return _profile([(i, d, a) for i, d, a, _ in _sales_rows(history)])
+
+
+def _recurring_sales(history: list, today: date, horizon: date,
+                     habits: dict | None = None, season: dict | None = None,
+                     skip: set[str] = frozenset()) -> tuple[list, list, dict]:
+    """The invoicing that goes out whether or not anyone wins a new order.
+    Returns the receipts, what was found, and each month's gross by
+    `(year, month)` — collected inside the window or not, since the VAT on it
+    and the expected line's netting both need the whole month.
+
+    The committed line held no invoicing that had not happened yet, so it
+    read as a company that would stop billing the day the forecast was made:
+    a cleaning company with every building on a monthly contract was told its
+    account ran dry in January, with nothing in the books to say it would.
+    The supplier side never had that problem — rent and leasing are projected
+    by `_fixed_bills` on exactly this kind of evidence.
+
+    So the same reading on the customers: invoiced in each of the last
+    RECURRING_MONTHS closed months, every month within RECURRING_TOLERANCE of
+    his median, and he is on a contract. Projected at the lowest of those
+    months, on his usual day and terms, paid as late as he usually pays, and
+    no higher than the season allows: a contract still goes quiet in July.
+    A month he has already been invoiced in is skipped, being in the open
+    invoices or paid already.
+
+    `skip` is the customers this must not count on: those in trouble with
+    Enhetsregisteret, and those already more than LATE_DAYS late, whose
+    invoices sit in the expected line only. New invoicing to either is not a
+    floor anyone should stand on.
+    """
+    by_customer: dict = {}
+    for issued, due, amount, name in _sales_rows(history):
+        if not name or name in skip:
+            continue
+        m = by_customer.setdefault(name, {}).setdefault(
+            (issued.year, issued.month), {"amount": 0.0, "days": [], "terms": []})
+        m["amount"] += amount
+        m["days"].append(issued.day)
+        m["terms"].append(max(0, (due - issued).days))
+
+    this = (today.year, today.month)
+    closed = [_add_months(*this, -n) for n in range(1, RECURRING_MONTHS + 1)]
+    flows, found, by_month = [], [], {}
+    for name, months in by_customer.items():
+        if not all(k in months for k in closed):
+            continue
+        values = [months[k]["amount"] for k in closed]
+        mid = statistics.median(values)
+        if mid <= 0 or any(abs(v - mid) > RECURRING_TOLERANCE * mid for v in values):
+            continue
+        amount = min(values)
+        day = int(statistics.median([d for k in closed for d in months[k]["days"]]))
+        terms = int(statistics.median([t for k in closed for t in months[k]["terms"]]))
+        late = payment_habits.lag(habits, name, PAY_LAG_DAYS)
+        upcoming = []
+        y, mo = this
+        while True:
+            issued = date(y, mo, min(day, monthrange(y, mo)[1]))
+            if issued >= horizon:
+                break
+            if (y, mo) not in months:
+                part = amount * min(1.0, (season or {}).get(mo, 1.0))
+                by_month[(y, mo)] = by_month.get((y, mo), 0.0) + part
+                # Not before it is sent: an invoice whose usual day has passed
+                # goes out today at the earliest, and is due from then.
+                pay = max(issued, today) + timedelta(days=terms + late)
+                if pay < horizon and round(part) > 0:
+                    flows.append({"date": pay, "amount": part, "kind": "recurring",
+                                  "month": (y, mo),
+                                  "label": f"Fast fakturering til {name}, "
+                                           f"{MONTH_NAMES[mo - 1]}"})
+                    upcoming.append(pay)
+            y, mo = _add_months(y, mo, 1)
+        found.append({"name": name, "amount": round(amount, 2), "day": day,
+                      "terms": terms, "late": late,
+                      "next": min(upcoming).isoformat() if upcoming else None})
+    found.sort(key=lambda f: -f["amount"])
+    return flows, found, by_month
 
 
 def _profile(bills: list[tuple[date, date, float]]) -> dict:
@@ -1220,6 +1309,16 @@ async def build(today: date | None = None) -> dict:
     sales_profile = _sales_profile(customer_history)
     sales_lag = (habits["company"] if habits.get("company") is not None
                  else PAY_LAG_DAYS)
+    # The customers on a contract are invoiced whether or not anyone sells
+    # anything, so the floor carries them, as it carries the rent — with the
+    # VAT and the running costs that serving them brings, in the loop below.
+    # Not those in trouble with the register, nor those already further behind
+    # than ordinary lateness: their open invoices are not counted on either.
+    behind = {i["name"] for i in ar_due if (_days_overdue(i, today) or 0) > LATE_DAYS}
+    recurring_flows, recurring_found, recurring_by_month = _recurring_sales(
+        customer_history, today, horizon, habits, season.get("revenue"),
+        set(risky) | behind)
+    committed += recurring_flows
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
     # was backwards. Being short on receivables flatters the forecast; being
@@ -1365,6 +1464,15 @@ async def build(today: date | None = None) -> dict:
         if (month.year, month.month) == (today.year, today.month):
             gross = max(0.0, gross - invoiced_this_month)
         current = (month.year, month.month) == (today.year, today.month)
+        # The contract customers' part of the month is in the committed line
+        # already, each on his own dates; what is left here is the invoicing
+        # still to be won. The same share of the VAT and of the running costs
+        # moves with it: a contract costs materials and fuel to serve like any
+        # other sale, and a floor that took the money without the cost would
+        # stand higher than it is.
+        contract = recurring_by_month.get((month.year, month.month), 0.0)
+        tied = min(1.0, contract / gross) if gross > 0 else (1.0 if contract else 0.0)
+        gross = max(0.0, gross - contract)
         if sales_profile.get("measured"):
             # Each period's share, paid its own terms plus the lateness after.
             # This month's remainder only in the days still to come.
@@ -1388,8 +1496,15 @@ async def build(today: date | None = None) -> dict:
         net_vat = revenue * MVA_RATE * (1 - vat_share)
         if (month.year, month.month) == (today.year, today.month):
             net_vat = max(0.0, net_vat - booked_vat)
+        contract_vat = contract / (1 + MVA_RATE) * MVA_RATE * (1 - vat_share)
+        net_vat = max(0.0, net_vat - contract_vat)
         vat_due = workdays.forward(
             commitments.term_due(month.year, month.month, commitments.MVA_TERMS))
+        if today <= vat_due < horizon and round(contract_vat) > 0:
+            committed.append({"date": vat_due, "amount": -contract_vat,
+                              "kind": "vat_recurring",
+                              "label": f"Merverdiavgift på fast fakturering "
+                                       f"{MONTH_NAMES[month.month - 1]}"})
         if today <= vat_due < horizon and round(net_vat) > 0:
             expected.append({"date": vat_due, "amount": -net_vat,
                              "kind": "vat_future",
@@ -1407,15 +1522,20 @@ async def build(today: date | None = None) -> dict:
         # leaves it, as sales collected after it do.
         for pay, share, days in _cost_parts(profile, month, today, current):
             part = cost * share
-            if pay < horizon and round(part) > 0:
-                expected.append({"date": pay, "amount": -part,
-                                 "kind": "opex",
-                                 "label": f"Driftskostnader "
-                                          f"{MONTH_NAMES[month.month - 1]}"
-                                          f"{', resten' if current else ''}"
-                                          f"{', ' + days if days else ''}"
-                                          f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-                                          f"{' (inkl. moms)' if month_vat >= 0.5 else ''}"})
+            if pay >= horizon or round(part) <= 0:
+                continue
+            label = (f"Driftskostnader {MONTH_NAMES[month.month - 1]}"
+                     f"{', resten' if current else ''}"
+                     f"{', ' + days if days else ''}"
+                     f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
+                     f"{' (inkl. moms)' if month_vat >= 0.5 else ''}")
+            if round(part * tied) > 0:
+                committed.append({"date": pay, "amount": -part * tied,
+                                  "kind": "opex_recurring",
+                                  "label": f"{label}, til den faste faktureringen"})
+            if round(part * (1 - tied)) > 0:
+                expected.append({"date": pay, "amount": -part * (1 - tied),
+                                 "kind": "opex", "label": label})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
 
@@ -1440,6 +1560,11 @@ async def build(today: date | None = None) -> dict:
     # The recurring bills the committed line now carries, for the owner to
     # check against what he knows he pays.
     data["fixed_costs"] = fixed_found
+    # And the contract customers it now counts on, for the same check: he
+    # knows which buildings are on a monthly contract better than we do.
+    data["recurring_sales"] = recurring_found
+    data["assumptions"]["fast_fakturering_mnd"] = round(
+        sum(f["amount"] for f in recurring_found), 2)
     data["assumptions"]["kostnadsprofil"] = profile
     data["assumptions"]["fakturaprofil"] = {**sales_profile, "forsinkelse_dager": sales_lag}
     data["assumptions"]["sesong"] = {
@@ -1765,11 +1890,12 @@ def briefing(data: dict | None) -> str:
            f"presented as one.\n",
            f"- Starter på **{_kr(data['opening'])} kr**",
            _opening_note(data.get("bank")),
-           f"- **Bundet linje** — det som allerede er fakturert inn og ut, de "
-           f"faste regningene, "
+           f"- **Bundet linje** — det som allerede er fakturert inn og ut, "
+           f"de faste kundene som faktureres hver måned, de faste regningene, "
            f"lønn og skattedatoer: lavest **{_kr(low_c['amount'])} kr** i "
            f"{low_c['label']} ({low_c['start']}).",
-           f"- **Forventet linje** — med vanlig drift og fakturering: lavest "
+           f"- **Forventet linje** — med resten av den vanlige faktureringen og "
+           f"driften: lavest "
            f"**{_kr(low_e['amount'])} kr** i {low_e['label']} "
            f"({low_e['start']}).",
            _floor_line(data)]
@@ -1788,9 +1914,10 @@ def briefing(data: dict | None) -> str:
     elif neg_c:
         out.append(f"**Den bundne linjen går i minus i {neg_c['label']} "
                    f"({neg_c['start']}).** What is already invoiced in and out, "
-                   f"plus wages and the tax dates, does not keep the account "
-                   f"above zero. The forventede line stays positive, but only "
-                   f"if the invoicing actually goes out and gets paid. That is "
+                   f"the contract customers' monthly invoicing, wages and the "
+                   f"tax dates do not keep the account above zero. The "
+                   f"forventede line stays positive, but only if the rest of "
+                   f"the invoicing actually goes out and gets paid. That is "
                    f"the finding: lead with the week, name the invoicing the "
                    f"comfort depends on, and never say the account stays "
                    f"positive without that condition attached.\n")
@@ -1965,6 +2092,32 @@ def briefing(data: dict | None) -> str:
                    f"fakturerer det samme beløpet jevnlig, så den bundne linjen "
                    f"har ingen husleie, leasing eller forsikring i seg. {gap} "
                    f"Say so if he asks how safe the bundne line is.\n")
+
+    # The other side of the same floor: the invoicing it now counts on before
+    # anything is sent, named customer by customer so he can strike one out.
+    contracts = data.get("recurring_sales") or []
+    if contracts:
+        named = ", ".join(f"{f['name']} {_kr(f['amount'])} kr" for f in contracts[:8])
+        more = f" og {len(contracts) - 8} til" if len(contracts) > 8 else ""
+        out.append(f"**Fast fakturering i den bundne linjen** — kunder som er "
+                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene med "
+                   f"omtrent samme beløp, lagt inn med det laveste av dem, på "
+                   f"kundens vanlige fakturadag og betalt så sent som kunden "
+                   f"pleier: {named}{more}. Til sammen "
+                   f"{_kr(a.get('fast_fakturering_mnd'))} kr i måneden. Momsen "
+                   f"og den samme andelen av driftskostnadene ligger i den bundne "
+                   f"linjen sammen med dem, og alt er trukket fra den forventede "
+                   f"linjen, så ingenting telles to ganger. Say this whenever he "
+                   f"asks how safe the bundne line is: it assumes these customers "
+                   f"stay, and a contract that ends must come out of it.\n")
+    else:
+        out.append("**Ingen fast fakturering funnet** — ingen kunde er "
+                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene med "
+                   "omtrent samme beløp, så den bundne linjen har ingen ny "
+                   "fakturering i seg. All framtidig fakturering ligger i den "
+                   "forventede linjen. Say so when the bundne line goes dry: "
+                   "it is what happens if nothing new is invoiced, not a "
+                   "prediction that nothing will be.\n")
 
     # The half of the forecast that is easy to leave out, because it is a bill
     # arriving for money that already came in.
