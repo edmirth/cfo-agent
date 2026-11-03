@@ -126,7 +126,10 @@ def test_lindeskar_is_a_yellow_week_with_one_late_customer():
     out = _run("lindeskar")
     assert any("Sjøgløtt Eiendom AS" in t and "etterskudd" in t for t in out["cards"])
     assert out["light"] == "yellow"
-    assert out["negative"] is None and out["low"] < 2_000_000
+    # Under its 2 500 000 kr floor, which is what makes it yellow. Its
+    # buildings are on monthly contracts, so the committed line carries
+    # that invoicing and the low point is no longer under two million.
+    assert out["negative"] is None and out["low"] < FLOORS["lindeskar"]
     assert out["kpis"]["lonnsandel_pct"] > 75
 
 

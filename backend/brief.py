@@ -17,8 +17,9 @@ forecast and the rulebook chose can be checked.
 - RED — even the expected line, the one that counts on customers paying as
   they usually do, goes under the floor within six weeks; or the committed
   line goes below zero within four.
-- YELLOW — the committed line, money already invoiced and billed, goes under
-  the floor within six weeks, or the expected line does later on.
+- YELLOW — the committed line, money already invoiced and billed plus the
+  contract customers' monthly invoicing, goes under the floor within six
+  weeks, or the expected line does later on.
 - GREEN — neither: the committed line holds the floor for at least six weeks.
   A dip after that is said in the low-point line, not in the colour.
 
@@ -101,6 +102,9 @@ def _first(weeks: list[dict], key: str, below: float) -> int | None:
 def light(cf: dict, floor: float, books: str = "clean") -> Light:
     """The colour, from the forecast and the floor. See the module doc."""
     weeks = cf.get("weeks") or []
+    # Named only where the committed line holds any: "den faste
+    # faktureringen" for a company with none is a comfort it does not have.
+    fast = " og den faste faktureringen" if cf.get("recurring_sales") else ""
     c_floor = _first(weeks, "committed_close", floor)
     e_floor = _first(weeks, "expected_close", floor)
     c_zero = _first(weeks, "committed_close", 0)
@@ -110,19 +114,19 @@ def light(cf: dict, floor: float, books: str = "clean") -> Light:
         out = Light("red", "Selv om kundene betaler som de pleier, går saldoen "
                     "under gulvet innen seks uker.", safe)
     elif c_zero is not None and c_zero < ZERO_WEEKS:
-        out = Light("red", "Pengene som allerede er fakturert, regningene som "
-                    "er kommet og de faste regningene tar kontoen under null "
-                    "innen fire uker.",
+        out = Light("red", f"Det som allerede er fakturert{fast}, regningene "
+                    f"som er kommet og de faste regningene tar kontoen under "
+                    f"null innen fire uker.",
                     safe)
     elif c_floor is not None and c_floor < SAFE_WEEKS:
-        out = Light("yellow", "Uten innbetalinger utover det som er fakturert, "
-                    "går saldoen under gulvet innen seks uker.", safe)
+        out = Light("yellow", f"Uten innbetalinger utover det som er fakturert{fast}, "
+                    f"går saldoen under gulvet innen seks uker.", safe)
     elif e_floor is not None:
         out = Light("yellow", "Saldoen går under gulvet senere i perioden, selv "
                     "om kundene betaler som de pleier.", safe)
     else:
         out = Light("green", f"Saldoen holder gulvet i minst {safe} uker på det "
-                    f"som allerede er fakturert.", safe)
+                    f"som allerede er fakturert{fast}.", safe)
 
     if out.colour == "green" and cf.get("partial"):
         return Light("yellow", "Prognosen mangler noe fra Tripletex, så den kan "

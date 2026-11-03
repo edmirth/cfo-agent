@@ -738,8 +738,18 @@ def _invoiced_on_the_10th(late=None, n=11, amount=10_000.0):
 
 
 def _sales_weeks(data, month):
-    return [(w["start"], round(i["amount"])) for w in data["weeks"] for i in w["items"]
-            if i["kind"] == "new_sales" and month in i["label"]]
+    """A month's invoicing by the week it lands, whichever line carries it.
+
+    The one customer `_invoiced_on_the_10th` bills every month is a contract
+    customer by now, so his part of the month sits in the committed line and
+    the rest in the expected one; where the month lands is the question here.
+    """
+    out: dict = {}
+    for w in data["weeks"]:
+        for i in w["items"]:
+            if i["kind"] in ("new_sales", "recurring") and month in i["label"]:
+                out[w["start"]] = out.get(w["start"], 0) + i["amount"]
+    return [(start, round(amount)) for start, amount in out.items()]
 
 
 def test_sales_invoiced_on_the_10th_land_from_the_10th():
@@ -776,6 +786,107 @@ def test_this_months_remainder_follows_the_profile():
         "10 October + 30 + 7, less what the stub says is already out"
 
 
+# ------------------------- the contract customers, in the committed line
+def _committed(data, kind):
+    return [i for i in _kinds(data, kind) if i["scenario"] == "committed"]
+
+
+def test_a_customer_invoiced_every_month_is_in_the_committed_line():
+    """The committed line held no invoicing that had not happened yet, so a
+    company with every customer on a monthly contract was told it would stop
+    billing the day the forecast was made. The rent was projected all along."""
+    rows, _ = _invoiced_on_the_10th()
+    data = _forecast([REVENUE], ar=rows)
+    assert data["recurring_sales"] == [{"name": "Kunde", "amount": 10_000.0,
+                                        "day": 10, "terms": 30, "late": 7,
+                                        "next": "2026-11-16"}]
+    assert [(round(i["amount"]), i["label"]) for i in _committed(data, "recurring")] == [
+        (10_000, "Fast fakturering til Kunde, oktober"),
+        (10_000, "Fast fakturering til Kunde, november")]
+    nov = [i for i in _kinds(data, "new_sales") if "november" in i["label"]]
+    assert [round(i["amount"]) for i in nov] == [490_000], \
+        "the rest of the month, still in the expected line only"
+    assert data["assumptions"]["fast_fakturering_mnd"] == 10_000.0
+    text = cashflow.briefing(data)
+    assert "Fast fakturering i den bundne linjen" in text and "Kunde 10 000 kr" in text
+
+
+def test_the_vat_on_contract_invoicing_is_committed_with_it():
+    """The money and the liability move together: a floor that collected the
+    contract and left its VAT in the forecast would stand too high."""
+    rows, _ = _invoiced_on_the_10th()
+    data = _forecast([REVENUE], ar=rows)
+    assert [round(i["amount"]) for i in _committed(data, "vat_recurring")
+            if "oktober" in i["label"]] == [-2_000], "10 000 / 1.25 × 25 %"
+    assert [round(i["amount"]) for i in _october_vat(data)] == [-98_000], \
+        "the month's VAT, less the contract's part already committed"
+
+
+def test_running_costs_follow_the_contract_into_the_committed_line():
+    """Serving a contract costs materials like any other sale. A fifth of
+    November's invoicing is contract, so a fifth of its running costs is."""
+    rows, _ = _invoiced_on_the_10th(amount=100_000.0)
+    costs = _cum("6800 Kontorrekvisita", [50_000.0] * 10)
+    data = _forecast([REVENUE, costs], ar=rows)
+    tied = [round(i["amount"]) for i in _committed(data, "opex_recurring")
+            if "november" in i["label"]]
+    assert tied == [-10_000], tied
+    assert [round(i["amount"]) for i in _opex(data, "november")] == [-40_000]
+
+
+def test_a_customer_billed_unevenly_is_not_a_contract():
+    rows, _ = _invoiced_on_the_10th()
+    rows[9]["amount"] = 30_000.0          # August, three times the others
+    data = _forecast([REVENUE], ar=rows)
+    assert data["recurring_sales"] == [] and not _kinds(data, "recurring")
+
+
+def test_a_customer_who_missed_a_month_is_not_a_contract():
+    rows, _ = _invoiced_on_the_10th()
+    del rows[9]                           # nothing in August
+    data = _forecast([REVENUE], ar=rows)
+    assert data["recurring_sales"] == []
+
+
+def test_a_customer_already_well_behind_is_not_counted_on():
+    """Thirty-five days late: his open invoice sits in the expected line only,
+    so new invoicing to him is no floor to stand on either."""
+    rows, _ = _invoiced_on_the_10th()
+    late = {**_invoice(80_000.0, "2026-05-10", "2026-08-31", 900), "amount": 80_000.0}
+    data = _forecast([REVENUE], ar=rows + [late])
+    assert data["recurring_sales"] == []
+
+
+def test_a_customer_in_trouble_with_the_register_is_not_counted_on():
+    rows, _ = _invoiced_on_the_10th()
+    old = cashflow.brreg.at_risk
+    cashflow.brreg.at_risk = lambda: {"Kunde": {"excluded": False, "status": "avvikling"}}
+    try:
+        data = _forecast([REVENUE], ar=rows)
+    finally:
+        cashflow.brreg.at_risk = old
+    assert data["recurring_sales"] == []
+
+
+def test_a_month_already_invoiced_is_not_projected_again():
+    rows, _ = _invoiced_on_the_10th()
+    rows.append({**_invoice(0.0, "2026-10-02", "2026-11-01", 799),
+                 "customerName": "Kunde", "amount": 10_000.0})
+    data = _forecast([REVENUE], ar=rows)
+    assert [i["label"] for i in _committed(data, "recurring")] == [
+        "Fast fakturering til Kunde, november"]
+
+
+def test_a_contract_is_not_sent_before_today_nor_above_its_season():
+    """An invoice whose usual day has passed goes out today at the earliest;
+    and a contract still goes quiet in a month that always does."""
+    rows, _ = _invoiced_on_the_10th()
+    today = date(2026, 10, 15)
+    flows, found, by_month = cashflow._recurring_sales(
+        rows, today, date(2027, 1, 11), None, {11: 0.5})
+    assert [(f["date"].isoformat(), round(f["amount"])) for f in flows] == [
+        ("2026-11-21", 10_000), ("2026-12-17", 5_000)], "15 Oct + 30 + 7; half in November"
+    assert by_month[(2026, 12)] == 10_000.0 and found[0]["amount"] == 10_000.0
 
 
 # --------------------------------------- a half-read forecast expires early
