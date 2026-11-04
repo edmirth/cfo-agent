@@ -46,11 +46,11 @@ kanban-plugin: board
 ## Next
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
-- [ ] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery
 
 
 ## Doing
 
+- [ ] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery
 
 
 ## Done

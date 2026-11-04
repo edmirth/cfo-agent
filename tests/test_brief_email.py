@@ -5,7 +5,9 @@ was asked to send, or Resend's HTTP API is played back through a mock
 transport, so the real request the module builds is the one checked.
 """
 import asyncio
+import html
 import json
+import re
 from datetime import date
 
 import brief
@@ -101,13 +103,17 @@ def test_the_email_is_complete_on_its_own_and_reads_on_a_phone():
     assert brief_email.subject(b) == "Mandagsbrevet uke 42: GUL"
     for said in ("Stramt i desember", "932 040 kr", "Kundefordringer",
                  "Trenger deg (4)", "og 1 til i appen", "2 bilag ligger ubokført.",
-                 "Treffsikkerhet", 'name="viewport"', "max-width:560px"):
+                 "Treffsikkerhet", 'name="viewport"', "max-width:600px"):
         assert said in page, said
-    # No links: without CFO_APP_URL the app cannot be reached from a phone.
-    assert "<a " not in page and "href" not in page and "http" not in text
+    # No app links: without CFO_APP_URL the app cannot be reached from a phone.
+    # Only the contact in the footer, which always works, is a link.
+    hrefs = re.findall(r'href="([^"]*)"', page)
+    assert hrefs == ["mailto:edmir@arvaka.no", "https://arvaka.no"], hrefs
+    assert "Avgjør" not in page and "Åpne brevet i appen" not in page
+    assert "http" not in text
     # A title that says its amount is not followed by it again; one that does
-    # not, is.
-    assert page.count("57 056 kr") == 1 and "· 23 813 kr" in page
+    # not, has it beside it.
+    assert page.count("57 056 kr") == 1 and "23 813 kr</td>" in page
     # What a card says is text, not markup.
     assert "Purr &lt;Backe &amp; Co&gt;" in page
     # Well under the size at which Gmail cuts a message off.
@@ -128,8 +134,9 @@ def test_where_the_app_can_be_reached_the_email_links_each_decision_to_its_card(
     # The rest of the deck, and the brief as the app shows it.
     assert 'href="https://app.example.no/#saker"' in page
     assert 'href="https://app.example.no/" style' in page and "Åpne brevet i appen</a>" in page
-    # A linked title is still escaped text.
-    assert ">Purr &lt;Backe &amp; Co&gt;</a>" in page
+    # Each decision is decided from its own link; its title stays escaped text.
+    assert page.count("Avgjør &rarr;</a>") == 3
+    assert "Purr &lt;Backe &amp; Co&gt;<div" in page
     assert "Hele brevet og sakene: https://app.example.no/" in text
     assert len(page.encode()) < 30_000
 
@@ -149,6 +156,87 @@ def test_a_kept_briefs_links_say_which_brief_they_came_from():
     assert "Hele brevet og sakene: https://app.example.no/?fra=brev&b=42" in text
     # No open pixel: the email loads nothing.
     assert "<img" not in page
+
+
+def test_the_email_is_in_arvakas_brand_and_loads_nothing():
+    b = dict(BRIEF, body=brief.render(BRIEF))
+    page = brief_email.render_html(b)
+    # The wordmark is live text with its forward dot, never an image.
+    assert 'Arvaka<span class="a-link" style="color:#135B45">.</span>' in page
+    assert "<img" not in page and "url(" not in page and "<link" not in page
+    assert "@import" not in page and "<script" not in page
+    # Newsreader for saying, Geist for doing, with fallbacks mail apps have.
+    assert "font-family:Newsreader,Georgia" in page
+    assert "font-family:Geist,Arial" in page
+    # Never above weight 500.
+    weights = {int(w) for w in re.findall(r"font-weight:(\d+)", page)}
+    assert weights and max(weights) <= 500, weights
+    # The brand's ivory page and the week's light as a dot and a word.
+    assert 'background:#FAFAF9' in page
+    assert '<span style="color:#EAB308;font-size:14px">&#9679;</span>&nbsp;GUL' in page
+    # The lowest point as a figure, the rest of its sentence beneath.
+    assert "Laveste punkt · Uke 50, fra 7. desember" in page
+    assert "211 773 kr under gulvet på 1 143 813 kr." in page
+    # The inbox preview says the outcome, not the masthead.
+    assert 'opacity:0">GUL — Stramt i desember, men ingen fare nå.' in page
+
+
+def test_the_email_has_a_dark_mode_for_the_apps_that_honour_it():
+    saved, config.APP_URL = config.APP_URL, "https://app.example.no"
+    try:
+        page = brief_email.render_html(dict(BRIEF, body=brief.render(BRIEF)))
+    finally:
+        config.APP_URL = saved
+    assert '<meta name="color-scheme" content="light dark">' in page
+    assert "@media (prefers-color-scheme:dark)" in page
+    # Each class the dark block recolours is on the page.
+    for cls in re.findall(r"\.(a-[a-z]+)", brief_email.STYLE):
+        assert f'class="{cls}' in page or f' {cls}"' in page, cls
+
+
+def test_each_light_has_its_colour_and_word():
+    for light, colour in (("green", "#16A34A"), ("yellow", "#EAB308"), ("red", "#D94636")):
+        page = brief_email.render_html(dict(BRIEF, light=light, body=""))
+        assert f"color:{colour};font-size:14px\">&#9679;</span>&nbsp;{brief.LIGHTS[light]}" in page
+
+
+def test_a_quiet_week_says_nothing_needs_you():
+    b = dict(BRIEF, changed=[], decisions={"count": 0, "more": 0, "top": []})
+    b["body"] = brief.render(b)
+    page, text = brief_email.render_html(b), brief_email.text(b)
+    assert "Ingenting trenger deg denne uka." in page and "Ingenting trenger deg denne uka." in text
+    assert "Ingen endringer verdt å nevne." in page and "Ingen endringer verdt å nevne." in text
+    assert "Trenger deg (" not in page and "Avgjør" not in page
+
+
+def test_the_plain_text_says_what_the_html_says():
+    saved, config.APP_URL = config.APP_URL, "https://app.example.no"
+    try:
+        b = dict(BRIEF, body=brief.render(BRIEF), id=42)
+        page = brief_email.render_html(b)
+        text = brief_email.text(b)
+    finally:
+        config.APP_URL = saved
+    seen = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", page)))
+    low = BRIEF["low_point"]
+    for line in text.splitlines():
+        line = line.removeprefix("- ").strip()
+        if not line or line == "—":
+            continue
+        if line == low["text"]:
+            # The email shows the low point as a figure under its week, then
+            # the rest of the sentence: the same figures, set out as a tile.
+            for figure in re.findall(r"\d[\d ]*\d kr", line):
+                assert figure in seen, figure
+            assert "Laveste punkt · Uke 50, fra 7. desember" in seen
+            assert line.split(" — ", 1)[1] in seen
+            continue
+        if line.startswith("Hele brevet og sakene: https://app.example.no/"):
+            # The link to the app is the email's button.
+            assert "Åpne brevet i appen</a>" in page
+            continue
+        for part in re.split(r" — | · ", line):
+            assert part.removesuffix(" kr") in seen, part
 
 
 # ------------------------------------------------------------------ sending
