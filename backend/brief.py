@@ -368,7 +368,7 @@ def render(b: dict) -> str:
                       if c.get("amount") and _kr(c["amount"]) not in c["title"] else "")
             out.append(f"- {c['title']}{amount}")
         if d["more"]:
-            out.append(f"- og {d['more']} til under Saker")
+            out.append(f"- og {d['more']} til i appen, under Saker")
     else:
         out.append("Ingenting trenger deg denne uka.")
     out.append("")
