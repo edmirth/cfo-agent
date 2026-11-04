@@ -33,6 +33,7 @@ Sending by hand always sends: that is someone asking to see it.
 """
 import html
 import logging
+import re
 import uuid
 from datetime import date
 
@@ -79,6 +80,7 @@ STYLE = """
 @media (max-width:480px){
 .a-pad{padding-left:20px!important;padding-right:20px!important}
 .a-head{font-size:24px!important;line-height:30px!important}
+.a-head-long{font-size:19px!important;line-height:26px!important}
 }
 """
 
@@ -103,13 +105,37 @@ def _url(b: dict, link: str = "") -> str | None:
 
 def text(b: dict) -> str:
     there = f"\n\nHele brevet og sakene: {_url(b)}" if _url(b) else ""
-    return (f"{b['body']}{there}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
+    return (f"{_minus(b['body'])}{there}\n\n—\nMandagsbrevet fra Arvaka, skrevet "
             f"{brief._day(b['made_on'])} fra tallene i Tripletex.\n"
             f"Spørsmål? {CONTACT} · arvaka.no")
 
 
+# A minus before a figure, not a hyphen: «−1 363 822 kr» reads as one number.
+_MINUS = re.compile(r"(?<![\w\-−])-(?=\d)")
+# The week's sentence is the headline; past this it is set smaller, so a long
+# one does not push the lowest point off a phone's first screen.
+HEADLINE_LONG = 90
+
+
+def _minus(s: str) -> str:
+    return _MINUS.sub("−", s)
+
+
 def _e(s) -> str:
+    """Text for the page: escaped, with a real minus before a figure."""
+    return html.escape(_minus(str(s)), quote=True)
+
+
+def _attr(s) -> str:
+    """An attribute value, such as a link, escaped and otherwise as it is."""
     return html.escape(str(s), quote=True)
+
+
+def _headline(sentence: str) -> str:
+    long = len(sentence) > HEADLINE_LONG
+    size, line, cls = (21, 28, "a-head-long") if long else (28, 34, "a-head")
+    return (f'<h1 class="a-ink {cls}" style="margin:10px 0 0;'
+            f'{_font(SERIF, size, line)};letter-spacing:-.5px">{_e(sentence)}</h1>')
 
 
 def _font(family: str, size: int, line: int, weight: int = 400,
@@ -128,7 +154,7 @@ def _a(url: str | None, label: str, strong: bool = False) -> str:
     """`label` (already escaped) as a link to `url`, or as it is without one."""
     if not url:
         return label
-    return (f'<a class="a-link" href="{_e(url)}" style="color:{BRAND_700};'
+    return (f'<a class="a-link" href="{_attr(url)}" style="color:{BRAND_700};'
             f'font-weight:{500 if strong else 400};text-decoration:none">{label}</a>')
 
 
@@ -218,7 +244,7 @@ def render_html(b: dict, links: dict[str, str] | None = None) -> str:
     button = ('<tr><td class="a-pad" style="padding:28px 32px 0">'
               + _table(f'<tr><td class="a-btn" bgcolor="{BRAND_900}" '
                        f'style="background:{BRAND_900};border-radius:9999px">'
-                       f'<a href="{_e(app)}" style="display:inline-block;padding:12px 24px;'
+                       f'<a href="{_attr(app)}" style="display:inline-block;padding:12px 24px;'
                        f'{_font(SANS, 14, 16, 500, IVORY)};text-decoration:none;'
                        f'border-radius:9999px">Åpne brevet i appen</a></td></tr>',
                        width="")
@@ -253,7 +279,7 @@ def render_html(b: dict, links: dict[str, str] | None = None) -> str:
 </td></tr>
 <tr><td class="a-pad" style="padding:24px 32px 0">
 <div class="a-ink" style="{_font(SANS, 12, 16, 500)};letter-spacing:.08em"><span style="color:{LIGHT[b['light']]};font-size:14px">&#9679;</span>&nbsp;{_e(word)}</div>
-<h1 class="a-ink a-head" style="margin:10px 0 0;{_font(SERIF, 28, 34)};letter-spacing:-.5px">{_e(b['sentence'])}</h1>
+{_headline(b['sentence'])}
 </td></tr>
 {_low_point(b['low_point'])}
 {_section("Endret siden forrige mandag", changed)}

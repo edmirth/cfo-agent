@@ -324,6 +324,8 @@ Skriv to ting, på norsk, til en daglig leder som ikke er regnskapsfører:
 
 1. `sentence`: én setning som følger etter fargen og sier hva den betyr for
    ham denne uka. Ikke gjenta fargen. Ikke start med «Kontantene er».
+   Kort: høyst 20 ord og ett tall. Den er overskriften i e-posten, og laveste
+   punkt med tallene står rett under, så de trenger ikke sies her.
 2. `changed`: inntil {max_changes} korte linjer om hva som har endret seg
    siden forrige mandag, det viktigste først. Bruk `endringer` i grunnlaget;
    `forslag` er de samme endringene sagt rett fram, som du kan bruke eller

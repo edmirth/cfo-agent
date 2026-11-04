@@ -185,6 +185,7 @@ def test_the_email_has_a_dark_mode_for_the_apps_that_honour_it():
     saved, config.APP_URL = config.APP_URL, "https://app.example.no"
     try:
         page = brief_email.render_html(dict(BRIEF, body=brief.render(BRIEF)))
+        page += brief_email.render_html(dict(BRIEF, sentence="ord " * 40, body=""))
     finally:
         config.APP_URL = saved
     assert '<meta name="color-scheme" content="light dark">' in page
@@ -237,6 +238,39 @@ def test_the_plain_text_says_what_the_html_says():
             continue
         for part in re.split(r" — | · ", line):
             assert part.removesuffix(" kr") in seen, part
+
+
+def test_a_long_sentence_is_set_smaller_so_the_low_point_stays_in_view():
+    short = brief_email.render_html(dict(BRIEF, body=""))
+    assert 'class="a-ink a-head" style="margin:10px 0 0;font-family:Newsreader,Georgia,\'Times New Roman\',serif;font-size:28px' in short
+    sentence = ("Du har fem uker på deg før pengene på konto er under grensen dere "
+                "selv har satt, så denne uka må du hente inn penger.")
+    long = brief_email.render_html(dict(BRIEF, sentence=sentence, body=""))
+    assert 'class="a-ink a-head-long"' in long and "font-size:21px" in long
+    assert f">{sentence}</h1>" in long
+
+
+def test_a_negative_figure_has_a_minus_and_links_keep_their_hyphens():
+    saved, config.APP_URL = config.APP_URL, "https://app.example.no"
+    low = dict(BRIEF["low_point"], amount=-1363822.0,
+               text="Laveste punkt: uke 2 (fra 11. januar), -1 363 822 kr — "
+                    "2 497 644 kr under gulvet på 1 133 822 kr.")
+    top = [{"id": "K016", "title": "Under gulvet i uke 2: -1 363 822 kr igjen",
+            "amount": None, "link": "#saker/K016"}]
+    b = dict(BRIEF, low_point=low, decisions={"count": 1, "more": 0, "top": top},
+             changed=["Bunnen er bedre enn prognosen fra 26. oktober (-1 652 022 kr)."])
+    b["body"] = brief.render(b)
+    try:
+        page = brief_email.render_html(b, {"K016": "ab--9x-1"})
+        text = brief_email.text(b)
+    finally:
+        config.APP_URL = saved
+    for figure in ("−1 363 822 kr</div>", "uke 2: −1 363 822 kr igjen", "(−1 652 022 kr)"):
+        assert figure in page, figure
+    assert "-1 " not in page.replace("−1", "") and "−1 363 822 kr" in text
+    # A token or a date is not a figure.
+    assert "#godkjenn/ab--9x-1" in page
+    assert "fra 11. januar" in page
 
 
 # ------------------------------------------------------------------ sending
