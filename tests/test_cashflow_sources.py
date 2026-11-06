@@ -56,8 +56,26 @@ def _supplier_rows():
              "invoiceDate": "2026-08-30", "invoiceNumber": "1921"}]
 
 
-def _read(rows, id_key="voucherId"):
-    stub = _Stub(rows)
+class _Paged(_Stub):
+    """October's bills, a page at a time, honouring `from` as Tripletex does."""
+
+    async def call(self, tool, args):
+        self.asked.append((tool, args.get("from", 0)))
+        if args["invoiceDateFrom"] != "2026-10-01" or "supplier" not in tool:
+            return {"rows": []}
+        frm, count = args.get("from", 0), args["count"]
+        return {"rows": self.rows[frm:frm + count]}
+
+
+class _IgnoresOffset(_Paged):
+    """A search that hands back the first page whatever offset it is given."""
+
+    async def call(self, tool, args):
+        return await super().call(tool, {**args, "from": 0})
+
+
+def _read(rows, id_key="voucherId", stub=None):
+    stub = stub or _Stub(rows)
     original = cashflow.mcp
     cashflow.mcp = stub
     try:
@@ -101,19 +119,49 @@ def test_a_row_without_an_id_does_not_swallow_the_next_one():
     assert len(bills) == 2, f"one row ate the other: {bills}"
 
 
+def _many(n):
+    return [dict(_supplier_rows()[0], voucherId=i) for i in range(n)]
+
+
+def test_a_month_with_more_than_a_page_is_read_to_the_end():
+    """A month that came back full was warned about and left at that: 150
+    invoices at month end, and fifty of them in no line of the forecast."""
+    stub = _Paged(_many(250))
+    bills, warnings = _read(stub.rows, stub=stub)
+    assert len(bills) == 250 and not warnings, warnings
+    offsets = [frm for _, frm in stub.asked]
+    assert offsets.count(100) == 1 and offsets.count(200) == 1, "three pages, then stop"
+
+
+def test_a_month_of_exactly_one_page_asks_once_more_and_stops():
+    stub = _Paged(_many(100))
+    bills, warnings = _read(stub.rows, stub=stub)
+    assert len(bills) == 100 and not warnings
+
+
+def test_an_offset_the_search_ignores_is_still_reported():
+    """The same page twice is what a search that does not honour `from`
+    looks like. Twenty identical pages would read as two thousand invoices."""
+    stub = _IgnoresOffset(_many(100))
+    bills, warnings = _read(stub.rows, stub=stub)
+    assert len(bills) == 100
+    assert warnings and "avkortet" in warnings[0]
+    assert len(stub.asked) == cashflow.AR_MONTHS_BACK + 1, "stopped at the repeated page"
+
+
 def test_the_warning_says_which_register_was_short():
     """Both registers used one sentence, so five truncation warnings on the
     front page told nobody whether sales or purchases were cut off."""
-    _, warnings = _read([dict(_supplier_rows()[0], voucherId=i)
-                         for i in range(100)])
-    assert warnings, "a full page must be reported as possibly truncated"
+    stub = _IgnoresOffset(_many(100))
+    _, warnings = _read(stub.rows, stub=stub)
+    assert warnings, "a cut-off month must be reported as possibly truncated"
     assert "leverandørfakturaer" in warnings[0].lower()
     assert "kunde" not in warnings[0].lower()
 
 
 def test_the_months_are_named_in_norwegian():
-    _, warnings = _read([dict(_supplier_rows()[0], voucherId=i)
-                         for i in range(100)])
+    stub = _IgnoresOffset(_many(100))
+    _, warnings = _read(stub.rows, stub=stub)
     assert "oktober 2026" in warnings[0], warnings[0]
     for english in ("October", "September", "March", "June"):
         assert english not in warnings[0]
