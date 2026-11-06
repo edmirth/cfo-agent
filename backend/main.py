@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 import config
 from agent import run_turn
 from mcp_client import McpError
+import tlx_oauth
 from overview import cached as overview_cached
 import auth
 import backup
@@ -157,7 +158,11 @@ def _panel(exc: Exception, what: str) -> dict:
     the request ids in it belong in the log. The log already has the traceback;
     this is the sentence on the screen.
     """
-    if isinstance(exc, McpError):
+    if tlx_oauth.is_login_error(exc):
+        # Before McpError: a dead login is the one cause with one fix, and the
+        # page says it once at the top (`/api/health`, `tripletex`).
+        cause = tlx_oauth.LOGIN_LOST
+    elif isinstance(exc, McpError):
         cause = "Tripletex svarte ikke på oppslaget."
     elif "credit balance is too low" in str(exc):
         cause = "Det er ikke kreditt på Anthropic-kontoen."
@@ -184,6 +189,8 @@ async def health() -> dict:
         "tripletex_configured": bool(
             config.TRIPLETEX_CLIENT_ID and config.TRIPLETEX_REFRESH_TOKEN
         ),
+        # ok, expired, missing, or untested before anything has asked.
+        "tripletex": tlx_oauth.tokens.status(),
         "read_only": True,
         "tools_allowed": len(toolset.READ_TOOLS),
         "scheduler": scheduler.running(),

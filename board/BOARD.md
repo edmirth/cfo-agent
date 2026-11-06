@@ -6,11 +6,6 @@ kanban-plugin: board
 
 ## Backlog
 
-- [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
-	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
-- [ ] 18. Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
-- [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
-- [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 21. Add budget-vs-actual variance per line, with the cause named @agent #kpi
 - [ ] 23. Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work.
 - [ ] 24. Should we assign the ai agent to do the 13 week cash brief? could it be better at calculating it, and what tools would it need, should we give it coding tools so it could calculate it for us.
@@ -45,11 +40,16 @@ kanban-plugin: board
 
 ## Next
 
+- [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
+	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
+- [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
+- [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
 
 ## Doing
 
+- [ ] 18. Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform
 - [ ] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery
 
 

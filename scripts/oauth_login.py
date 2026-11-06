@@ -2,7 +2,11 @@
 """Engangs OAuth-innlogging mot Tripletex MCP.
 
 Registrerer en klient, åpner nettleseren for innlogging, og lagrer et refresh
-token i .env. Refresh-tokenet utløper ikke, så dette gjøres én gang.
+token i .env. Refresh-tokenet kan utløpe (det gjorde det 7. oktober 2026). Da
+sier appen fra på forsiden, og dette kjøres på nytt. En app som kjører lokalt
+tar den nye innloggingen i bruk med en gang; på Render må TRIPLETEX_CLIENT_ID
+og TRIPLETEX_REFRESH_TOKEN fra .env inn i innstillingene der, og appen startes
+på nytt.
 
     ./.venv/bin/python scripts/oauth_login.py
 """
@@ -136,8 +140,11 @@ def main() -> int:
         print("\n✓ Lagret i .env")
         print(f"  access token  : {len(d.get('access_token',''))} tegn, "
               f"utløper om {d.get('expires_in')} s")
-        print(f"  refresh token : {len(refresh)} tegn (utløper ikke)")
-        print("\nNeste: ./.venv/bin/python scripts/check_tokens.py")
+        print(f"  refresh token : {len(refresh)} tegn")
+        print("\nKjører appen her, tar den i bruk den nye innloggingen med en gang.")
+        print("Kjører den på Render: legg TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN")
+        print("fra .env inn i innstillingene der, og start appen på nytt.")
+        print("\nSjekk: ./.venv/bin/python scripts/check_tokens.py")
         return 0
 
 
