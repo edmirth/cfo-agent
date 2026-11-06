@@ -40,8 +40,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
-	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
 - [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 - [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
@@ -49,6 +47,9 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
+	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
+	  - #94: every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. Waiting for @edmir to check the chart on app.arvaka.no.
 
 
 ## Done
