@@ -44,6 +44,9 @@ export type Week = {
   expected_out: number
   committed_close: number
   expected_close: number
+  // What moves the money that week: each invoice, bill, pay run and tax date,
+  // in the committed line or added by the expected one. In is positive.
+  items?: { label: string; kind: string; amount: number; scenario: "committed" | "expected" }[]
 }
 
 export type Cashflow = {

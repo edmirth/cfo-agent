@@ -837,11 +837,29 @@ def test_running_costs_follow_the_contract_into_the_committed_line():
     assert [round(i["amount"]) for i in _opex(data, "november")] == [-40_000]
 
 
-def test_a_customer_billed_unevenly_is_not_a_contract():
+def test_a_customer_billed_unevenly_is_still_billed_every_month():
+    """A cleaning customer with an extra job one month is billed every month
+    all the same. Each month had to be within 25 % of his median, and more than
+    half of the first customer's monthly invoicing fell out of the committed
+    line, which then went dry in December. Counted at his lowest month."""
     rows, _ = _invoiced_on_the_10th()
     rows[9]["amount"] = 30_000.0          # August, three times the others
+    rows[10]["amount"] = 6_000.0          # September, fewer hours
     data = _forecast([REVENUE], ar=rows)
-    assert data["recurring_sales"] == [] and not _kinds(data, "recurring")
+    assert [(f["name"], f["amount"]) for f in data["recurring_sales"]] == [("Kunde", 6_000.0)]
+    assert [round(i["amount"]) for i in _committed(data, "recurring")] == [6_000, 6_000]
+
+
+def test_an_extra_invoice_this_month_leaves_the_rest_of_the_month_to_come():
+    """An extra job billed on the 2nd is not the month's invoice: the rest of
+    his lowest month still goes out on his usual day."""
+    rows, _ = _invoiced_on_the_10th()
+    rows.append({**_invoice(0.0, "2026-10-02", "2026-11-01", 799),
+                 "customerName": "Kunde", "amount": 4_000.0})
+    data = _forecast([REVENUE], ar=rows)
+    assert [(round(i["amount"]), i["label"]) for i in _committed(data, "recurring")] == [
+        (6_000, "Fast fakturering til Kunde, oktober"),
+        (10_000, "Fast fakturering til Kunde, november")]
 
 
 def test_a_customer_who_missed_a_month_is_not_a_contract():

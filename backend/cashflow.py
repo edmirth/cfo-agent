@@ -82,12 +82,10 @@ FIXED_MIN = 3
 FIXED_TOLERANCE = 0.15
 
 # The same reading on the other side of the ledger: a customer invoiced in each
-# of the last RECURRING_MONTHS closed months, every month within
-# RECURRING_TOLERANCE of his median, is on a contract. Wider than the bills,
-# because a contract invoice carries the odd extra; and counted at the lowest
-# of those months, because the floor is where being wrong costs most.
+# of the last RECURRING_MONTHS closed months is billed every month, whatever
+# the amounts did, and is counted at the lowest of those months, because the
+# floor is where being wrong costs most.
 RECURRING_MONTHS = 3
-RECURRING_TOLERANCE = 0.25
 
 # The months are not alike. Sales and running costs get a seasonal pattern
 # from last year — each month against last year's average, held within
@@ -679,12 +677,21 @@ def _recurring_sales(history: list, today: date, horizon: date,
     by `_fixed_bills` on exactly this kind of evidence.
 
     So the same reading on the customers: invoiced in each of the last
-    RECURRING_MONTHS closed months, every month within RECURRING_TOLERANCE of
-    his median, and he is on a contract. Projected at the lowest of those
-    months, on his usual day and terms, paid as late as he usually pays, and
-    no higher than the season allows: a contract still goes quiet in July.
-    A month he has already been invoiced in is skipped, being in the open
-    invoices or paid already.
+    RECURRING_MONTHS closed months, and he is billed every month. Projected at
+    the lowest of those months, on his usual day and terms, paid as late as he
+    usually pays, and no higher than the season allows: a contract still goes
+    quiet in July.
+
+    The amounts may vary as they like. Each month also had to be within 25 %
+    of his median, which a cleaning customer with the odd extra job or a
+    month of more hours fails: at the first customer, more than half of the
+    invoicing that goes out every month was in no safe line, and the front
+    page said the account went dry in December. The lowest month is the
+    caution, and it does not need a second one.
+
+    What he has been invoiced this month already is in the open invoices or
+    paid, so only the rest of his lowest month is still to come: an extra job
+    billed on the 5th does not stand in for the invoice at month end.
 
     `skip` is the customers this must not count on: those in trouble with
     Enhetsregisteret, and those already more than LATE_DAYS late, whose
@@ -707,11 +714,9 @@ def _recurring_sales(history: list, today: date, horizon: date,
     for name, months in by_customer.items():
         if not all(k in months for k in closed):
             continue
-        values = [months[k]["amount"] for k in closed]
-        mid = statistics.median(values)
-        if mid <= 0 or any(abs(v - mid) > RECURRING_TOLERANCE * mid for v in values):
+        amount = min(months[k]["amount"] for k in closed)
+        if amount <= 0:
             continue
-        amount = min(values)
         day = int(statistics.median([d for k in closed for d in months[k]["days"]]))
         terms = int(statistics.median([t for k in closed for t in months[k]["terms"]]))
         late = payment_habits.lag(habits, name, PAY_LAG_DAYS)
@@ -721,8 +726,9 @@ def _recurring_sales(history: list, today: date, horizon: date,
             issued = date(y, mo, min(day, monthrange(y, mo)[1]))
             if issued >= horizon:
                 break
-            if (y, mo) not in months:
-                part = amount * min(1.0, (season or {}).get(mo, 1.0))
+            sent = months[(y, mo)]["amount"] if (y, mo) in months else 0.0
+            if sent < amount:
+                part = (amount - sent) * min(1.0, (season or {}).get(mo, 1.0))
                 by_month[(y, mo)] = by_month.get((y, mo), 0.0) + part
                 # Not before it is sent: an invoice whose usual day has passed
                 # goes out today at the earliest, and is due from then.
@@ -2141,8 +2147,8 @@ def briefing(data: dict | None) -> str:
         named = ", ".join(f"{f['name']} {_kr(f['amount'])} kr" for f in contracts[:8])
         more = f" og {len(contracts) - 8} til" if len(contracts) > 8 else ""
         out.append(f"**Fast fakturering i den bundne linjen** — kunder som er "
-                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene med "
-                   f"omtrent samme beløp, lagt inn med det laveste av dem, på "
+                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene, "
+                   f"lagt inn med den laveste av de månedene, på "
                    f"kundens vanlige fakturadag og betalt så sent som kunden "
                    f"pleier: {named}{more}. Til sammen "
                    f"{_kr(a.get('fast_fakturering_mnd'))} kr i måneden. Momsen "
@@ -2153,8 +2159,8 @@ def briefing(data: dict | None) -> str:
                    f"stay, and a contract that ends must come out of it.\n")
     else:
         out.append("**Ingen fast fakturering funnet** — ingen kunde er "
-                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene med "
-                   "omtrent samme beløp, så den bundne linjen har ingen ny "
+                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene, "
+                   "så den bundne linjen har ingen ny "
                    "fakturering i seg. All framtidig fakturering ligger i den "
                    "forventede linjen. Say so when the bundne line goes dry: "
                    "it is what happens if nothing new is invoiced, not a "

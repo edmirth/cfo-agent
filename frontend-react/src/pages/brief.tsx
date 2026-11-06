@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "recharts"
 
 import { ChevronDown } from "lucide-react"
@@ -45,6 +45,7 @@ import type {
   Schedule,
   Summary,
   TripletexLogin,
+  Week,
   WeeklyBrief,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
@@ -520,8 +521,54 @@ function CashChart({ cash, rules }: { cash: Cashflow; rules?: Rules }) {
  * bundet og forventet sammen i én kolonne, mens de to saldoene står hver for
  * seg — samme oppsett som tabellen CFO-en har i prompten, så det han sier i
  * samtalen og det som står på skjermen er det samme bildet. */
+/** Hva som flytter pengene i en uke: like poster slått sammen (tre fakturaer
+ *  til samme kunde er én linje), inn før ut, størst først. Så det går an å se
+ *  hvorfor en uke faller, ikke bare at den gjør det. */
+function WeekItems({ items }: { items: NonNullable<Week["items"]> }) {
+  const merged = new Map<string, { label: string; amount: number; n: number; guess: boolean }>()
+  for (const i of items) {
+    const key = `${i.label}|${i.scenario}|${i.amount >= 0}`
+    const m = merged.get(key)
+    if (m) {
+      m.amount += i.amount
+      m.n += 1
+    } else {
+      merged.set(key, { label: i.label, amount: i.amount, n: 1, guess: i.scenario === "expected" })
+    }
+  }
+  const rows = [...merged.values()]
+    .filter((r) => Math.round(r.amount) !== 0)
+    .sort((a, b) =>
+      a.amount >= 0 !== b.amount >= 0 ? b.amount - a.amount : Math.abs(b.amount) - Math.abs(a.amount),
+    )
+  if (!rows.length) {
+    return <p className="text-muted-foreground text-[13px]">Ingenting inn eller ut denne uka.</p>
+  }
+  return (
+    <ul className="grid gap-1.5 text-[13px] leading-5">
+      {rows.map((r) => (
+        <li
+          key={`${r.label}|${r.guess}|${r.amount >= 0}`}
+          className="flex items-baseline justify-between gap-6"
+        >
+          <span className={r.guess ? "text-muted-foreground" : ""}>
+            {r.label}
+            {r.n > 1 && <span className="text-muted-foreground"> · {r.n} stk</span>}
+            {r.guess && <span className="text-muted-foreground"> · anslag</span>}
+          </span>
+          <span className={`shrink-0 tabular-nums ${r.amount < 0 ? "text-muted-foreground" : ""}`}>
+            {kr(r.amount)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function CashTable({ cash }: { cash: Cashflow }) {
   const low = cash.low_committed.label
+  // Én uke åpen om gangen: tabellen skal fortsatt kunne leses som tretten rader.
+  const [open, setOpen] = useState<number | null>(null)
   return (
     <Table>
       <TableHeader>
@@ -541,14 +588,26 @@ function CashTable({ cash }: { cash: Cashflow }) {
       <TableBody>
         {cash.weeks.map((w) => {
           const thin = w.label === low
+          const shown = open === w.index
           return (
+            <Fragment key={w.index}>
             <TableRow
-              key={w.index}
+              onClick={w.items ? () => setOpen(shown ? null : w.index) : undefined}
+              aria-expanded={w.items ? shown : undefined}
               // Den tynneste uka er hele poenget med tabellen, så den er den
               // ene raden som får lov til å rope.
-              className={thin ? "bg-brand-100/60 hover:bg-brand-100/60 dark:bg-brand-950 dark:hover:bg-brand-950" : undefined}
+              className={`${w.items ? "cursor-pointer" : ""} ${
+                thin ? "bg-brand-100/60 hover:bg-brand-100/60 dark:bg-brand-950 dark:hover:bg-brand-950" : ""
+              }`}
             >
               <TableCell className="py-2.5 font-medium">
+                {w.items && (
+                  <ChevronDown
+                    className={`text-muted-foreground mr-1.5 inline size-3.5 stroke-[1.5] transition-transform ${
+                      shown ? "rotate-180" : ""
+                    }`}
+                  />
+                )}
                 {w.label}
                 {thin && (
                   <span className="text-good-text ml-2 text-xs font-medium">tynnest</span>
@@ -592,6 +651,18 @@ function CashTable({ cash }: { cash: Cashflow }) {
                 {kr(w.expected_close)}
               </TableCell>
             </TableRow>
+            {shown && w.items && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={6} className="bg-muted/40 px-4 py-3 whitespace-normal">
+                  {/* Tabellen ruller sidelengs på telefon; lista holder seg
+                      innenfor skjermen, så beløpene ikke havner utenfor. */}
+                  <div className="sticky left-4 max-w-[calc(100vw-7.5rem)] sm:static sm:max-w-none">
+                    <WeekItems items={w.items} />
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            </Fragment>
           )
         })}
       </TableBody>
