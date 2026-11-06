@@ -2,6 +2,10 @@
 """Verifiser Tripletex-tilgangen isolert, før agenten involveres.
 
     ./.venv/bin/python scripts/check_tokens.py
+
+Bare for en app som kjører på denne maskinen. Sjekken fornyer innloggingen, og
+Tripletex bytter da refresh-tokenet: den som står i .env (og er kopiert til
+Render) slutter å virke. Skal innloggingen brukes på Render, la denne være.
 """
 import asyncio
 import sys
@@ -20,7 +24,7 @@ async def main() -> int:
         print("Logg inn i nettleseren én gang:\n")
         print("    ./.venv/bin/python scripts/oauth_login.py\n")
         print("Den lagrer TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN i .env.")
-        print("Refresh-tokenet utløper ikke, så dette gjøres kun denne ene gangen.")
+        print("Refresh-tokenet kan utløpe; da sier appen fra, og dette kjøres på nytt.")
         return 1
 
     print(f"client_id     : {config.TRIPLETEX_CLIENT_ID}")

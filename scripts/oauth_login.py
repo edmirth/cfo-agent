@@ -141,10 +141,12 @@ def main() -> int:
         print(f"  access token  : {len(d.get('access_token',''))} tegn, "
               f"utløper om {d.get('expires_in')} s")
         print(f"  refresh token : {len(refresh)} tegn")
+        print("\nKjører appen på Render: legg TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN")
+        print("fra .env inn i innstillingene der, og start appen på nytt. Ikke kjør")
+        print("check_tokens.py eller appen her først: de fornyer innloggingen, og da")
+        print("virker ikke kopien på Render.")
         print("\nKjører appen her, tar den i bruk den nye innloggingen med en gang.")
-        print("Kjører den på Render: legg TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN")
-        print("fra .env inn i innstillingene der, og start appen på nytt.")
-        print("\nSjekk: ./.venv/bin/python scripts/check_tokens.py")
+        print("Sjekk den med ./.venv/bin/python scripts/check_tokens.py")
         return 0
 
 
