@@ -50,11 +50,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery
 
 
 ## Done
 
+- [x] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery ✓ 2026-11-04
 - [x] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery ✓ 2026-11-03
 - [x] 37. Record Monday email opens and link taps for the metrics page, once there is a domain and the app is hosted @edmir #metrics ✓ 2026-11-01
 - [x] 36. Link the Monday email to the full brief once the app is hosted somewhere a phone can reach @edmir #delivery ✓ 2026-10-30
