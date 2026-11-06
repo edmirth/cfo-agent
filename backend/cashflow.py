@@ -50,6 +50,8 @@ CACHE_SECONDS = 600
 
 WEEKS = 13
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
+INVOICE_PAGE = 100           # the most one invoice search returns
+INVOICE_PAGES = 20           # pages read in one month before it is called cut off
 LATE_SPREAD_WEEKS = 3        # already-overdue invoices land across this many
 # How late an overdue invoice is decides how far it is counted on. Up to
 # LATE_DAYS is ordinary lateness: in both lines, over the next three weeks.
@@ -218,6 +220,48 @@ def _kr(v) -> str:
     return f"{round(v):,}".replace(",", " ")
 
 
+async def _month_rows(tool: str, start: date, end: date) -> dict:
+    """One month of an invoice register, page by page, in the search's own
+    answer shape: `rows`, and `complete` with its `degradedNote`.
+
+    A month that came back full used to be warned about and left at that. A
+    company sending 150 invoices at month end had a third of them missing
+    from the forecast, and the money for them in no line at all — the 1500
+    residual only reaches the expected line, slowly. So the month is asked
+    again from where the last page ended, until a page comes back short.
+
+    `truncated` says the pages ran out first, or the search handed back the
+    same page twice, which is what an offset it does not honour looks like.
+    A page after the first that fails keeps what was read and marks the month
+    incomplete; a first page that fails fails the month, as before.
+    """
+    rows, first, complete, note = [], None, True, None
+    for page in range(INVOICE_PAGES):
+        args = {"invoiceDateFrom": start.isoformat(),
+                "invoiceDateTo": end.isoformat(), "count": INVOICE_PAGE}
+        if page:
+            args["from"] = page * INVOICE_PAGE
+        try:
+            r = await mcp.call(tool, args)
+        except Exception as exc:  # noqa: BLE001
+            if not page:
+                raise
+            return {"rows": rows, "complete": False,
+                    "degradedNote": f"side {page + 1} svarte ikke ({exc})"}
+        got = r.get("rows") or []
+        if r.get("complete") is False:
+            complete, note = False, r.get("degradedNote") or note
+        if page and got and got[0] == first:
+            return {"rows": rows, "complete": complete, "degradedNote": note,
+                    "truncated": True}
+        first = got[0] if got else None
+        rows += got
+        if len(got) < INVOICE_PAGE:
+            return {"rows": rows, "complete": complete, "degradedNote": note}
+    return {"rows": rows, "complete": complete, "degradedNote": note,
+            "truncated": True}
+
+
 async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                          outstanding_key: str, name_key: str,
                          issued: dict | None = None,
@@ -226,11 +270,10 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     """Open invoices with their due dates, the warnings, and whether every
     window answered — an empty list from failed calls is not an empty book.
 
-    The search caps at 100 rows per call, so the range is walked a month at a
-    time. A month that comes back exactly full may have been truncated, and
-    that is reported rather than quietly under-counting. It does take a `from`
-    offset — so the truncation could be paged through instead of warned about,
-    which is a card of its own and not done here.
+    The search caps at INVOICE_PAGE rows per call, so the range is walked a
+    month at a time, and a month with more than that is read page by page
+    (`_month_rows`). Only a month that is still cut off after that is
+    reported as possibly truncated.
 
     Both registers answer under `rows`. They did not always appear to: the
     supplier call read `invoices`, a key the response has never carried, so
@@ -242,8 +285,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     `issued`, when given, gets `this_month`: everything invoiced this month,
     paid or not, from the same rows. The open list leaves out what is paid,
     and what was invoiced and paid this month is invoicing all the same. It
-    also gets `truncated` when a month came back full, which is the one known
-    reason the ledger can hold more receivables than the list shows.
+    also gets `truncated` when a month could not be read to the end, which is
+    the one known reason the ledger can hold more receivables than the list
+    shows.
 
     `in_kroner` says the outstanding amount is already in kroner whatever
     the invoice's currency, as the customer register's `amountOutstanding`
@@ -252,13 +296,10 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     `history`, when given, gets every row, paid ones too: the fixed bills are
     read off how a supplier has billed, and most of those bills are paid.
     """
-    calls = []
-    for back in range(AR_MONTHS_BACK):
-        start, end = _month_bounds(today, back)
-        calls.append(mcp.call(tool, {"invoiceDateFrom": start.isoformat(),
-                                     "invoiceDateTo": end.isoformat(),
-                                     "count": 100}))
-    results = await asyncio.gather(*calls, return_exceptions=True)
+    results = await asyncio.gather(
+        *(_month_rows(tool, *_month_bounds(today, back))
+          for back in range(AR_MONTHS_BACK)),
+        return_exceptions=True)
 
     seen, out, warnings = set(), [], []
     complete = not any(isinstance(r, Exception) for r in results)
@@ -288,9 +329,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             issued["this_month"] = sum(
                 float(row.get("amount") or row.get("amountCurrency") or 0)
                 for row in rows)
-        if len(rows) >= 100:
-            warnings.append(f"Det er minst 100 {what.lower()} i {when}; lista "
-                            f"kan være avkortet.")
+        if r.get("truncated"):
+            warnings.append(f"Det er minst {len(rows)} {what.lower()} i {when}; "
+                            f"lista kan være avkortet.")
             if issued is not None:
                 issued["truncated"] = True
         for row in rows:

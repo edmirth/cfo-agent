@@ -35,8 +35,9 @@ FULL_YEAR = ["Inngående balanse"] + [c for c in COLUMNS[1:-1]] + ["Nov", "Des",
 
 
 class _Tripletex:
-    def __init__(self, rows, ar=(), ap=(), last=None, postings=None):
+    def __init__(self, rows, ar=(), ap=(), last=None, postings=None, cut_off=False):
         self.rows, self.ar, self.ap = rows, list(ar), list(ap)
+        self.cut_off = cut_off    # the search ignores `from`: a list that stays short
         self.last = last          # last year's ledger, a whole year of columns
         self.postings = postings  # 1500 postings; an Exception to fail the read
         self.asked = []
@@ -58,6 +59,8 @@ class _Tripletex:
             return {"table": {"rows": self.rows,
                               "columns": [{"name": c} for c in COLUMNS]}}
         if tool == "search_invoices":
+            if self.cut_off and (args or {}).get("from"):
+                return {"rows": self.ar}
             return {"rows": self.ar if self.asked.count("search_invoices") == 1 else []}
         if tool == "search_supplier_invoices":
             return {"rows": self.ap if self.asked.count("search_supplier_invoices") == 1 else []}
@@ -65,11 +68,11 @@ class _Tripletex:
 
 
 def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
-              last=None, postings=None):
+              last=None, postings=None, cut_off=False):
     """Run `build` against a stubbed ledger. Returns the payload."""
     import payment_habits
     payment_habits._cache.clear()
-    stub = _Tripletex(rows, ar, ap, last, postings)
+    stub = _Tripletex(rows, ar, ap, last, postings, cut_off)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
@@ -536,11 +539,11 @@ def test_unexplained_receivables_are_not_in_the_floor():
 
 
 def test_a_cut_off_invoice_list_makes_them_expected():
-    """A hundred rows may be a list cut short: then the difference is most
+    """A list that stays cut short after paging: then the difference is most
     likely ordinary invoices that were not read, and expected, slowly."""
     paid = [{**_invoice(0.0, "2026-10-01", "2026-10-31", n), "amount": 1_000.0}
             for n in range(1, 101)]
-    data = _forecast(LEDGER_AR, ar=paid)
+    data = _forecast(LEDGER_AR, ar=paid, cut_off=True)
     found = _kinds(data, "ar_unmatched")
     assert len(found) == 6 and {i["scenario"] for i in found} == {"expected"}
     assert round(sum(i["amount"] for i in found)) == 500_000

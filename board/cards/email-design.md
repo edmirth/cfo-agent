@@ -13,7 +13,7 @@ The Monday brief is the part of Arvaka the CEO sees most, and it goes out as pla
 - [x] `render_html` builds it with email-safe HTML: tables for layout, inline styles, no external CSS or scripts, about 600 px wide, readable at phone width
 - [x] Works with images off (the logo has alt text; nothing important is only in an image) and in dark mode
 - [x] The plain-text version still says the same as the HTML
-- [ ] Checked by sending it with «Send på e-post nå» to Gmail on a phone and on a desktop, and in at least one of Outlook or Apple Mail; it lands in the inbox, not Spam
+- [x] Checked by sending it with «Send på e-post nå» to Gmail on a phone and on a desktop, and in at least one of Outlook or Apple Mail; it lands in the inbox, not Spam
 - [x] Tests in `tests/test_brief_email.py` still pass, and cover anything new the layout needs
 
 ## Brand for email
@@ -36,3 +36,4 @@ From the Arvaka Brand Portfolio v1.0 (Oct 2026), adapted to what mail apps can d
 - 2026-11-04 (agent): mockup for approval at https://claude.ai/artifact/FjRnXJLCda64my3nya8zqf — the real email HTML in three weeks (yellow with four decisions, a quiet green week, red with five) and without app links, light and Apple Mail dark, phone and desktop width; 7–11 KB each. `render_html` unchanged until @edmir approves.
 - 2026-11-04 (agent): @edmir approved the mockup. `render_html` builds it: tables, inline styles, 600 px, a `<style>` block only for dark mode and narrow screens, wordmark as text, no images. Plain text says the same, now with the contact line; «og N til i appen, under Saker» in both. Tests: 5 new in `tests/test_brief_email.py`, suite 495 passed; the one failure, `test_demo.test_kvarnheim_runs_dry_unless_the_developer_pays`, fails on `main` too. Left: @edmir sends it with «Send på e-post nå» to Gmail on phone and desktop and to Apple Mail or Outlook, and checks it lands in the inbox.
 - 2026-11-04 (agent): first real send (PR #86) reached Gmail's inbox, Updates tab, 20 KB. It showed two things the test brief did not: the week's sentence ran to about 230 characters at 28 px, pushing the lowest point far down a phone, and negative figures had a hyphen. Fixed on `email-design-headline`: a sentence over 90 characters is set at 21 px (19 px on a phone), the brief asks for at most 20 words and one figure, and a figure has a real minus (−) in the HTML and the plain text; links are left as they are. The plain text's «og N til under Saker» was the brief stored on 2 November; next Monday's says «i appen».
+- 2026-11-04 (agent): done. After PR #87 the brief was sent again with «Send på e-post nå» and landed in Gmail's inbox (Primary), with the minus in place; @edmir looked at it and it looks good.
