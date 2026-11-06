@@ -69,3 +69,15 @@ found three more faults, added here:
   - Not seen in a browser yet: running the app here would renew the real
     login, which the server on Render needs. Check it on app.arvaka.no after
     the deploy.
+- 2026-11-07 — Seen working on app.arvaka.no. Right after #90 deployed, the
+  notice showed what it was built for: "invalid_grant: Session not found" on
+  the server's login. Edmir logged in again with `scripts/oauth_login.py`,
+  which registered a new client, so both `TRIPLETEX_CLIENT_ID` and
+  `TRIPLETEX_REFRESH_TOKEN` had to go into Render. Once Render had both and
+  had redeployed, @edmir confirmed the red notice was gone.
+  - Follow-ups merged on the way: #91 (the scripts warn not to renew the
+    login meant for Render) and #92 (the login script reuses the client id in
+    `.env`, so next time only the refresh token changes).
+  - Found on the way: the test run writes a copy of the login into the real
+    `state/tripletex.json`. It saved the token as it was, without contacting
+    Tripletex, so nothing was rotated, but tests should not touch `state/`.
