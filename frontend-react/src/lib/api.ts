@@ -172,6 +172,14 @@ export type Schedule = { enabled: boolean; running: boolean; jobs: ScheduledJob[
 
 export type Preset = { id: string; label: string }
 
+/** Tripletex-innloggingen slik serveren kjenner den nå. «expired» og
+ *  «missing» betyr at ingen tall kan hentes før noen logger inn på nytt. */
+export type TripletexLogin = {
+  login: "ok" | "expired" | "missing" | "untested" | "demo"
+  message?: string
+  fix?: string
+}
+
 /** Kaster på feil, slik at hver del av forsiden kan feile for seg. */
 export async function get<T>(path: string): Promise<T> {
   const res = await authFetch(path)
@@ -184,7 +192,8 @@ export async function get<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => get<{ company: string; model: string }>("/api/health"),
+  health: () =>
+    get<{ company: string; model: string; tripletex?: TripletexLogin }>("/api/health"),
   overview: () => get<Overview>("/api/overview"),
   dashboard: () => get<Dashboard>("/api/dashboard"),
   commitments: () => get<Commitments>("/api/commitments"),

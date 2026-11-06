@@ -197,8 +197,8 @@ def test_a_dead_tripletex_login_is_named_with_its_fix_whatever_wrapped_it():
         assert _attention(clock, j) == (
             "Morgenkjøringen i dag kl 07:00 ble ikke helt ferdig. "
             "Tripletex-innloggingen virker "
-            "ikke, så ingen tall kunne hentes. Kjør ./.venv/bin/python "
-            "scripts/oauth_login.py. Prøver igjen kl 07:30.")
+            "ikke, så ingen tall kan hentes. Logg inn på nytt: ./.venv/bin/python "
+            "scripts/oauth_login.py på Macen. Prøver igjen kl 07:30.")
 
 
 def test_after_three_failed_attempts_it_stops_and_says_when_it_runs_next():

@@ -44,6 +44,7 @@ import type {
   Rules,
   Schedule,
   Summary,
+  TripletexLogin,
   WeeklyBrief,
 } from "@/lib/api"
 import { dateNo, dateShortNo, dayNo, kr, mill, pct, stop, unit } from "@/lib/format"
@@ -84,6 +85,68 @@ type Data = {
   /** Hvorfor kontantstrømmen ikke kom, så blokken kan si det i stedet for å
    *  stå som en grå flate for alltid. */
   cashError?: string
+  /** Hvorfor et panel står tomt, med serverens egne ord. Ett panel som feiler
+   *  skal si det, ikke bare bli borte. */
+  errors?: Partial<Record<Panel, string>>
+  /** Tripletex-innloggingen, fra /api/health etter at panelene har spurt. */
+  tlx?: TripletexLogin
+}
+
+type Panel = "ov" | "dash" | "com" | "pre"
+
+const PANEL_NAMES: Record<Panel | "cash", string> = {
+  ov: "Nøkkeltallene",
+  dash: "Bransjetallene",
+  com: "Forpliktelsene",
+  pre: "Tilstanden i regnskapet",
+  cash: "Kontantstrømmen",
+}
+
+/* ── når Tripletex ikke svarer ─────────────────────────────────── */
+/** Én tydelig beskjed øverst når tallene ikke kan hentes: død innlogging med
+ *  hva som må gjøres, ellers hvilke deler som mangler og hvorfor. Overskriften
+ *  kommer fra det lagrede mandagsbrevet, så den ville ellers sett frisk ut. */
+function TripletexNotice({ d }: { d: Data }) {
+  const login = d.tlx && (d.tlx.login === "expired" || d.tlx.login === "missing") ? d.tlx : null
+  const failed = (Object.keys(PANEL_NAMES) as (Panel | "cash")[]).filter((k) =>
+    k === "cash" ? d.cashError : d.errors?.[k],
+  )
+  if (!login && !failed.length) return null
+  const reasons = [
+    ...new Set(failed.map((k) => (k === "cash" ? d.cashError : d.errors?.[k]) as string)),
+  ]
+  const all = failed.length === Object.keys(PANEL_NAMES).length
+  // Når alt feiler, viser siden ikke brevets overskrift, så det er ingenting å forklare.
+  const brief =
+    d.weekly &&
+    !all &&
+    `Overskriften er fra mandagsbrevet skrevet ${dateNo(d.weekly.made_on)}, ikke fra tall hentet nå.`
+  return (
+    <div
+      role="status"
+      className="border-negative/40 bg-tint mb-8 rounded-xl border px-5 py-4 sm:px-6 sm:py-5"
+    >
+      <p className="flex items-baseline gap-2.5 text-[16px] font-medium">
+        <span className="bg-negative inline-block size-2 shrink-0 translate-y-[-1px] rounded-full" aria-hidden />
+        {login
+          ? "Tripletex-innloggingen virker ikke, så ingen tall kan hentes."
+          : all
+            ? "Får ingen tall fra Tripletex akkurat nå."
+            : `Mangler ${failed.map((k) => PANEL_NAMES[k].toLowerCase()).join(", ")} akkurat nå.`}
+      </p>
+      <div className="text-muted-foreground mt-2 space-y-1.5 pl-[18px] text-[13px] leading-5">
+        {login ? (
+          <>
+            {login.fix && <p className="text-foreground">{login.fix}</p>}
+            {login.message && <p>Tripletex svarte: {login.message}</p>}
+          </>
+        ) : (
+          reasons.map((r) => <p key={r}>{r}</p>)
+        )}
+        {brief && <p>{brief}</p>}
+      </div>
+    </div>
+  )
 }
 
 /* ── morgenkjøringen ──────────────────────────────────────────── */
@@ -665,11 +728,22 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
   const loadAll = () => {
     setLoading(true)
     setFailed(false)
+    // Grunnen beholdes per panel, så det som står tomt kan si hvorfor.
+    const keep = <T,>(key: Panel, p: Promise<T>) =>
+      p
+        .then((v) => {
+          setD((s) => ({ ...s, [key]: v, errors: { ...s.errors, [key]: undefined } }))
+        })
+        .catch((e: unknown) => {
+          const why = e instanceof Error ? e.message : String(e)
+          setD((s) => ({ ...s, errors: { ...s.errors, [key]: why } }))
+          throw e
+        })
     const jobs = [
-      api.overview().then((ov) => setD((s) => ({ ...s, ov }))),
-      api.dashboard().then((dash) => setD((s) => ({ ...s, dash }))),
-      api.commitments().then((com) => setD((s) => ({ ...s, com }))),
-      api.preflight().then((pre) => setD((s) => ({ ...s, pre }))),
+      keep("ov", api.overview()),
+      keep("dash", api.dashboard()),
+      keep("com", api.commitments()),
+      keep("pre", api.preflight()),
       api
         .cashflow()
         .then((cash) => setD((s) => ({ ...s, cash, cashError: undefined })))
@@ -682,6 +756,11 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
     Promise.allSettled(jobs).then((res) => {
       setLoading(false)
       setFailed(res.every((r) => r.status === "rejected"))
+      // Etter panelene: da har serveren prøvd innloggingen og vet om den virker.
+      api
+        .health()
+        .then((h) => setD((s) => ({ ...s, tlx: h.tripletex })))
+        .catch(() => {})
     })
     // Oppsummeringen står for seg: den er skrevet, ikke regnet ut, og skal
     // verken holde igjen resten av forsiden eller felle den om den feiler.
@@ -779,6 +858,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
             bred skjerm fyller de to bredden sammen i stedet for at setningen
             står alene mot venstre kant. Først fra xl: ved 1024 px med menyen
             åpen ble setningen klemt til seks linjer ved siden av tallet. */}
+        <TripletexNotice d={d} />
         <div className="grid gap-x-16 gap-y-10 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] xl:items-end 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] 2xl:gap-x-20">
         <div className="min-w-0">
         {d.weekly && !failed && <Status light={d.weekly.light} className="mb-4" />}
@@ -954,6 +1034,11 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
           title="Nøkkeltall"
           aside={d.dash?.industry ? `Målt mot ${d.dash.industry.toLowerCase()}` : undefined}
         />
+        {(d.errors?.ov || d.errors?.dash) && (
+          <p className="text-muted-foreground -mt-2 mb-6 max-w-[72ch] text-[13px] leading-5">
+            {[d.errors?.ov, d.errors?.dash].filter(Boolean).join(" ")}
+          </p>
+        )}
         {/* Fire i bredden først når hvert kort får plass til tallet sitt; ved
             1024 px med menyen åpen ble de 160 px smale. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-4">

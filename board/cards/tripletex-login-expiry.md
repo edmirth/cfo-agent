@@ -23,15 +23,24 @@ failure that only a browser login can fix should stop the next attempt until
 the credentials change.
 
 ## Done when
-- [ ] After an `invalid_grant`, further renewals fail at once with the same
+- [x] After an `invalid_grant`, further renewals fail at once with the same
       message, without calling Tripletex, until `.env` holds a new refresh
       token (e.g. the login script has run) or the server restarts
-- [ ] The front page shows one clear notice when Tripletex access is gone:
+- [x] The front page shows one clear notice when Tripletex access is gone:
       that the figures cannot be fetched, and the command to log in again
-- [ ] `/api/health` reports the Tripletex login as ok, expired or missing
-- [ ] The login script's docstring and output stop saying the token never
+- [x] `/api/health` reports the Tripletex login as ok, expired or missing
+- [x] The login script's docstring and output stop saying the token never
       expires
-- [ ] A test pins that thirty waiting requests make one renewal call, not thirty
+- [x] A test pins that thirty waiting requests make one renewal call, not thirty
+
+### Extended on 2026-11-06 (@edmir)
+Reading the code for why the front page did not show whether figures came in
+found three more faults, added here:
+- [x] A panel that fails on a dead login says so, not «Noe feilet i
+      beregningen» (`main._panel` did not know an `OAuthError`)
+- [x] Every panel keeps why it is empty: four of six dropped their error
+- [x] The notice says when the headline is from the stored Monday brief,
+      which otherwise looked fresh while nothing new could be fetched
 
 ## Log
 - 2026-10-07 (agent): created after the refresh token expired during the
@@ -39,3 +48,24 @@ the credentials change.
   `scripts/oauth_login.py`. Cause of the retry burst read from
   `tlx_oauth.py`: the lock serialises the retries but nothing records the
   failure.
+- 2026-11-06 (agent): moved to ## Doing on @edmir's call, with the three
+  faults above. Built on `tripletex-login-expiry`:
+  - `TokenManager` remembers an `invalid_grant` or `invalid_client` and fails
+    at once until `.env` holds a new login (taken without a restart) or the
+    app restarts. A 5xx is not dead and is still retried.
+  - `tokens.status()` gives ok / expired / missing / untested (and demo).
+    `/api/health` carries it as `tripletex`.
+  - One check and one message for the morning run and the panels:
+    `tlx_oauth.is_login_error`, `LOGIN_LOST`, `login_fix()`. On Render the
+    fix also says to put TRIPLETEX_CLIENT_ID and TRIPLETEX_REFRESH_TOKEN in
+    the settings and restart.
+  - The front page keeps each panel's reason, asks `/api/health` once the
+    panels have answered, and shows one notice at the top.
+  - Tests: 7 new in `tests/test_tlx_oauth.py`, and the scheduler test updated
+    for the shared wording. Suite: 503 passed, 2 failed. Both failures are
+    demo tests, `test_kvarnheim_runs_dry_unless_the_developer_pays` and
+    `test_lindeskar_is_a_yellow_week_with_one_late_customer`, and both fail on
+    `main` too, since the demo books depend on today's date.
+  - Not seen in a browser yet: running the app here would renew the real
+    login, which the server on Render needs. Check it on app.arvaka.no after
+    the deploy.

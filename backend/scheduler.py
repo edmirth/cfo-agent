@@ -63,7 +63,7 @@ import summary
 import watch
 import workdays
 from mcp_client import McpError
-from tlx_oauth import OAuthError
+from tlx_oauth import LOGIN_LOST, is_login_error, login_fix
 
 log = logging.getLogger("cfo.scheduler")
 
@@ -444,21 +444,19 @@ _running: set[str] = set()
 _tried: dict[str, tuple[datetime, datetime]] = {}
 
 
-LOGIN = ("Tripletex-innloggingen virker ikke, så ingen tall kunne hentes. "
-         "Kjør ./.venv/bin/python scripts/oauth_login.py.")
+def _login_text() -> str:
+    return f"{LOGIN_LOST} {login_fix()}"
 
 
 def _login(exc: BaseException) -> bool:
-    """A Tripletex login only a person can mend. The module that hit it
-    often wraps it in its own error, so its fix is looked for in the words."""
-    return isinstance(exc, OAuthError) or "oauth_login.py" in str(exc)
+    return is_login_error(exc)
 
 
 def _cause(exc: BaseException) -> str:
     """Why a step failed, in words the CEO can act on. The provider's own
     words, with their request ids, stay in the log and in `job_runs.error`."""
     if _login(exc):
-        return LOGIN
+        return _login_text()
     if isinstance(exc, StepFailed):
         return str(exc)              # already written for a person
     if isinstance(exc, McpError):
@@ -611,7 +609,7 @@ def _why(steps: list[dict]) -> str:
     Each reason once. A dead Tripletex login explains every other failure
     that came with it, so it is said alone."""
     if any(s.get("login") for s in steps):
-        return LOGIN
+        return _login_text()
     by: dict[str, list[str]] = {}
     for s in steps:
         by.setdefault(s.get("cause") or "", []).append(s["label"])
