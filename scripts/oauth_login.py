@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 """Engangs OAuth-innlogging mot Tripletex MCP.
 
-Registrerer en klient, åpner nettleseren for innlogging, og lagrer et refresh
-token i .env. Refresh-tokenet kan utløpe (det gjorde det 7. oktober 2026). Da
+Åpner nettleseren for innlogging og lagrer et refresh token i .env. Klienten
+(TRIPLETEX_CLIENT_ID) i .env brukes om igjen, så etter en utløpt innlogging er
+det bare refresh-tokenet som er nytt. Finnes ingen, registreres en. Er den
+avvist av Tripletex, kjør med --ny-klient for å registrere en ny. Refresh-tokenet kan utløpe (det gjorde det 7. oktober 2026). Da
 sier appen fra på forsiden, og dette kjøres på nytt. En app som kjører lokalt
 tar den nye innloggingen i bruk med en gang; på Render må TRIPLETEX_CLIENT_ID
 og TRIPLETEX_REFRESH_TOKEN fra .env inn i innstillingene der, og appen startes
 på nytt.
 
     ./.venv/bin/python scripts/oauth_login.py
+    ./.venv/bin/python scripts/oauth_login.py --ny-klient
 """
 import base64
 import hashlib
@@ -16,6 +19,7 @@ import http.server
 import re
 import secrets
 import socketserver
+import sys
 import threading
 import urllib.parse
 import webbrowser
@@ -63,23 +67,44 @@ def set_env(key: str, value: str) -> None:
     ENV.chmod(0o600)
 
 
-def main() -> int:
+def get_env(key: str) -> str:
+    text = ENV.read_text() if ENV.exists() else ""
+    m = re.search(rf"^{re.escape(key)}=(.*)$", text, re.MULTILINE)
+    return m.group(1).strip().strip("'\"") if m else ""
+
+
+NEW_CLIENT = ("     Klienten er ikke gyldig lenger. Registrer en ny:\n\n"
+              "     ./.venv/bin/python scripts/oauth_login.py --ny-klient")
+
+
+def register(c: httpx.Client, meta: dict) -> str | None:
+    reg = c.post(meta["registration_endpoint"], json={
+        "client_name": "CFO Agent",
+        "redirect_uris": [REDIRECT],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    })
+    if reg.status_code not in (200, 201):
+        print(f"     Feilet ({reg.status_code}): {reg.text[:300]}")
+        return None
+    return reg.json()["client_id"]
+
+
+def main(argv: list[str]) -> int:
     with httpx.Client(timeout=40) as c:
         meta = c.get(f"{ISSUER}/.well-known/oauth-authorization-server").json()
 
-        print("1/4  Registrerer klient …")
-        reg = c.post(meta["registration_endpoint"], json={
-            "client_name": "CFO Agent",
-            "redirect_uris": [REDIRECT],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
-        })
-        if reg.status_code not in (200, 201):
-            print(f"     Feilet ({reg.status_code}): {reg.text[:300]}")
-            return 1
-        client_id = reg.json()["client_id"]
-        print(f"     client_id {client_id}")
+        existing = "" if "--ny-klient" in argv else get_env("TRIPLETEX_CLIENT_ID")
+        if existing:
+            client_id = existing
+            print(f"1/4  Bruker klienten fra .env: {client_id}")
+        else:
+            print("1/4  Registrerer klient …")
+            client_id = register(c, meta)
+            if not client_id:
+                return 1
+            print(f"     client_id {client_id}")
 
         verifier = secrets.token_urlsafe(64)
         challenge = base64.urlsafe_b64encode(
@@ -101,6 +126,9 @@ def main() -> int:
 
         print("\n2/4  Åpner nettleseren. Logg inn i Tripletex og godkjenn.")
         print(f"     Åpnes ikke automatisk? Lim inn denne:\n\n     {url}\n")
+        if existing:
+            print("     Sier Tripletex at klienten er ukjent? Avbryt med Ctrl+C og kjør")
+            print("     ./.venv/bin/python scripts/oauth_login.py --ny-klient\n")
         webbrowser.open(url)
 
         print("3/4  Venter på at du fullfører innloggingen …")
@@ -112,6 +140,8 @@ def main() -> int:
 
         if "code" not in _code:
             print(f"     Ingen kode mottatt. Svar: {_code or 'tidsavbrudd'}")
+            if existing and _code.get("error") in ("invalid_client", "unauthorized_client"):
+                print(NEW_CLIENT)
             return 1
         if _code.get("state") != state:
             print("     State stemmer ikke — avbryter av sikkerhetshensyn.")
@@ -127,6 +157,8 @@ def main() -> int:
         }, headers={"Content-Type": "application/x-www-form-urlencoded"})
         if tok.status_code != 200:
             print(f"     Feilet ({tok.status_code}): {tok.text[:300]}")
+            if existing and "invalid_client" in tok.text:
+                print(NEW_CLIENT)
             return 1
 
         d = tok.json()
@@ -135,13 +167,16 @@ def main() -> int:
             print(f"     Fikk access token, men ikke refresh token. Felter: {sorted(d)}")
             return 1
 
-        set_env("TRIPLETEX_CLIENT_ID", client_id)
+        if not existing:
+            set_env("TRIPLETEX_CLIENT_ID", client_id)
         set_env("TRIPLETEX_REFRESH_TOKEN", refresh)
         print("\n✓ Lagret i .env")
         print(f"  access token  : {len(d.get('access_token',''))} tegn, "
               f"utløper om {d.get('expires_in')} s")
         print(f"  refresh token : {len(refresh)} tegn")
-        print("\nKjører appen på Render: legg TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN")
+        what = ("TRIPLETEX_REFRESH_TOKEN (klienten er den samme)" if existing
+                else "TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN")
+        print(f"\nKjører appen på Render: legg {what}")
         print("fra .env inn i innstillingene der, og start appen på nytt. Ikke kjør")
         print("check_tokens.py eller appen her først: de fornyer innloggingen, og da")
         print("virker ikke kopien på Render.")
@@ -151,4 +186,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

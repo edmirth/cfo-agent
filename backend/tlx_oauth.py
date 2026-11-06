@@ -55,8 +55,9 @@ def login_fix() -> str:
     """The way back, for where the app runs."""
     fix = "Logg inn på nytt: ./.venv/bin/python scripts/oauth_login.py på Macen."
     if config.HOSTED:
-        fix += (" Legg så TRIPLETEX_CLIENT_ID og TRIPLETEX_REFRESH_TOKEN fra .env "
-                "inn i Renders innstillinger, og start appen på nytt.")
+        fix += (" Legg så TRIPLETEX_REFRESH_TOKEN fra .env inn i Renders "
+                "innstillinger, og TRIPLETEX_CLIENT_ID hvis den er ny, og start "
+                "appen på nytt.")
     return fix
 
 
@@ -214,8 +215,8 @@ class TokenManager:
                     detail = (f"{error}: "
                               f"{body.get('error_description', '')}").strip(": ")
                     if error == "invalid_client":
-                        hint = ("Klienten er ikke gyldig lenger — registrer "
-                                "den på nytt med scripts/oauth_login.py.")
+                        hint = ("Klienten er ikke gyldig lenger — registrer en "
+                                "ny med scripts/oauth_login.py --ny-klient.")
                 except Exception:  # noqa: BLE001
                     detail = r.text[:200]
                 log.error("Tripletex avviste fornyelsen (%s): %s",
