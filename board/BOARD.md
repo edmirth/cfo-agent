@@ -36,6 +36,7 @@ kanban-plugin: board
 - [ ] 62. Score the forecast every Monday against what came in and went out, part by part @edmir #forecast
 - [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
 - [ ] 65. Find one-offs and the costs that came with them (a big job and its extra wage run), and ask the owner in Saker whether they were one-offs @edmir #forecast
+	  - Also from card 63: the owner says once what the bank lines with no category are, and it is remembered. Same question, same place in Saker.
 - [ ] 66. Let the owner add known events ahead (a big job, a contract ending, a purchase) as their own lines in the forecast @edmir #forecast
 
 
@@ -44,6 +45,7 @@ kanban-plugin: board
 - [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
 	  - #94 (2026-11-07): every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. The rest of the card is card 60: the invoice runs at month end, from the invoice register.
+	  - Planned 2026-11-08: what is left is the edge of the window. Calculate six weeks past week 13, show "Etter uke 13", and keep an edge week from being the low point or making a card. Card: board/cards/window-edge.md.
 - [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 - [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
@@ -51,11 +53,12 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast
 
 
 ## Done
 
+- [x] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast ✓ 2026-11-08
+	  - #102: every bank line has a category by fixed rules; 96 % of the money going out over six months on the real books. The owner naming the unknown ones moved to card 65. Card: board/cards/bank-categories.md.
 - [x] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast ✓ 2026-11-08
 	  - #97–#101: money coming in from the invoice register per customer, booked payments no longer taking open invoices, the pay day from the payroll vouchers, no jumps without a cause, and deadlines by the bank figure's date. Card: board/cards/invoice-runs.md.
 - [x] 46. Based on the commintements.py, it uses the bankbalance and then subtracts everything owed. But we need to make sure that the bank balance that is used is actually correct, because we need the right answer/amount. ✓ 2026-11-08
