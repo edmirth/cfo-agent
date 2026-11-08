@@ -41,7 +41,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 - [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
@@ -52,6 +51,8 @@ kanban-plugin: board
 
 ## Done
 
+- [x] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent ✓ 2026-11-08
+	  - Built 2026-11-08: a written minus ("minus", −, –) is read as a sign, and a figure is traced by its size, with a differing sign noted rather than flagged. Card: board/cards/verify-negative-figures.md.
 - [x] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast ✓ 2026-11-08
 	  - Built 2026-11-08: the running costs from the bank lines at the median month, one-offs held out. Merged as #104. Card: board/cards/bank-costs.md.
 - [x] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there. ✓ 2026-11-08

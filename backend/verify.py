@@ -78,7 +78,23 @@ _MILLION = re.compile(
 
 
 
+# A minus written out. The agent says "minus 845 481"; our own texts set a real
+# minus sign (U+2212) so the figure reads as one; and an en dash straight
+# before a digit, with no digit or dot before it, is a minus too. "uke 3–5"
+# and "16.–24. juli" are ranges, and stay so.
+_MINUS_WORD = re.compile(r"\bminus\s+(?=\d)", re.IGNORECASE)
+_MINUS_SIGN = re.compile(r"\u2212\s?(?=\d)")
+_EN_DASH_MINUS = re.compile(r"(?:(?<=^)|(?<=[\s(:=]))\u2013(?=\d)")
+
+
+def _signs(text: str) -> str:
+    text = _MINUS_WORD.sub("-", text)
+    text = _MINUS_SIGN.sub("-", text)
+    return _EN_DASH_MINUS.sub("-", text)
+
+
 def _clean(text: str) -> str:
+    text = _signs(text)
     text = _URL.sub(" ", text)
     text = _MD_LINK.sub("] ", text)
     text = _ISO_DATE.sub(" ", text)
@@ -139,19 +155,28 @@ class Corpus:
     Keeping the origin alongside the value is what turns a yes/no check into a
     trail: "2 625 899 came from get_balance_sheet on account 1920" is an answer
     the CEO can act on, where "supported" is not.
+
+    Figures are kept by size, with the signs they were given in. The question
+    is whether a figure came from somewhere, and a loss of 845 481 is the same
+    figure written "−845 481" in the facts and "et underskudd på 845 481" in
+    the answer (card 19). A sign that differs is noted on the trace, not
+    flagged.
     """
 
     def __init__(self) -> None:
         self._origins: dict[float, set[str]] = {}
+        self._signs: dict[float, set[bool]] = {}
         self._sorted: list[float] = []
         self._dirty = False
 
     def add(self, text: str, source: str = "ukjent") -> None:
         for value in numbers(text):
-            known = self._origins.setdefault(value, set())
+            size = abs(value)
+            known = self._origins.setdefault(size, set())
             if not known:
                 self._dirty = True
             known.add(source)
+            self._signs.setdefault(size, set()).add(value < 0)
 
     def __len__(self) -> int:
         return len(self._origins)
@@ -162,18 +187,26 @@ class Corpus:
             self._dirty = False
         return self._sorted
 
+    def _matches(self, value: float) -> list[float]:
+        index = self._index()
+        size, slack = abs(value), tolerance(value)
+        out = []
+        i = bisect_left(index, size - slack)
+        while i < len(index) and index[i] <= size + slack:
+            out.append(index[i])
+            i += 1
+        return out
+
     def trace(self, value: float) -> list[str]:
         """Where this figure could have come from. Empty means nowhere."""
-        index = self._index()
-        if not index:
-            return []
-        slack = tolerance(value)
         found: set[str] = set()
-        i = bisect_left(index, value - slack)
-        while i < len(index) and index[i] <= value + slack:
-            found |= self._origins[index[i]]
-            i += 1
+        for size in self._matches(value):
+            found |= self._origins[size]
         return sorted(found)
+
+    def same_sign(self, value: float) -> bool:
+        """Whether a source gives the figure with the sign it was written in."""
+        return any((value < 0) in self._signs[size] for size in self._matches(value))
 
     def supports(self, value: float) -> bool:
         return bool(self.trace(value))
@@ -208,7 +241,10 @@ def check(answer: str, corpus: Corpus) -> dict:
         origins = corpus.trace(value)
         if origins:
             if len(traced) < 30:
-                traced.append({"value": value, "from": origins})
+                t = {"value": value, "from": origins}
+                if value and not corpus.same_sign(value):
+                    t["note"] = "fortegn ulikt"
+                traced.append(t)
             continue
         (material if abs(value) >= MATERIAL else minor).append(value)
 
