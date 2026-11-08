@@ -133,3 +133,16 @@ out of how the rest is timed, and named.
   - The pay day is read once a day, and an unread ledger is said.
   The agent's briefing names the regular customers outside the committed
   line and why. Suite: 551 passed.
+- 2026-11-08 — #100 merged. A second scan found three more, fixed on
+  `paid-through-bank-date`:
+  - The day after a pay day or a tax deadline, both were counted as paid by
+    the calendar while the bank figure, a banking day behind, did not have
+    them yet. Now `commitments.paid_by` is the first day the bank figure does
+    not cover (its last line + 1), and pay days and deadlines from there on
+    are still paid in the forecast, dated today.
+  - Company tax on 2500 is dated by its two instalments (15 February and
+    15 April after it was booked), and a half past its deadline counts as
+    paid, as the VAT on 2740 does since card 59.
+  - A credited invoice and its credit note both reported the balance between
+    them; only the credit note counts now.
+  Suite: 562 passed.

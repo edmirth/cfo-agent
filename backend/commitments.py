@@ -290,7 +290,7 @@ MVA_RUNNING = ((2700, 2739),)
 
 
 def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
-               today: date, paid: bool = False) -> None:
+               today: date, paid: bool = False, paid_before: date | None = None) -> None:
     """Date a completed VAT term to its own deadline, not the next one.
 
     2700/2710 hold the term being accrued. They also hold the *previous* term
@@ -309,7 +309,7 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
     this term's VAT was relabelled as the paid one and dated to its deadline.
     """
     running = next((i for i in items if i["id"] == "mva_lopende"), None)
-    term = _completed_term(today)
+    term = _completed_term(today, paid_before)
     if running is None or term is None or paid:
         return
     month, due = term
@@ -334,8 +334,8 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
         "plain": "moms for en termin som er over og forfaller på egen dato, "
                  "selv om den ennå ikke er overført til oppgjørskontoen",
         "amount": completed, "kind": "holding",
-        "due": _shift("mva_forrige_termin", due).isoformat(),
-        "days": (_shift("mva_forrige_termin", due) - today).days,
+        "due": max(_shift("mva_forrige_termin", due), today).isoformat(),
+        "days": max(0, (_shift("mva_forrige_termin", due) - today).days),
         "accounts": running["accounts"], "estimated": False,
         "assumed_due": False})
     if remainder < 0.5:
@@ -353,7 +353,8 @@ def _term_end(month: int, due: date) -> date:
     return date(year, month, calendar.monthrange(year, month)[1])
 
 
-async def _paid_early(rows: list[dict], columns: list[str], today: date) -> bool:
+async def _paid_early(rows: list[dict], columns: list[str], today: date,
+                      paid_before: date | None = None) -> bool:
     """Has the completed term already been paid, ahead of its deadline?
 
     Only the postings can tell. A payment booked straight against 2700 leaves
@@ -366,7 +367,7 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date) -> bool
     is a completed term to split at all. A failed call answers "not paid":
     the money then shows on the earlier date, the safe direction to be wrong.
     """
-    term = _completed_term(today)
+    term = _completed_term(today, paid_before)
     if term is None:
         return False
     month, due = term
@@ -431,10 +432,54 @@ def _trekk_due(d: date) -> date:
 # paid was paid a second time: Jul-Aug VAT, paid on Monday 12 October 2026 and
 # moved to 2740 without the payment, was forecast to leave again on
 # 10 December, with the money already gone from the bank figure as well.
+def _tax_instalments(booked: date) -> list[date]:
+    """The two instalments of the company tax booked on `booked`: the next
+    15 February and 15 April. Booked between them, both fall in April."""
+    feb, apr = date(booked.year, 2, 15), date(booked.year, 4, 15)
+    if booked <= feb:
+        return [feb, apr]
+    if booked <= apr:
+        return [apr, apr]
+    return [date(booked.year + 1, 2, 15), date(booked.year + 1, 4, 15)]
+
+
+def _open_tax(opening: float, postings: list[dict], year: int) -> list[tuple[date, float]]:
+    """`_open_amounts` for the company tax on 2500: each amount booked is owed
+    in two halves, on its own instalments, and the payments settle the earliest
+    instalment first. Returned as (a day that dates to that instalment, amount)
+    so TERM_DUE turns it back into the instalment."""
+    owed = []
+    credits = []
+    if opening > 0.5:
+        credits.append((date(year - 1, 12, 31), opening))
+    paid = 0.0
+    for p in sorted(postings, key=lambda p: p.get("date") or ""):
+        amount = float(p.get("amount") or 0)
+        try:
+            when = date.fromisoformat((p.get("date") or "")[:10])
+        except ValueError:
+            continue
+        if amount < 0:
+            credits.append((when, -amount))
+        else:
+            paid += amount
+    for booked, amount in credits:
+        for due in _tax_instalments(booked):
+            owed.append([due, amount / 2])
+    owed.sort(key=lambda o: o[0])
+    for part in owed:
+        take = min(part[1], paid)
+        part[1] -= take
+        paid -= take
+    return [(d, a) for d, a in owed if a > 0.5]
+
+
 TERM_DUE = {
     "mva_oppgjor": _vat_transfer_due,
     "aga": lambda d: term_due(d.year, d.month, SKATT_TERMS),
     "forskuddstrekk": _trekk_due,
+    # Already the instalment date: `_open_tax` splits the tax by instalment.
+    "betalbar_skatt": lambda d: d,
 }
 
 
@@ -485,7 +530,7 @@ def _open_amounts(opening: float, postings: list[dict], year: int) -> list[tuple
 
 
 async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
-                        today: date) -> tuple[list[dict], float] | None:
+                        today: date, paid_before: date | None = None) -> tuple[list[dict], float] | None:
     """`item` split by the deadline each part belongs to, and how much of it
     is past its deadline and so counted as paid. None when the postings do not
     explain the balance, and the item stays as it was.
@@ -506,7 +551,8 @@ async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
     postings = await _postings(group.ranges, date(today.year, 1, 1), today)
     if postings is None or opening < -0.5:
         return None
-    parts = _open_amounts(opening, postings, today.year)
+    parts = (_open_tax(opening, postings, today.year) if item["id"] == "betalbar_skatt"
+             else _open_amounts(opening, postings, today.year))
     if abs(sum(a for _, a in parts) - item["amount"]) > PAID_TOLERANCE:
         log.warning("Commitments: posteringene på %s forklarer ikke saldoen; "
                     "dateres som før", item["label"])
@@ -517,11 +563,13 @@ async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
         by_due[due] = by_due.get(due, 0.0) + amount
     out, paid = [], 0.0
     for due in sorted(by_due):
-        if due < today:
+        if due < (paid_before or today):
             paid += by_due[due]
             continue
-        out.append({**item, "amount": round(by_due[due], 2), "due": due.isoformat(),
-                    "days": (due - today).days, "dated_by_term": True})
+        # Due but not yet out of the bank figure: owed now.
+        when = max(due, today)
+        out.append({**item, "amount": round(by_due[due], 2), "due": when.isoformat(),
+                    "days": (when - today).days, "dated_by_term": True})
     return out, round(paid, 2)
 
 
@@ -600,7 +648,25 @@ def _term_end_balance(rows: list[dict], columns: list[str], month: int,
     return _at_month(rows, MVA_RUNNING, columns, month)
 
 
-def _completed_term(today: date) -> tuple[int, date] | None:
+def paid_by(today: date, gap: dict | None) -> date:
+    """The first day the bank figure does not cover yet.
+
+    A deadline before it has been paid and is out of the bank; one on or after
+    it is not out of the bank figure yet, whatever the calendar says. Today,
+    where the feed is current. The feed arrives a banking day late, so on the
+    11th the figure is often the 9th's: the pay day and the VAT of the 10th
+    counted as paid by the date, were not in the figure either, and the chart
+    stood 1.6 million too high until the statement came."""
+    latest = (gap or {}).get("latest")
+    if not latest:
+        return today
+    try:
+        return min(today, date.fromisoformat(latest[:10]) + timedelta(days=1))
+    except ValueError:
+        return today
+
+
+def _completed_term(today: date, paid_before: date | None = None) -> tuple[int, date] | None:
     """The most recent VAT term that has ended, and when it falls due.
 
     Terms run two months and settle on the 10th of the month after — Jul-Aug on
@@ -618,7 +684,7 @@ def _completed_term(today: date) -> tuple[int, date] | None:
             if end >= today:
                 continue
             due = date(year if dm > m2 else year + 1, dm, dd)
-            if _shift("mva_forrige_termin", due) < today:
+            if _shift("mva_forrige_termin", due) < (paid_before or today):
                 continue
             if best is None or end > best[1]:
                 best = (m2, end, due)
@@ -688,6 +754,7 @@ async def build(today: date | None = None) -> dict:
     gap = await bankgap.measured(today, rows, columns, client=mcp)
     if gap:
         bank_free = bank_booked + gap["adjustment"]
+    paid_before = paid_by(today, gap)
     loans_balance, loan_accounts = _sum_range(rows, (LOANS,))
 
     items, anomalies = [], []
@@ -705,7 +772,9 @@ async def build(today: date | None = None) -> dict:
             owed = 0.0
         if abs(owed) < 0.5:
             continue
-        due = _shift(g.id, g.due(today))
+        # The next deadline the bank figure has not paid yet, owed today at
+        # the earliest.
+        due = max(_shift(g.id, g.due(paid_before)), today)
         items.append({"id": g.id, "label": g.label, "plain": g.plain,
                       "amount": round(owed, 2), "kind": g.kind,
                       "due": due.isoformat(), "days": (due - today).days,
@@ -713,8 +782,8 @@ async def build(today: date | None = None) -> dict:
                       "assumed_due": g.id in assumed})
 
     paid = (any(i["id"] == "mva_lopende" for i in items)
-            and await _paid_early(rows, columns, today))
-    _split_vat(items, rows, columns, today, paid=paid)
+            and await _paid_early(rows, columns, today, paid_before))
+    _split_vat(items, rows, columns, today, paid=paid, paid_before=paid_before)
 
     # Until 2026 withheld employee tax sat on a restricted account (1950) and
     # was settled on a bimonthly term, so the balance there had to be netted off
@@ -729,7 +798,7 @@ async def build(today: date | None = None) -> dict:
     covered = 0.0
     assumed_paid = []
     for item in [i for i in items if i["id"] in TERM_DUE]:
-        dated = await _date_by_term(item, rows, columns, today)
+        dated = await _date_by_term(item, rows, columns, today, paid_before)
         if dated is None:
             continue
         parts, gone = dated
@@ -793,6 +862,9 @@ async def build(today: date | None = None) -> dict:
         # Statutory amounts still on the books past their deadline, counted as
         # paid on it: said, so a payment that really is missing can be seen.
         "assumed_paid": assumed_paid,
+        # The first day the bank figure does not cover: the forecast pays
+        # what falls due from here, the pay day included.
+        "paid_before": paid_before.isoformat(),
         "verdict": verdict,
     }
 
