@@ -16,8 +16,8 @@ Fixed rules, in order, so the same line always gets the same answer:
 2. Money in from a customer in the invoice register, or matched to "Betaling:
    Faktura nummer …", is a customer payment.
 3. Money out to an employee is wages. The bank spells people as they gave
-   their name to it, not as the employee register does: "Girmay S.
-   Ghebreselassie" against "Ghebreselassie Girmay", "Safete Thaqi2". Names are
+   their name to it, not as the employee register does: "Kari J.
+   Nordmann" against "Nordmann Kari", "Ola Hansen2". Names are
    compared word for word, digits and initials left out, in any order. A
    private person paid within PAYDAY_WINDOW days of the pay day is wages too:
    the register does not know nicknames.
