@@ -1121,3 +1121,57 @@ def test_a_run_sent_after_the_window_is_not_kept():
         rows, date(2026, 10, 15), date(2027, 1, 8), None, {11: 0.5})
     assert max(f["date"] for f in flows) == date(2027, 1, 18), \
         "December's, sent on the 10th, paid on the 18th; not January's"
+
+
+# ------------------------------------------- running costs from the bank (64)
+BANK_COSTS = {"level": 300_000.0, "certain_share": 0.5,
+              "shares": {"leverandorer": 0.5, "husleie": 0.5},
+              "months": [{"month": f"2026-{m:02d}", "amount": 300_000.0, "unusual": False}
+                         for m in range(4, 10)],
+              "profile": {"measured": True, "periods": [
+                  {"from": 15, "to": 21, "share": 1.0, "day": 20, "terms": 0}]},
+              "this_month": "2026-10", "paid_this_month": 100_000.0}
+
+
+def _with_bank(cats, **kw):
+    real = cashflow.bankcat.measured
+
+    async def measured(client, today, customers):
+        return cats
+    cashflow.bankcat.measured = measured
+    try:
+        return _forecast(**kw)
+    finally:
+        cashflow.bankcat.measured = real
+
+
+def _costs_in(data, month):
+    return [i for i in _kinds(data, "opex") + _kinds(data, "opex_recurring")
+            if month in i["label"]]
+
+
+def test_the_running_costs_come_from_the_bank():
+    """The usual month of what left the bank, on the day it leaves; what has
+    left this month and the open bills dated in it come off, so no krone goes
+    out twice. Rent, loans and the like are certain: the committed line."""
+    ap = [{"voucherId": 1, "supplierName": "Leverandør AS",
+           "outstandingAmount": 50_000.0, "dueDate": "2026-10-20",
+           "invoiceDate": "2026-09-20"}]
+    cats = {"months": {}, "unknown": [], "unknown_share_out": 0.04, "costs": BANK_COSTS}
+    data = _with_bank(cats, rows=[REVENUE], ap=ap)
+    oct_, nov = _costs_in(data, "oktober"), _costs_in(data, "november")
+    assert round(sum(i["amount"] for i in oct_)) == -150_000, "300 − 100 paid − 50 open"
+    assert round(sum(i["amount"] for i in nov)) == -300_000
+    assert all("fra banken" in i["label"] for i in oct_ + nov)
+    committed = [i for i in nov if i["kind"] == "opex_recurring"]
+    assert round(sum(i["amount"] for i in committed)) == -150_000, "the certain half"
+    assert data["assumptions"]["kostnader_kilde"] == "banken"
+    assert "fra banken" in cashflow.briefing(data)
+
+
+def test_too_much_unknown_in_the_bank_keeps_the_accounts():
+    cats = {"months": {}, "unknown": [], "unknown_share_out": 0.2, "costs": BANK_COSTS}
+    data = _with_bank(cats, rows=[REVENUE])
+    assert data["assumptions"]["kostnader_kilde"] == "regnskapet"
+    assert not any("fra banken" in i["label"] for i in _kinds(data, "opex"))
+    assert any("20 %" in w and "regnskapet" in w for w in data["warnings"])
