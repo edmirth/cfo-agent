@@ -1259,6 +1259,100 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
     return flows
 
 
+# What a pay day costs, read off the payroll vouchers rather than the wage
+# accounts. The wage accounts carry accruals and holiday pay as they are
+# earned; the bank sees net pay and the withheld tax, on the day. At the first
+# customer the accounts said about a fifth more per pay day than ever left the
+# bank, and a periodisation booked to 5000 one August month said more still.
+PAYROLL_MONTHS = 6
+PAYROLL_MIN = 3              # months measured before the vouchers are trusted
+PAYDAY_WINDOW = 3            # days either side of the pay day that are its run
+WAGE_ACCOUNTS = (5000, 5099)
+PAID_FROM = ((1900, 1949), (2600, 2609), (2910, 2939))   # bank, trekk, net pay
+PAYROLL_PAGES = 50
+
+
+async def _postings_in(low: int, high: int, start: date, end: date) -> list[dict]:
+    rows: list[dict] = []
+    for page in range(PAYROLL_PAGES):
+        r = await mcp.call("search_ledger_postings", {
+            "dateFrom": start.isoformat(), "dateTo": end.isoformat(),
+            "accountNumberFrom": low, "accountNumberTo": high,
+            "count": 100, "from": page * 100})
+        rows += r.get("postings") or []
+        if not r.get("hasMore"):
+            return rows
+    raise RuntimeError(f"mer enn {PAYROLL_PAGES * 100} posteringer på {low}–{high}")
+
+
+def payroll_paid(postings: list[dict], today: date) -> dict | None:
+    """What each month's pay day paid out, from the payroll vouchers.
+
+    A payroll voucher is one that touches the wage accounts. What it pays is
+    the money leaving the bank in it, net pay plus the withheld tax; where the
+    payment was not booked in it, what it leaves owing on the trekk and net-pay
+    accounts instead. Both are the same sum, so one figure covers the two:
+    minus everything the voucher puts on PAID_FROM. A reversed voucher cancels
+    its original, and an accrual booked to the wage accounts touches none of
+    them.
+
+    The pay day's own run is the vouchers within PAYDAY_WINDOW days of it.
+    Everything else that month is an extra run, kept apart: September's at the
+    first customer followed a one-off job in August. The holiday-pay month is
+    left out. Returns the median pay day over the months measured, or None
+    with fewer than PAYROLL_MIN of them."""
+    def acct(p):
+        try:
+            return int(str(p.get("accountNumber"))[:4])
+        except (TypeError, ValueError):
+            return None
+    wage_vouchers = {p.get("voucherId") for p in postings
+                     if p.get("voucherId") is not None and acct(p) is not None
+                     and WAGE_ACCOUNTS[0] <= acct(p) <= WAGE_ACCOUNTS[1]}
+    paid: dict = {}
+    for p in postings:
+        n = acct(p)
+        if p.get("voucherId") not in wage_vouchers or n is None:
+            continue
+        if not any(lo <= n <= hi for lo, hi in PAID_FROM):
+            continue
+        try:
+            when = date.fromisoformat(str(p.get("date"))[:10])
+        except ValueError:
+            continue
+        paid[when] = paid.get(when, 0.0) - float(p.get("amount") or 0)
+    ferie = commitments.ferie_month()
+    months: dict = {}
+    for when, amount in paid.items():
+        m = months.setdefault((when.year, when.month), {"run": 0.0, "extra": 0.0})
+        day = workdays.backward(commitments.payday(when.year, when.month))
+        m["run" if abs((when - day).days) <= PAYDAY_WINDOW else "extra"] += amount
+    this = (today.year, today.month)
+    closed = [_add_months(*this, -n) for n in range(1, PAYROLL_MONTHS + 1)]
+    runs = [(k, months[k]) for k in closed
+            if k in months and k[1] != ferie and months[k]["run"] > 0.5]
+    if len(runs) < PAYROLL_MIN:
+        return None
+    return {"per_run": round(statistics.median(m["run"] for _, m in runs), 2),
+            "months": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
+                        "run": round(m["run"], 2), "extra": round(m["extra"], 2)}
+                       for k, m in reversed(runs)]}
+
+
+async def _payroll_measured(today: date) -> dict | None:
+    """`payroll_paid` over the last PAYROLL_MONTHS closed months, or None when
+    the postings cannot be read."""
+    start = date(*_add_months(today.year, today.month, -PAYROLL_MONTHS), 1)
+    end = date(today.year, today.month, 1)
+    ranges = [WAGE_ACCOUNTS, *PAID_FROM]
+    try:
+        parts = await asyncio.gather(*(_postings_in(lo, hi, start, end) for lo, hi in ranges))
+    except Exception as exc:  # noqa: BLE001 — the accounts are the fallback
+        log.warning("Cashflow: lønnsbilagene kunne ikke leses: %s", exc)
+        return None
+    return payroll_paid([p for part in parts for p in part], today)
+
+
 async def build(today: date | None = None) -> dict:
     today = today or date.today()
     week0 = _monday(today)
@@ -1277,7 +1371,7 @@ async def build(today: date | None = None) -> dict:
     issued: dict = {}
     supplier_history: list = []
     customer_history: list = []
-    balance, com, ar, ap, prior, paid = await asyncio.gather(
+    balance, com, ar, ap, prior, paid, wages_paid = await asyncio.gather(
         saldobalanse.monthly(mcp, start_year, today.isoformat()),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
@@ -1290,6 +1384,7 @@ async def build(today: date | None = None) -> dict:
                        history=supplier_history),
         _prior(),
         payment_habits.payments(mcp, today),
+        _payroll_measured(today),
         return_exceptions=True,
     )
     if isinstance(balance, Exception):
@@ -1557,7 +1652,11 @@ async def build(today: date | None = None) -> dict:
     # and posted. A liability is a credit balance, so an accrual is negative.
     aga_series = _monthly(rows, columns, 2770, 2779)
     aga_booked = max(0.0, -aga_series[-1][1]) if aga_series else 0.0
-    committed += _payroll_runs(today, horizon, rates["wages_cash"],
+    # What a pay day really pays, where the payroll vouchers say so; the wage
+    # accounts otherwise.
+    wages_paid = wages_paid if isinstance(wages_paid, dict) else None
+    pay_day_cash = wages_paid["per_run"] if wages_paid else rates["wages_cash"]
+    committed += _payroll_runs(today, horizon, pay_day_cash,
                                rates["aga"], aga_booked)
     payroll_months = [m for _, m, _ in _pay_days(today, horizon)]
 
@@ -1756,6 +1855,10 @@ async def build(today: date | None = None) -> dict:
                      vat_share, vat_measured, booked_vat,
                      invoiced_this_month, payroll_months)
     data["assumptions"]["credit_days_source"] = credit_source
+    data["assumptions"]["lonn_per_lonningsdag"] = {
+        "belop": round(pay_day_cash, 2),
+        "kilde": "lønnsbilagene" if wages_paid else "lønnskontoene",
+        "maneder": (wages_paid or {}).get("months", [])}
     # What the bills cost in cash, against the P&L figure beside it, and what
     # this month has already booked — netted off, as `fakturert_denne_maneden`.
     data["assumptions"]["mva_paa_kostnader"] = round(opex_vat, 2)
