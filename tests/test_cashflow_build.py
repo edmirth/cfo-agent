@@ -73,6 +73,7 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     import payment_habits
     payment_habits._cache.clear()
     cashflow._payroll_cache.clear()
+    cashflow.bankcat.CACHE.clear()
     stub = _Tripletex(rows, ar, ap, last, postings, cut_off)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting

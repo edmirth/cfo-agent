@@ -7,12 +7,9 @@ kanban-plugin: board
 ## Backlog
 
 - [ ] 21. Add budget-vs-actual variance per line, with the cause named @agent #kpi
-- [ ] 23. Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work.
-- [ ] 24. Should we assign the ai agent to do the 13 week cash brief? could it be better at calculating it, and what tools would it need, should we give it coding tools so it could calculate it for us.
 - [ ] 25. Propose a weekly payment run with its cash effect @edmir #liquidity
 - [ ] 26. Let the agent propose company memory that the CEO approves @edmir #memory
 - [ ] 27. Build a monthly financial pack on a cadence, with an archive @either #pack
-- [ ] 28. Page through a truncated invoice month instead of warning about it @edmir #liquidity
 - [ ] 29. Convert foreign-currency supplier invoices instead of taking them as kroner @edmir #liquidity
 - [ ] 30. We need to make a database for the platform here, and also design the architecture of the database here so the agent can actually use it and also how to store the database here. We need to make a good database for the platform and also structure it.
 - [ ] 31. Sync Tripletex and bank data into the database on a schedule @edmir #platform
@@ -29,7 +26,6 @@ kanban-plugin: board
 - [ ] 43. How could we design the ai agent to look at the numbers and then also the company and then understand their industry, and know then what type of CFO work it needs and how they operate in the sense of financials.
 - [ ] 44. On the backend there is a seperate file that does the summary, isnt it better to just let the ai agent make it? so it also has the memory, and also writes the summary as well.
 - [ ] 45. Could the frontpage use any AI, and if so, what type of work would that be?
-- [ ] 46. Based on the commintements.py, it uses the bankbalance and then subtracts everything owed. But we need to make sure that the bank balance that is used is actually correct, because we need the right answer/amount.
 - [ ] 47. Check payroll against contracts each month: hours, overtime and NAV sick-pay refunds @edmir #warnings
 - [ ] 48. Draft next year's budget in October from actuals, contracts and pipeline @edmir #kpi
 - [ ] 49. Ask Arvaka by replying to the Monday email or sending a voice note @edmir #delivery
@@ -38,7 +34,6 @@ kanban-plugin: board
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
 - [ ] 61. A read-only page on the server that backtests each invoice run, predicted against sent, on the real books @edmir #forecast
 - [ ] 62. Score the forecast every Monday against what came in and went out, part by part @edmir #forecast
-- [ ] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast
 - [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
 - [ ] 65. Find one-offs and the costs that came with them (a big job and its extra wage run), and ask the owner in Saker whether they were one-offs @edmir #forecast
 - [ ] 66. Let the owner add known events ahead (a big job, a contract ending, a purchase) as their own lines in the forecast @edmir #forecast
@@ -56,11 +51,21 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast
+- [ ] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast
 
 
 ## Done
 
+- [x] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast ✓ 2026-11-08
+	  - #97–#101: money coming in from the invoice register per customer, booked payments no longer taking open invoices, the pay day from the payroll vouchers, no jumps without a cause, and deadlines by the bank figure's date. Card: board/cards/invoice-runs.md.
+- [x] 46. Based on the commintements.py, it uses the bankbalance and then subtracts everything owed. But we need to make sure that the bank balance that is used is actually correct, because we need the right answer/amount. ✓ 2026-11-08
+	  - Checked 2026-11-08 against the Nordea statements through the Tripletex connector: the figure the forecast opens on is the balance on the bank statements. The booked balance is higher because payments in October are not booked yet.
+- [x] 28. Page through a truncated invoice month instead of warning about it @edmir #liquidity ✓ 2026-11-08
+	  - Done in PR #89: a full month is read page by page (`_month_rows`).
+- [x] 23. Could we use AI to reason and be smart on which numbers and data to get from Tripletex for then to model the right type of 13 week cash brief, so that we could have the right numbers and smarter type of CFO work. ✓ 2026-11-08
+	  - Answered by the plan in board/cards/smarter-cashflow.md: the engine reads the invoice register, the bank lines and the payroll vouchers; the AI suggests categories and one-offs and asks the owner (cards 63 and 65).
+- [x] 24. Should we assign the ai agent to do the 13 week cash brief? could it be better at calculating it, and what tools would it need, should we give it coding tools so it could calculate it for us. ✓ 2026-11-08
+	  - Answered by the same plan: the figures come from fixed, testable rules, and the AI explains and asks rather than calculates (cards 63 and 65).
 - [x] 59. VAT, employer's contribution and withheld tax past their deadline count as paid, also on the settlement accounts, instead of being paid again at the next deadline @edmir #forecast ✓ 2026-11-08
 - [x] 18. Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform ✓ 2026-11-07
 - [x] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery ✓ 2026-11-04
