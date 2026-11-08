@@ -405,6 +405,126 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date) -> bool
     return any(abs(net - owed) <= PAID_TOLERANCE for net in by_voucher.values())
 
 
+def _vat_transfer_due(d: date) -> date:
+    """The deadline of the VAT term a transfer to the settlement account is
+    for: the latest term that had ended by the day it was booked. Jul-Aug is
+    moved to 2740 on 31 August or with the return in early October, and either
+    way it is owed on 10 October."""
+    best = None
+    for (m1, m2), (dm, dd) in MVA_TERMS:
+        for year in (d.year - 1, d.year):
+            end_year = year + (1 if m2 < m1 else 0)
+            end = date(end_year, m2, calendar.monthrange(end_year, m2)[1])
+            if end <= d and (best is None or end > best[0]):
+                best = (end, date(end_year if dm > m2 else end_year + 1, dm, dd))
+    return best[1]
+
+
+def _trekk_due(d: date) -> date:
+    """Withheld tax is paid with the salary it was withheld from."""
+    return max(d, payday(d.year, d.month))
+
+
+# The accounts where a statutory amount waits for its own deadline, and how to
+# tell that deadline from the day the amount was booked. Read as one balance
+# and dated to the next settlement, a term already paid but not yet booked as
+# paid was paid a second time: Jul-Aug VAT, paid on Monday 12 October 2026 and
+# moved to 2740 without the payment, was forecast to leave again on
+# 10 December, with the money already gone from the bank figure as well.
+TERM_DUE = {
+    "mva_oppgjor": _vat_transfer_due,
+    "aga": lambda d: term_due(d.year, d.month, SKATT_TERMS),
+    "forskuddstrekk": _trekk_due,
+}
+
+
+async def _postings(ranges, start: date, end: date) -> list[dict] | None:
+    """Every posting on `ranges` from `start` up to and including `end`, or
+    None when they cannot all be read."""
+    out: list[dict] = []
+    try:
+        for page in range(POSTING_PAGES):
+            result = await mcp.call("search_ledger_postings", {
+                "dateFrom": start.isoformat(),
+                "dateTo": (end + timedelta(days=1)).isoformat(),
+                "accountNumberFrom": ranges[0][0], "accountNumberTo": ranges[0][1],
+                "count": POSTING_PAGE, "from": page * POSTING_PAGE})
+            out += result.get("postings") or []
+            if not result.get("hasMore"):
+                return out
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Commitments: posteringene på %s kunne ikke leses: %s", ranges, exc)
+        return None
+    log.warning("Commitments: mer enn %d posteringer på %s", POSTING_PAGES * POSTING_PAGE, ranges)
+    return None
+
+
+def _open_amounts(opening: float, postings: list[dict], year: int) -> list[tuple[date, float]]:
+    """What is still owed on a liability account, by the day each part was
+    booked: the payments (debits) settle the oldest amounts first. `opening` is
+    what was owed on 1 January, dated the last day of the year before."""
+    owed = []
+    if opening > 0.5:
+        owed.append([date(year - 1, 12, 31), opening])
+    paid = 0.0
+    for p in sorted(postings, key=lambda p: p.get("date") or ""):
+        amount = float(p.get("amount") or 0)
+        try:
+            when = date.fromisoformat((p.get("date") or "")[:10])
+        except ValueError:
+            continue
+        if amount < 0:
+            owed.append([when, -amount])
+        else:
+            paid += amount
+    for part in owed:
+        take = min(part[1], paid)
+        part[1] -= take
+        paid -= take
+    return [(d, a) for d, a in owed if a > 0.5]
+
+
+async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
+                        today: date) -> tuple[list[dict], float] | None:
+    """`item` split by the deadline each part belongs to, and how much of it
+    is past its deadline and so counted as paid. None when the postings do not
+    explain the balance, and the item stays as it was.
+
+    A statutory amount past its deadline has been paid: the company pays its
+    VAT and its payroll taxes on time, and a balance that still shows it is a
+    payment not yet booked. Leaving it in paid it twice."""
+    group = next(g for g in GROUPS if g.id == item["id"])
+    opening_idx = columns.index(OPENING) if OPENING in columns else None
+    opening = 0.0
+    if opening_idx is not None:
+        for r in rows:
+            n = _account(r)
+            cells = r.get("cells") or []
+            if n is not None and any(lo <= n <= hi for lo, hi in group.ranges) \
+                    and opening_idx < len(cells) and isinstance(cells[opening_idx], (int, float)):
+                opening -= float(cells[opening_idx])
+    postings = await _postings(group.ranges, date(today.year, 1, 1), today)
+    if postings is None or opening < -0.5:
+        return None
+    parts = _open_amounts(opening, postings, today.year)
+    if abs(sum(a for _, a in parts) - item["amount"]) > PAID_TOLERANCE:
+        log.warning("Commitments: posteringene på %s forklarer ikke saldoen; "
+                    "dateres som før", item["label"])
+        return None
+    by_due: dict[date, float] = {}
+    for booked, amount in parts:
+        due = _shift(item["id"], TERM_DUE[item["id"]](booked))
+        by_due[due] = by_due.get(due, 0.0) + amount
+    out, paid = [], 0.0
+    for due in sorted(by_due):
+        if due < today:
+            paid += by_due[due]
+            continue
+        out.append({**item, "amount": round(by_due[due], 2), "due": due.isoformat(),
+                    "days": (due - today).days, "dated_by_term": True})
+    return out, round(paid, 2)
+
+
 def _assumed_due() -> set[str]:
     if company.setting("lonn_utbetalingsdag"):
         return ASSUMED_DUE
@@ -607,7 +727,20 @@ async def build(today: date | None = None) -> dict:
     # it is a transfer that should already have gone, so it is dated today
     # rather than to a settlement that no longer exists.
     covered = 0.0
-    trekk = next((i for i in items if i["id"] == "forskuddstrekk"), None)
+    assumed_paid = []
+    for item in [i for i in items if i["id"] in TERM_DUE]:
+        dated = await _date_by_term(item, rows, columns, today)
+        if dated is None:
+            continue
+        parts, gone = dated
+        at = items.index(item)
+        items[at:at + 1] = parts
+        if gone:
+            assumed_paid.append({"label": item["label"], "amount": gone})
+            log.info("Commitments: %s kr på %s er forbi fristen og regnes som betalt",
+                     _kr(gone), item["label"])
+    trekk = next((i for i in items if i["id"] == "forskuddstrekk"
+                  and "dated_by_term" not in i), None)
     if trekk:
         trekk["due"] = today.isoformat()
         trekk["days"] = 0
@@ -657,6 +790,9 @@ async def build(today: date | None = None) -> dict:
         "free_all": round(free_all, 2),
         "loans": {"balance": round(-loans_balance, 2), "accounts": loan_accounts},
         "anomalies": anomalies,
+        # Statutory amounts still on the books past their deadline, counted as
+        # paid on it: said, so a payment that really is missing can be seen.
+        "assumed_paid": assumed_paid,
         "verdict": verdict,
     }
 
@@ -757,6 +893,13 @@ def briefing(data: dict | None) -> str:
         out.append(f"Lån og avbetaling står på {_kr(data['loans']['balance'])} kr "
                    f"til sammen. Det er ikke tatt med over, fordi bare "
                    f"terminbeløpene forfaller snart — ikke hele saldoen.\n")
+    if data.get("assumed_paid"):
+        out.append("**Regnet som betalt, fordi fristen er passert:** står fortsatt "
+                   "i bøkene, men betalingen er ikke bokført ennå. Pengene er "
+                   "allerede ute av banktallet, så de trekkes ikke en gang til.\n")
+        out += [f"- {p['label']}: {_kr(p['amount'])} kr" for p in data["assumed_paid"]]
+        out.append("Say so if he asks why the forecast holds less than the "
+                   "books: if one of these really is unpaid, it is owed now.\n")
     if data.get("anomalies"):
         out.append("**Regnet som null, fordi tallet står på feil side:**\n")
         out += [f"- {a}" for a in data["anomalies"]]
