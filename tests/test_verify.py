@@ -45,3 +45,33 @@ def test_sources_keep_names_across_rounds():
     out = verify.sources([B(type="mcp_tool_result", tool_use_id="t1",
                             content=[{"type": "text", "text": "42"}])], names)
     assert out[0][0] == "get_balance_sheet", out
+
+
+def test_a_minus_written_out_is_read_as_one():
+    assert verify.numbers("Kassa står i minus 845 481 kr") == {-845481.0}
+    assert verify.numbers("Saldo −845 481 kr") == {-845481.0}
+    assert verify.numbers("Resultat: –12 300 kr") == {-12300.0}
+    # Ranges stay ranges.
+    assert verify.numbers("uke 3–5") == {5.0}
+    assert verify.numbers("100–200 kr") == {100.0, 200.0}
+
+
+def test_a_negative_figure_is_traced_however_it_is_written():
+    c = verify.Corpus()
+    c.add('{"saldo": -845481.0}', "get_balance_sheet")
+    c.add("Likviditet uke 4: −1 363 822 kr", "fakta")
+    for answer in ("Kassa står i minus 845 481 kr.", "Saldoen er -845 481 kr.",
+                   "Et underskudd på 845 481 kr.", "Laveste punkt −1 363 822 kr.",
+                   "Laveste punkt -1 363 822 kr."):
+        r = verify.check(answer, c)
+        assert r["unverified"] == [], (answer, r)
+    signed = verify.check("Saldoen er -845 481 kr.", c)["traced"][0]
+    assert "note" not in signed
+    unsigned = verify.check("Et underskudd på 845 481 kr.", c)["traced"][0]
+    assert unsigned["note"] == "fortegn ulikt"
+
+
+def test_a_figure_with_no_source_is_still_flagged():
+    c = verify.Corpus()
+    c.add('{"saldo": -845481.0}', "get_balance_sheet")
+    assert verify.check("Kassa står i minus 845 000 kr.", c)["unverified"] == [-845000.0]
