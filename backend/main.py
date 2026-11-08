@@ -545,7 +545,9 @@ def _company_payload(d: dict) -> dict:
         "notes": d.get("notes", []),
         "used_in_calculations": sorted(
             k for k in d["settings"]
-            if k in company.KNOWN and k not in company.AGENT_ONLY),
+            if k in company.KNOWN and k not in company.AGENT_ONLY
+            # Text in a draft, not a figure in a calculation.
+            and company.KNOWN[k][0] != "text"),
         "known_settings": {k: v[1] for k, v in company.KNOWN.items()},
     }
 

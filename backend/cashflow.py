@@ -2564,6 +2564,25 @@ def briefing(data: dict | None) -> str:
                    f"{overall}hver kunde med minst {payment_habits.MIN_CUSTOMER} betalte "
                    f"fakturaer er lagt inn med sin egen vane.{named} Fakturaer "
                    f"som ikke er forfalt, er lagt på forfall pluss kundens vane.\n")
+        # Who is always late, against the company's own reminder rule (card 20).
+        try:
+            late_days = rules(data)["purring_etter_dager"]["value"]
+        except Exception:  # noqa: BLE001 — the rest of the briefing still holds
+            late_days = None
+        habitual = sorted(((n, c["days"]) for n, c in (h.get("customers") or {}).items()
+                           if late_days is not None and c["days"] >= late_days),
+                          key=lambda x: -x[1])
+        if habitual:
+            out.append(f"**Faste sene betalere** — vanen deres er forbi purreregelen "
+                       f"på {late_days} dager: "
+                       + ", ".join(f"{n} ({d} dager)" for n, d in habitual)
+                       + ". De får en påminnelse, men det er ikke et nytt "
+                       f"problem: prognosen venter pengene deres sent. En kunde "
+                       f"som vanligvis betaler i tide og nå er over regelen, er "
+                       f"det som bør tas opp; Saker har kortene og dagens "
+                       f"innkrevingsliste. Etter to påminnelser uten betaling er "
+                       f"neste steg (inkassovarsel, samtale, nedbetaling) eierens "
+                       f"eget: foreslå det, men skriv det ikke.\n")
     else:
         out.append(f"**Når kundene betaler** — det er for få innbetalinger å se "
                    f"et mønster i, så alle kunder er lagt inn med "

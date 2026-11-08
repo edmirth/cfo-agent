@@ -37,7 +37,27 @@ export type DeckCard = {
   snooze_until?: string
 }
 
-export type Deck = { as_of: string; open: DeckCard[]; snoozed: DeckCard[]; recent: DeckCard[] }
+/** Én kunde på dagens innkrevingsliste (kort 20). */
+export type CollectionRow = {
+  customer: string
+  amount: number
+  late: number
+  habit: "uvanlig" | "fast" | "ny"
+  habit_days: number | null
+  step: 1 | 2 | 3
+  card: string | null
+  today: boolean
+  action: string
+  until: string | null
+}
+
+export type Deck = {
+  as_of: string
+  open: DeckCard[]
+  snoozed: DeckCard[]
+  recent: DeckCard[]
+  collections?: { rows: CollectionRow[]; today: number; total: number }
+}
 
 /** Sakene, og det som skal til for å bestemme over dem. Hentes hver gang: en
  *  sak kan ha løst seg siden sist man så på den. */

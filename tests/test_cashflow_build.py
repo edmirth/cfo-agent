@@ -667,6 +667,9 @@ def test_a_customer_who_pays_late_is_expected_late():
     assert _expected_at(data, 900) == ["2026-11-09"], "due plus his own twenty days"
     assert data["betalingsvaner"]["customers"]["Treg AS"] == {"days": 20, "invoices": 4}
     assert "Treg AS 20 dager" in cashflow.briefing(data)
+    # Past the default reminder rule of 14 days: a habitual late payer (card 20).
+    assert "Faste sene betalere" in cashflow.briefing(data)
+    assert "Treg AS (20 dager)" in cashflow.briefing(data)
 
 
 def test_a_customer_with_little_history_takes_the_companys():

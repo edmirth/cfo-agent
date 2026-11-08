@@ -1,9 +1,81 @@
 import { useEffect, useState } from "react"
 
 import { PageHeader, SectionHead } from "@/components/brand"
-import { DecisionRow, useDeck } from "@/components/decision"
+import { DecisionRow, useDeck, type CollectionRow } from "@/components/decision"
 import { Badge } from "@/components/ui/badge"
-import { dateNo } from "@/lib/format"
+import { dateNo, kr } from "@/lib/format"
+
+const HABIT: Record<CollectionRow["habit"], string> = {
+  uvanlig: "Uvanlig sen",
+  fast: "Fast sen betaler",
+  ny: "Ukjent vane",
+}
+
+/** Dagens innkreving (kort 20): hver kunde som er på etterskudd, med det som
+ *  skal gjøres i dag øverst. En rad med en åpen sak åpner den saken. */
+function Innkreving({
+  rows,
+  today,
+  onOpen,
+}: {
+  rows: CollectionRow[]
+  today: number
+  onOpen: (id: string) => void
+}) {
+  return (
+    <section>
+      <SectionHead
+        title="Innkreving i dag"
+        aside={today ? `${today} å gjøre i dag` : "Ingenting å sende i dag"}
+      />
+      <ul className="divide-border divide-y border-y">
+        {rows.map((r) => {
+          const habit =
+            r.habit_days !== null && r.habit !== "ny"
+              ? `${HABIT[r.habit]} · betaler vanligvis ${r.habit_days} d etter forfall`
+              : HABIT[r.habit]
+          const body = (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium text-pretty">{r.customer}</span>
+                <span className="text-muted-foreground block text-[13px]">
+                  {kr(r.amount)} kr · {r.late} dager på etterskudd · {habit}
+                </span>
+              </span>
+              <span className="shrink-0 text-right">
+                {r.today ? (
+                  <Badge variant={r.step === 3 || r.habit === "uvanlig" ? "destructive" : "default"}>
+                    {r.action}
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-[13px]">
+                    {r.action}
+                    {r.until ? ` til ${dateNo(r.until)}` : ""}
+                  </span>
+                )}
+              </span>
+            </>
+          )
+          return (
+            <li key={r.customer}>
+              {r.today && r.card ? (
+                <button
+                  type="button"
+                  onClick={() => onOpen(r.card!)}
+                  className="hover:bg-tint flex w-full items-center gap-6 py-3 text-left transition-colors duration-150"
+                >
+                  {body}
+                </button>
+              ) : (
+                <div className="flex items-center gap-6 py-3">{body}</div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
 
 export function Saker({
   onCount,
@@ -52,6 +124,17 @@ export function Saker({
               : undefined
         }
       />
+
+      {!!deck?.collections?.rows.length && (
+        <Innkreving
+          rows={deck.collections.rows}
+          today={deck.collections.today}
+          onOpen={(id) => {
+            setCurrent(id)
+            document.getElementById(`sak-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+          }}
+        />
+      )}
 
       {!!open.length && (
         <div className="grid gap-3">

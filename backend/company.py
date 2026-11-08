@@ -63,6 +63,8 @@ KNOWN = {
     "kostnadsavvik_pct": ("pct", "hvor mye over sitt vanlige nivå en "
                           "kostnadskonto må ligge en måned før Arvaka sier "
                           "fra, i prosent"),
+    "kontonummer": ("text", "bankkontoen kundene betaler til; står i "
+                    "påminnelsene om forfalte fakturaer"),
     "brev_mottakere": ("emails", "hvem mandagsbrevet sendes til på e-post, "
                        "skilt med komma; står den ikke, går det til den som "
                        "logger inn"),

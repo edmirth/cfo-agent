@@ -41,7 +41,6 @@ kanban-plugin: board
 
 ## Next
 
-- [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
 
@@ -51,6 +50,8 @@ kanban-plugin: board
 
 ## Done
 
+- [x] 20. Build a daily collections list that flags repeat late payers @either #liquidity ✓ 2026-11-08
+	  - Built 2026-11-08: each late customer against his own habit (uvanlig sen: ring; fast sen betaler: a reminder), two reminders and then the owner decides, and "Innkreving i dag" at the top of Saker. Card: board/cards/collections-process.md.
 - [x] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent ✓ 2026-11-08
 	  - Built 2026-11-08: a written minus ("minus", −, –) is read as a sign, and a figure is traced by its size, with a differing sign noted rather than flagged. Card: board/cards/verify-negative-figures.md.
 - [x] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast ✓ 2026-11-08
