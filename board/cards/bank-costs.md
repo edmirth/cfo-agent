@@ -32,7 +32,7 @@ running costs from them.
 - [x] The briefing says where the costs come from, the median, the shares
       and the one-off months
 - [x] Tests with made-up figures
-- [ ] @edmir checks the chart on app.arvaka.no after the deploy
+- [x] @edmir checks the chart on app.arvaka.no after the deploy
 
 ## Log
 - 2026-11-08 — Built on `bank-costs`.
@@ -52,3 +52,4 @@ running costs from them.
     had left in November by the last bank line on 5 November. Loans and
     leasing are 9 % of it, which the forecast did not have before.
   - Suite: 582 passed.
+- 2026-11-08 — Merged as #104 and moved to Done.

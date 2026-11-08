@@ -48,16 +48,16 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
-	  - Built 2026-11-08: the running costs from the bank lines at the median month, one-offs held out. In Doing until @edmir checks the chart after the deploy. Card: board/cards/bank-costs.md.
-- [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
-	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
-	  - #94 (2026-11-07): every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. The rest of the card is card 60: the invoice runs at month end, from the invoice register.
-	  - Built 2026-11-08: what is left was the edge of the window. The money in after week 13 from invoicing sent inside it is said under the chart, as the last row, and after a low point in the last weeks. In Doing until @edmir checks the chart after the deploy. Card: board/cards/window-edge.md.
 
 
 ## Done
 
+- [x] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast ✓ 2026-11-08
+	  - Built 2026-11-08: the running costs from the bank lines at the median month, one-offs held out. Merged as #104. Card: board/cards/bank-costs.md.
+- [x] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there. ✓ 2026-11-08
+	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
+	  - #94 (2026-11-07): every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. The rest of the card is card 60: the invoice runs at month end, from the invoice register.
+	  - Built 2026-11-08: what is left was the edge of the window. The money in after week 13 from invoicing sent inside it is said under the chart, as the last row, and after a low point in the last weeks. Merged as #103. Card: board/cards/window-edge.md.
 - [x] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast ✓ 2026-11-08
 	  - #102: every bank line has a category by fixed rules; 96 % of the money going out over six months on the real books. The owner naming the unknown ones moved to card 65. Card: board/cards/bank-categories.md.
 - [x] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast ✓ 2026-11-08
