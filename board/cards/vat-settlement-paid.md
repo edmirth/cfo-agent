@@ -30,7 +30,10 @@ The rule since 2026-10-03 is that a VAT term is paid on its deadline
 - [x] When the postings cannot be read, or do not add up to the balance, the
       amount stays as before
 - [x] Tests, among them the October case
-- [ ] @edmir checks week 50 on app.arvaka.no after the deploy
+- [x] Checked on the real postings through the Tripletex connector (read
+      only): 2740, 2770 and 2600 add up to their balances, the July–August
+      VAT and the October withheld tax count as paid, and September–October
+      employer's contribution keeps 16 November
 
 ## Log
 - 2026-11-08 — Built on `vat-settlement-paid`.
@@ -51,3 +54,10 @@ The rule since 2026-10-03 is that a VAT term is paid on its deadline
     Aslefjord, 128 278 kr of withheld tax past its pay day now counts as paid.
   - Not run on the real books from the Mac, since that would renew the
     Tripletex login and log Render out.
+- 2026-11-08 — Merged as #96. Checked on the first customer's real postings
+  this year through the Tripletex connector: the postings on each account add
+  up exactly to its balance, so `_date_by_term` applies. The July–August VAT
+  (booked to 2740 on 31 August, paid on 12 October in the bank, not booked as
+  paid) and the withheld tax from the October pay day count as paid; the bank
+  statements show both payments. September–October employer's contribution is
+  dated 16 November.
