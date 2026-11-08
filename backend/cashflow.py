@@ -373,6 +373,11 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                 seen.add(key)
             if history is not None:
                 history.append(row)
+            # A credited invoice and its credit note both report the balance
+            # left between them; the credit note carries it. Counted on both,
+            # a 5 200 kr credit came to 10 400.
+            if row.get("isCredited"):
+                continue
             amount = row.get(outstanding_key) or 0
             if not amount or not row.get("dueDate"):
                 continue
@@ -1223,7 +1228,8 @@ def _ferie_withheld() -> tuple[float, int, bool]:
     return min(1.0, weeks * 6 / VIRKEDAGER), weeks, bool(ok)
 
 
-def _pay_days(today: date, horizon: date) -> list[tuple[int, int, date]]:
+def _pay_days(today: date, horizon: date,
+              paid_before: date | None = None) -> list[tuple[int, int, date]]:
     """Every pay day in the window, with the month it pays for.
 
     Public to the module rather than inlined in `_payroll_runs`, because the
@@ -1231,15 +1237,21 @@ def _pay_days(today: date, horizon: date) -> list[tuple[int, int, date]]:
     month describe what the payroll run does, so they have to be gated on the
     run being in the window — not on the month merely being touched by it,
     which is a different question at both edges of thirteen weeks.
+
+    A pay day before `paid_before`, the first day the bank figure does not
+    cover, is in that figure; one after it is not, however the calendar has
+    moved on, and is paid in the forecast (in this week). The day after a pay
+    day the feed has usually not delivered it yet.
     """
-    out, month = [], today
+    cutoff = min(paid_before or today, today)
+    out, month = [], date(cutoff.year, cutoff.month, 1)
     while True:
         # The same pay day commitments uses — imported, not reimplemented. Two
         # implementations disagreed and the forecast lost a December payroll.
         pay_day = workdays.backward(commitments.payday(month.year, month.month))
         if pay_day >= horizon:
             break
-        if pay_day >= today:
+        if pay_day >= cutoff:
             out.append((month.year, month.month, pay_day))
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
@@ -1247,7 +1259,8 @@ def _pay_days(today: date, horizon: date) -> list[tuple[int, int, date]]:
 
 
 def _payroll_runs(today: date, horizon: date, payroll_cash: float,
-                  aga_monthly: float = 0.0, aga_booked: float = 0.0) -> list[dict]:
+                  aga_monthly: float = 0.0, aga_booked: float = 0.0,
+                  paid_before: date | None = None) -> list[dict]:
     """Every pay day between now and the horizon, and what leaves on it.
 
     Gross, not net: from 2026 the trekk goes to Skatteetaten the same day as
@@ -1258,7 +1271,7 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
     ferie_month = commitments.ferie_month()
     withheld, _, _ = _ferie_withheld()
     flows = []
-    for year, month_no, pay_day in _pay_days(today, horizon):
+    for year, month_no, pay_day in _pay_days(today, horizon, paid_before):
         month = date(year, month_no, 1)
         amount, label = payroll_cash, "Lønn og skattetrekk"
         if month.month == ferie_month and withheld:
@@ -1718,9 +1731,15 @@ async def build(today: date | None = None) -> dict:
             "feriepenger i seg.")
     wages_paid = wages_paid if isinstance(wages_paid, dict) and "per_run" in wages_paid else None
     pay_day_cash = wages_paid["per_run"] if wages_paid else rates["wages_cash"]
+    # The bank figure is as of its last line, not today: a pay day after it is
+    # still to go out, as commitments dates the taxes.
+    try:
+        paid_before = date.fromisoformat(com.get("paid_before") or "")
+    except ValueError:
+        paid_before = today
     committed += _payroll_runs(today, horizon, pay_day_cash,
-                               rates["aga"], aga_booked)
-    payroll_months = [m for _, m, _ in _pay_days(today, horizon)]
+                               rates["aga"], aga_booked, paid_before)
+    payroll_months = [m for _, m, _ in _pay_days(today, horizon, paid_before)]
 
     # Trading that has not happened yet: invoicing goes out at month end and is
     # collected on the terms this company's customers actually take. Running
