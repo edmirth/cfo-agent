@@ -125,3 +125,28 @@ def test_the_two_wage_rates_are_not_both_called_lonn():
     _, notes = cashflow._run_rates(rows, cols)
     named = [n for n in notes if n.startswith("Lønn er lagt inn")]
     assert len(named) <= 1, named
+
+
+# -------------------------------------------------- after week 13 (card 17)
+def test_money_in_after_the_window_is_summed_not_put_on_a_week():
+    """The invoicing sent inside the window and paid after it, as one line.
+    Only the money in, and never on a balance."""
+    data = _assembled(
+        [_flow(1, -50_000.0, "payroll"), _flow(95, 80_000.0, "recurring"),
+         _flow(100, 20_000.0, "ar"), _flow(96, -30_000.0, "ap"),
+         _flow(97, 9_000.0, "ar_slow")],
+        [_flow(105, 40_000.0, "new_sales")])
+    after = data["after"]
+    assert after["in"] == 100_000.0 and after["expected_in"] == 40_000.0
+    assert (after["first_week"], after["last_week"]) == (1, 3), "8 and 18 January"
+    assert data["weeks"][-1]["committed_close"] == 50_000.0, "not on the weeks"
+    assert after["text"] == ("Etter uke 13 kommer 100 000 kr inn i uke 1–3 fra "
+                             "fakturaer som er sendt eller sendes før da, "
+                             "140 000 kr med resten av den vanlige faktureringen.")
+
+
+def test_nothing_after_the_window_gives_no_line():
+    data = _assembled([_flow(1, -50_000.0, "payroll"),
+                       _flow(96, -30_000.0, "ap")], [])
+    assert data["after"] is None and cashflow.after_text(None) == ""
+    assert "Etter uke 13" not in cashflow.briefing(data)

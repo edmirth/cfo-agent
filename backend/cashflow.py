@@ -50,6 +50,10 @@ log = logging.getLogger("cfo.cashflow")
 CACHE_SECONDS = 600
 
 WEEKS = 13
+# The money in that is kept when it lands after the window: customer invoices
+# sent, and the invoicing sent inside the window. Not the slow and doubtful
+# spreads, which are ours, nor the accounts' fallback, which has no invoice.
+AFTER_KINDS = {"ar", "recurring", "recurring_usual", "new_sales"}
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
 INVOICE_PAGE = 100           # the most one invoice search returns
 INVOICE_PAGES = 20           # pages read in one month before it is called cut off
@@ -821,7 +825,10 @@ def _invoice_runs(history: list, today: date, horizon: date,
                 m["usual"] += left_usual
                 for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
                     pay = workdays.forward(issued + timedelta(days=terms + late))
-                    if pay >= horizon:
+                    # Sent inside the window and paid after it: kept for the
+                    # line after week 13 (`after` in `_assemble`), never on
+                    # the weeks.
+                    if issued >= horizon:
                         continue
                     label = (f"Fakturering {MONTH_NAMES[mo - 1]} (ikke sendt), "
                              f"{_term_step(terms)} dager")
@@ -829,7 +836,8 @@ def _invoice_runs(history: list, today: date, horizon: date,
                         flows.append({"date": pay, "amount": left_low * share,
                                       "kind": "recurring", "month": (y, mo),
                                       "customer": name, "label": label})
-                        upcoming.append(pay)
+                        if pay < horizon:
+                            upcoming.append(pay)
                     if round((left_usual - left_low) * share) > 0:
                         flows.append({"date": pay, "amount": (left_usual - left_low) * share,
                                       "kind": "recurring_usual", "month": (y, mo),
@@ -893,7 +901,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
             by_month[(y, mo)] = left
             for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
                 pay = workdays.forward(issued + timedelta(days=terms + lag))
-                if pay < horizon and round(left * share) > 0:
+                if issued < horizon and round(left * share) > 0:
                     flows.append({"date": pay, "amount": left * share, "kind": "new_sales",
                                   "month": (y, mo),
                                   "label": f"Annen fakturering {MONTH_NAMES[mo - 1]} "
@@ -2051,6 +2059,21 @@ def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
     }
 
 
+def _after_payload(after: dict, week0: date) -> dict | None:
+    """The money in after week 13, summed and dated in weeks."""
+    if round(after["in"] + after["expected_in"]) <= 0:
+        return None
+    first, last = (date.fromisoformat(after[k]) for k in ("first", "last"))
+    after["items"].sort(key=lambda x: (x["date"], -x["amount"]))
+    out = {"in": round(after["in"], 2), "expected_in": round(after["expected_in"], 2),
+           "first": after["first"], "last": after["last"],
+           "first_week": first.isocalendar().week, "last_week": last.isocalendar().week,
+           "start": (week0 + timedelta(weeks=WEEKS)).isoformat(),
+           "items": after["items"]}
+    out["text"] = after_text(out)
+    return out
+
+
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open, vat_share=0.0,
               vat_measured=False, booked_vat=0.0, invoiced=0.0,
@@ -2073,9 +2096,28 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
                       "in": 0.0, "out": 0.0, "expected_in": 0.0,
                       "expected_out": 0.0, "items": []})
 
+    # Money coming in after the window from invoices sent, or to be sent,
+    # inside it (card 17). Without it the last weeks carry the wages and the
+    # VAT the invoicing pays for, but not the invoicing, and read as a fall.
+    # Only money in: what goes out after the window is not calculated, so
+    # this is never netted against the weeks. Next week's window has it.
+    after = {"in": 0.0, "expected_in": 0.0, "first": None, "last": None, "items": []}
+
+    def keep_after(flow, scenario: str) -> None:
+        if flow["amount"] <= 0 or flow.get("kind") not in AFTER_KINDS:
+            return
+        after["in" if scenario == "committed" else "expected_in"] += flow["amount"]
+        day = flow["date"].isoformat()
+        after["first"] = min(after["first"] or day, day)
+        after["last"] = max(after["last"] or day, day)
+        after["items"].append({"label": flow["label"], "kind": flow["kind"],
+                               "amount": round(flow["amount"], 2),
+                               "date": day, "scenario": scenario})
+
     for flow in committed:
         i = bucket(flow)
         if i is None:
+            keep_after(flow, "committed")
             continue
         key = "in" if flow["amount"] >= 0 else "out"
         weeks[i][key] += abs(flow["amount"])
@@ -2085,6 +2127,7 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
     for flow in expected:
         i = bucket(flow)
         if i is None:
+            keep_after(flow, "expected")
             continue
         key = "expected_in" if flow["amount"] >= 0 else "expected_out"
         weeks[i][key] += abs(flow["amount"])
@@ -2118,6 +2161,7 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
         "as_of": today.isoformat(),
         "opening": round(opening, 2),
         "weeks": weeks,
+        "after": _after_payload(after, week0),
         "low_committed": {"label": low_c["label"], "start": low_c["start"],
                           "amount": low_c["committed_close"]},
         "low_expected": {"label": low_e["label"], "start": low_e["start"],
@@ -2287,6 +2331,35 @@ def _floor_line(data: dict) -> str:
             f"under it is tight even while the balance is still positive.\n")
 
 
+EDGE_WEEKS = 3   # a low point in the last this many weeks gets the line after
+
+
+def at_edge(data: dict, start: str | None) -> bool:
+    """Whether the week starting `start` is one of the last EDGE_WEEKS of the
+    window and money comes in after it."""
+    weeks = data.get("weeks") or []
+    starts = [w["start"] for w in weeks[-EDGE_WEEKS:]]
+    return bool(data.get("after")) and start in starts
+
+
+def after_text(after: dict | None) -> str:
+    """One sentence on the money in after week 13, for the page, the email,
+    the card and the briefing alike."""
+    if not after:
+        return ""
+    weeks = (f"uke {after['first_week']}" if after["first_week"] == after["last_week"]
+             else f"uke {after['first_week']}–{after['last_week']}")
+    if round(after["in"]) <= 0:
+        return (f"Etter uke 13 kommer {_kr(after['expected_in'])} kr inn i "
+                f"{weeks} hvis faktureringen før da går ut som vanlig.")
+    text = (f"Etter uke 13 kommer {_kr(after['in'])} kr inn i {weeks} fra "
+            f"fakturaer som er sendt eller sendes før da")
+    if round(after["expected_in"]) > 0:
+        text += (f", {_kr(after['in'] + after['expected_in'])} kr med resten "
+                 f"av den vanlige faktureringen")
+    return text + "."
+
+
 def briefing(data: dict | None) -> str:
     """The forecast block injected into the system prompt."""
     if not data or not data.get("weeks"):
@@ -2350,6 +2423,12 @@ def briefing(data: dict | None) -> str:
         out.append(f"| {w['label']} | {w['start']} | {_kr(w['in'] + w['expected_in'])} | "
                    f"{_kr(-(w['out'] + w['expected_out']))} | "
                    f"{_kr(w['committed_close'])} | {_kr(w['expected_close'])} |")
+    if data.get("after"):
+        out.append("")
+        out.append(f"{after_text(data['after'])} Only the money in is counted "
+                   f"after the window, not what goes out then, so never add it "
+                   f"to a balance. Say it when the last weeks look low: the "
+                   f"invoicing that pays for them lands after week 13.")
     out.append("")
     out.append(f"**Forutsetningene** — these are his to change, and saying them "
                f"out loud is what separates a forecast from a guess: fakturering "

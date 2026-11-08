@@ -57,6 +57,17 @@ export type Cashflow = {
   low_expected: { label: string; start: string; amount: number }
   goes_negative: { label: string; start: string } | null
   goes_negative_committed: { label: string; start: string } | null
+  // Money in after week 13 from invoices sent, or sent, inside the window
+  // (card 17). Only money in, so it is never added to a balance.
+  after?: {
+    in: number
+    expected_in: number
+    first_week: number
+    last_week: number
+    start: string
+    text: string
+    items: NonNullable<Week["items"]>
+  } | null
   open_invoices: { receivable: number; receivable_total: number }
   // How the opening was reached: the booked balance, and how far the bank is
   // ahead of it. adjustment is null when the reconciliation could not be read.
@@ -130,6 +141,8 @@ export type WeeklyBrief = {
     floor: number
     floor_assumed?: boolean
     under_floor: boolean
+    // Set when the low point is one of the last weeks and money comes in after.
+    after?: string | null
     text: string
   }
   changed: string[]

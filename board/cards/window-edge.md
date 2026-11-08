@@ -1,5 +1,5 @@
 ---
-title: See past week 13, so the last weeks do not read as a fall
+title: Say what comes in after week 13, so the last weeks do not read as a fall
 owner: @edmir
 milestone: #forecast
 created: 2026-11-08
@@ -9,70 +9,55 @@ Card 17 on the board. Most of what card 17 asked for is done: the invoicing
 not yet sent is in the forecast (#58, #60, #61, #94, #97–#101). What is left
 is the edge of the window.
 
-The forecast stops after 13 weeks (`WEEKS` in `backend/cashflow.py`), and the
-`bucket` in `build` drops every flow that lands after that. Wages, VAT and
-withheld tax are paid on fixed dates, so they land inside the window. The
-invoicing that pays for those weeks is sent at month end on 30 or 45 days,
-so it lands up to six and a half weeks later, often after week 13. The last
-weeks of the chart then carry the money going out without the money coming
-in that follows it, and the low point can land in the last week only because
-the window ends there.
+The forecast stops after 13 weeks (`WEEKS` in `backend/cashflow.py`). Wages,
+VAT and withheld tax are paid on fixed dates, so they land inside the window.
+The invoicing that pays for those weeks is sent at month end on 30 or 45
+days, so it is often paid after week 13. The last weeks then carry the money
+going out without the money coming in that follows, and the low point can
+land in the last week. Nothing on the page said so.
 
-That low point is used everywhere: `low_committed` in `build`, `low_point` in
-`brief.py` (front page and Monday email), `_from_cashflow` in `cards.py` (the
-"Under gulvet" card in Saker), and the agent's briefing. An edge week can
-make all four say the company goes under the floor when it does not. The
-light reads only the first six weeks, so it is mostly spared, except for the
-yellow "later in the period" reason.
-
-As of 8 November the window ends in week 6 of 2027, 1–7 February. January's
-invoicing on 45 days is paid in mid-February, and the edge falls on the
-January VAT and the February wages.
-
-## Plan
-1. **Calculate further, show 13.** `build` uses `WEEKS + EDGE_WEEKS` (6
-   extra weeks) for the horizon, so every source (invoice runs, other
-   invoicing, payroll, VAT and tax, the bills) fills 19 weeks with no change
-   of its own. The chart, the table and every reading of the 13 weeks only
-   get `weeks[:WEEKS]`. The extra weeks are kept as `after`, not shown as
-   weeks.
-2. **"Etter uke 13".** `after` is summed into one line, money in and out on
-   both lines and the main items, for example: "Etter uke 13: 1,9 mill. inn
-   i uke 14–16, fra faktureringen i desember og januar." It goes under the
-   chart and as the last row in "Vis uke for uke", which opens like the
-   others.
-3. **An honest low point.** A low week is an *edge* if it is one of the last
-   three weeks (`EDGE_LAST = 3`) and the committed line is back above the
-   floor within the extra weeks. Then `low_committed` is the lowest week
-   before the edge, and `edge` holds the edge week and what lifts it. The
-   front page, the Monday email and the agent's briefing say the low point,
-   plus one line about the edge. `_from_cashflow` never makes an "Under
-   gulvet" card from an edge week alone. If the line does not come back
-   within the extra weeks, it is not an edge, and nothing changes.
-4. **The light.** The yellow "Saldoen går under gulvet senere i perioden" is
-   not given for an edge week alone.
-5. **Tests** with made-up books: a company that invoices at month end on 45
-   days, seen from mid-October and mid-November; an edge week that is lifted
-   (no card, low point before it); one that is not lifted (card as before);
-   a week 13 that is low with nothing after it (not an edge).
-
-Not in this card: how sure the weeks after 13 are. They are estimates, used
-only to judge the edge and to write the "Etter uke 13" line, never drawn.
+**Not calculated past the window.** A week later the window has moved and
+the money is in it, so the forecast is not extended. The balance in the last
+weeks is a true balance for those weeks. What was missing was saying what
+comes in right after, and the forecast already knew: it dropped the
+invoices it had dated after week 13.
 
 ## Done when
-- [ ] The forecast is calculated six weeks past the window and shows 13
-- [ ] "Etter uke 13" under the chart and as the last row in "Vis uke for uke"
-- [ ] An edge week is not the low point, and alone it makes no card in Saker
-      and no yellow light; the front page, the Monday email and the briefing
-      say what lifts it
-- [ ] Tests for the rules above
-- [ ] @edmir checks the chart on app.arvaka.no after the deploy, and the
-      last weeks no longer look like a fall
+- [x] Money in after week 13 from invoices sent, or sent, inside the window
+      is kept as `after` in the forecast: the committed and the expected
+      part, the weeks it lands in, and each invoice. Only money in, never on
+      a balance, since what goes out after week 13 is not calculated
+- [x] "Etter uke 13" under the chart and as the last row in "Vis uke for
+      uke", which opens like the weeks
+- [x] A low point in the last three weeks says what comes after it: on the
+      front page, in the Monday email, in the "Under gulvet" card in Saker,
+      and in the agent's briefing. It stays the low point and the card is
+      still made, since that week is under the floor
+- [x] Tests
+- [ ] @edmir checks the chart on app.arvaka.no after the deploy
 
 ## Log
-- 2026-11-08 — Planned. Files: `backend/cashflow.py` (`build`, `briefing`),
-  `backend/brief.py` (`light`, `low_point`), `backend/cards.py`
-  (`_from_cashflow`), `frontend-react/src/pages/brief.tsx` (chart, week
-  table, low-point line), `frontend-react/src/lib/api.ts`; tests in
-  `tests/test_cashflow.py`, `tests/test_brief.py`, `tests/test_cards.py`.
-  Size: small to medium. It does not depend on card 64.
+- 2026-11-08 — Planned with six weeks calculated past the window and an
+  edge week taken out of the low point. @edmir: the window moves a week at a
+  time, so drop the extra weeks. Built without them.
+- 2026-11-08 — Built.
+  - `backend/cashflow.py`: `_invoice_runs` and `_other_invoicing` keep a run
+    sent before the window ends and paid after it (they used to drop it);
+    `_assemble` collects what lands after the window into `after`
+    (`AFTER_KINDS`: sent invoices and the invoicing still to be sent, not the
+    slow and doubtful spreads); `after_text` says it in one sentence;
+    `at_edge` tells whether a week is one of the last `EDGE_WEEKS`; the
+    briefing adds the sentence after the week table.
+  - `backend/brief.py` `low_point` and `backend/cards.py` `_from_cashflow`:
+    the sentence after the low point when it is in the last three weeks.
+    The light is unchanged.
+  - `frontend-react/src/pages/brief.tsx`: the sentence under the chart, the
+    "Etter uke 13" row (balances left empty, it is no balance), and the line
+    under the low point.
+  - Tests: a run sent inside the window and paid after it is kept, one sent
+    after it is not, the sum and its sentence, nothing after gives no line,
+    the low point and the card at the edge and before it. The test of the
+    contract sent before today now reads only the weeks inside the window.
+    Suite: 577 passed.
+  - Seen on the Lindeskar demo in a headless browser: low point in week 4,
+    the last week; "Etter uke 13 kommer 2 447 177 kr inn i uke 5–10".
