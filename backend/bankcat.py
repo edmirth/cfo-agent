@@ -27,6 +27,13 @@ Fixed rules, in order, so the same line always gets the same answer:
 
 `summary` gives each month's money in and out by category, and the share
 that is unknown, which is how much the costs built from this can be trusted.
+
+`costs` is the money going out that the forecast builds its running costs
+from (card 64): suppliers, card, rent, loans and leasing, insurance, pension,
+fees and the accountant. Not wages, taxes or VAT, which have their own dated
+lines, and not the unknown ones. A usual month is the median of the closed
+months; a month above UNUSUAL × the median is a one-off, named and kept out
+of when in the month the money leaves.
 """
 import asyncio
 import logging
@@ -58,6 +65,15 @@ RULES: list[tuple[str, re.Pattern]] = [
 COMPANY = re.compile(r"\b(AS|ASA|NUF|AB|ANS|DA|SA|BA|LTD|GMBH|KS)\b", re.I)
 SUPPLIER_TEXT = re.compile(r"BETALING MED (KID|MELDING)|EFAKTURA|AVTALEGIRO", re.I)
 CUSTOMER_POSTING = re.compile(r"Faktura nummer|Kreditnota", re.I)
+
+# What the running costs are built from, and which of it comes whether anyone
+# sells anything or not: the rest follows the work.
+COST_CATS = ("leverandorer", "kort", "husleie", "lan", "forsikring", "pensjon",
+             "gebyr", "regnskap")
+CERTAIN = {"husleie", "lan", "forsikring", "pensjon", "gebyr", "regnskap"}
+COST_MIN_MONTHS = 3
+UNUSUAL = 1.5
+PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))   # as cashflow.COST_PERIODS
 
 LABELS = {"kunder": "Kunder", "lonn": "Lønn", "skatt": "Skatt og avgift",
           "mva": "Merverdiavgift", "lan": "Lån og leasing", "forsikring": "Forsikring",
@@ -112,13 +128,88 @@ def category(line: dict, customers: set[str], employees: list[frozenset[str]],
     return "ukjent"
 
 
+def _median(values: list[float]) -> float:
+    v = sorted(values)
+    n = len(v)
+    return 0.0 if not n else v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def _weighted_median(pairs: list[tuple[int, float]]) -> int:
+    pairs = sorted(pairs)
+    half, run = sum(a for _, a in pairs) / 2, 0.0
+    for day, amount in pairs:
+        run += amount
+        if run >= half:
+            return day
+    return pairs[-1][0]
+
+
+def costs(lines: list[tuple[dict, str]], today: date) -> dict | None:
+    """The running costs as the bank shows them: a usual month, its one-offs,
+    what is certain, and when in the month it leaves. None with fewer than
+    COST_MIN_MONTHS closed months to read.
+
+    `lines` is (bank line, category)."""
+    this = today.strftime("%Y-%m")
+    by_month: dict[str, float] = {}
+    out: list[tuple[str, str, int, float]] = []
+    seen = set()
+    for line, cat in lines:
+        month = str(line.get("date"))[:7]
+        seen.add(month)
+        if cat not in COST_CATS or line["amount"] >= 0:
+            continue
+        try:
+            day = date.fromisoformat(str(line.get("date"))[:10]).day
+        except ValueError:
+            continue
+        out.append((month, cat, day, -line["amount"]))
+        by_month[month] = by_month.get(month, 0.0) + -line["amount"]
+    closed = sorted(m for m in seen if m < this)
+    if len(closed) < COST_MIN_MONTHS:
+        return None
+    totals = {m: by_month.get(m, 0.0) for m in closed}
+    level = _median(list(totals.values()))
+    unusual = [m for m in closed if level > 0 and totals[m] > UNUSUAL * level]
+    usual = [(m, c, d, a) for m, c, d, a in out if m in totals and m not in unusual]
+    total = sum(a for *_, a in usual)
+    shares: dict[str, float] = {}
+    for _, c, _, a in usual:
+        shares[c] = shares.get(c, 0.0) + a
+    sums = [0.0] * len(PERIODS)
+    days: list[list] = [[] for _ in PERIODS]
+    for _, _, d, a in usual:
+        i = next(n for n, (_, last) in enumerate(PERIODS) if d <= last)
+        sums[i] += a
+        days[i].append((d, a))
+    return {
+        "level": round(level, 2),
+        "months": [{"month": m, "amount": round(totals[m], 2), "unusual": m in unusual}
+                   for m in closed],
+        "shares": {c: round(v / total, 4) for c, v in sorted(shares.items(), key=lambda kv: -kv[1])}
+                  if total else {},
+        "certain_share": round(sum(v for c, v in shares.items() if c in CERTAIN) / total, 4)
+                         if total else 0.0,
+        # Paid out on the day: no terms, the bank line is the payment.
+        "profile": {"measured": total > 0, "periods": [
+            {"from": first, "to": last, "share": round(sums[i] / total, 4),
+             "day": _weighted_median(days[i]), "terms": 0}
+            for i, (first, last) in enumerate(PERIODS) if sums[i] > 0]},
+        "this_month": this,
+        "paid_this_month": round(by_month.get(this, 0.0), 2),
+    }
+
+
 def summary(lines: list[dict], customers: set[str], employees: list[frozenset[str]],
-            suppliers: set[str]) -> dict:
-    """Each month's money in and out by category, and what is not known."""
+            suppliers: set[str], today: date | None = None) -> dict:
+    """Each month's money in and out by category, and what is not known; with
+    `today`, also the running costs (`costs`)."""
     months: dict = {}
     unknown: dict = {}
+    sorted_lines: list[tuple[dict, str]] = []
     for line in lines:
         cat = category(line, customers, employees, suppliers)
+        sorted_lines.append((line, cat))
         month = str(line.get("date"))[:7]
         m = months.setdefault(month, {})
         side = "inn" if line["amount"] > 0 else "ut"
@@ -135,6 +226,7 @@ def summary(lines: list[dict], customers: set[str], employees: list[frozenset[st
         "unknown": sorted(({"name": n, "amount": round(u["amount"], 2), "lines": u["lines"]}
                            for n, u in unknown.items()), key=lambda u: u["amount"])[:25],
         "unknown_share_out": round(out_unknown / out_total, 3) if out_total else 0.0,
+        "costs": costs(sorted_lines, today) if today else None,
     }
 
 
@@ -199,5 +291,6 @@ async def measured(client, today: date, customers: set[str]) -> dict | None:
                  for e in (staff or {}).get("employees") or []]
     suppliers = {_norm(s.get("name") or "") for s in (register or {}).get("suppliers") or []}
     CACHE.clear()
-    CACHE[key] = summary(bank, {_norm(c) for c in customers}, [e for e in employees if e], suppliers)
+    CACHE[key] = summary(bank, {_norm(c) for c in customers}, [e for e in employees if e],
+                         suppliers, today)
     return CACHE[key]

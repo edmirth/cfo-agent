@@ -135,6 +135,9 @@ SEASON_WEIGHT = 0.5
 # The running costs that are not fixed bills are spread over the month by
 # when this company's variable bills are dated and paid. See _cost_profile.
 COST_PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))
+# Above this share of the money out with no category, the bank's costs leave
+# too much out, and the accounts carry the forecast as before (card 64).
+BANK_UNKNOWN_MAX = 0.10
 PROFILE_MIN_BILLS = 10
 PROFILE_WEIGHT_CAP = 3
 PROFILE_MIN_PERIOD_BILLS = 3
@@ -954,6 +957,18 @@ def _profile(bills: list[tuple[date, date, float]]) -> dict:
          "terms": (int(_weighted_median(terms[i]))
                    if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
         for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
+
+
+def _bank_costs(cats: dict | None) -> dict | None:
+    """The bank's running costs, when they can carry the forecast: read,
+    at least `bankcat.COST_MIN_MONTHS` closed months, and no more than
+    BANK_UNKNOWN_MAX of the money out without a category."""
+    costs = (cats or {}).get("costs")
+    if not costs or costs["level"] <= 0:
+        return None
+    if cats.get("unknown_share_out", 1.0) > BANK_UNKNOWN_MAX:
+        return None
+    return costs
 
 
 def _cost_parts(profile: dict, month: date, today: date,
@@ -1828,6 +1843,25 @@ async def build(today: date | None = None) -> dict:
             booked_opex += series[-1][1]
     booked_opex = max(0.0, booked_opex)
     opex_left = max(0.0, opex_in(today.month) - booked_opex)
+    # The running costs from the bank, where it can be read and most of what
+    # leaves it has a category (card 64). The accounts are only as current as
+    # the bookkeeping: at the first customer they gave the forecast about a
+    # third less than left the bank, and nothing for loan instalments.
+    bank_costs = _bank_costs(bank_categories)
+    if bank_categories and not bank_costs:
+        warnings.append(
+            "Driftskostnadene er regnet fra regnskapet, ikke fra banken: "
+            + ("for mange utbetalinger i banken har ingen kategori ennå "
+               f"({round(bank_categories.get('unknown_share_out', 0) * 100)} %)."
+               if bank_categories.get("unknown_share_out", 0) > BANK_UNKNOWN_MAX
+               else f"færre enn {bankcat.COST_MIN_MONTHS} hele måneder å lese."))
+    # What is already dated in each month and is part of the same money out:
+    # the open bills, the fixed bills, and the bills booked without one.
+    known_by_month: dict = {}
+    for f in committed:
+        if f["kind"] in ("ap", "fixed", "ap_unmatched"):
+            key = (f["date"].year, f["date"].month)
+            known_by_month[key] = known_by_month.get(key, 0.0) - f["amount"]
     sales_by_month, costs_by_month, invoicing_by_month = [], [], []
     month = date(today.year, today.month, 1)
     for _ in range(6):
@@ -1837,7 +1871,7 @@ async def build(today: date | None = None) -> dict:
         sales_by_month.append({"month": MONTH_NAMES[month.month - 1],
                                "amount": round(revenue, 2)})
         costs_by_month.append({"month": MONTH_NAMES[month.month - 1],
-                               "amount": round(opex, 2)})
+                               "amount": round(bank_costs["level"] if bank_costs else opex, 2)})
         month_vat = revenue * MVA_RATE * vat_share
         gross = revenue * (1 + MVA_RATE)
         if (month.year, month.month) == (today.year, today.month):
@@ -1907,31 +1941,56 @@ async def build(today: date | None = None) -> dict:
                              "kind": "vat_future",
                              "label": f"Merverdiavgift på fakturering "
                                       f"{MONTH_NAMES[month.month - 1]}"})
-        cost = (opex_left * ((opex + month_vat) / opex) if opex else 0.0) \
-            if current else opex + month_vat
-        # The fixed bills of this month are its cost too, placed in the
-        # committed line on their own dates when they fall inside the window.
-        # Both gross. Never below zero: fixed bills above the run-rate mean
-        # the rate is low, not that money comes back.
-        fixed = fixed_by_month.get((month.year, month.month), 0.0)
-        cost = max(0.0, cost - fixed)
+        if bank_costs:
+            # From the bank (card 64): the usual month of what left the
+            # account, gross, by the day it left. What is dated already in the
+            # same month — open bills, fixed bills, and this month what has
+            # left the bank — is part of that month, so it comes off.
+            key = (month.year, month.month)
+            fixed = known_by_month.get(key, 0.0)
+            cost = max(0.0, bank_costs["level"] - fixed
+                       - (bank_costs["paid_this_month"] if current else 0.0))
+            cost_tied = bank_costs["certain_share"] + (1 - bank_costs["certain_share"]) * tied
+            cost_parts = _cost_parts(bank_costs["profile"], month, today, current)
+            month_vat = 0.0
+        else:
+            cost = (opex_left * ((opex + month_vat) / opex) if opex else 0.0) \
+                if current else opex + month_vat
+            # The fixed bills of this month are its cost too, placed in the
+            # committed line on their own dates when they fall inside the window.
+            # Both gross. Never below zero: fixed bills above the run-rate mean
+            # the rate is low, not that money comes back.
+            fixed = fixed_by_month.get((month.year, month.month), 0.0)
+            cost = max(0.0, cost - fixed)
+            cost_tied = tied
+            cost_parts = _cost_parts(profile, month, today, current)
         # Spread by when the bills are paid. A part paid after the window
         # leaves it, as sales collected after it do.
-        for pay, share, days in _cost_parts(profile, month, today, current):
+        for pay, share, days in cost_parts:
             part = cost * share
             if pay >= horizon or round(part) <= 0:
                 continue
-            label = (f"Driftskostnader {MONTH_NAMES[month.month - 1]}"
-                     f"{', resten' if current else ''}"
-                     f"{', ' + days if days else ''}"
-                     f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-                     f"{' (inkl. moms)' if month_vat >= 0.5 else ''}")
-            if round(part * tied) > 0:
-                committed.append({"date": pay, "amount": -part * tied,
-                                  "kind": "opex_recurring",
-                                  "label": f"{label}, til den faste faktureringen"})
-            if round(part * (1 - tied)) > 0:
-                expected.append({"date": pay, "amount": -part * (1 - tied),
+            if bank_costs:
+                label = (f"Driftskostnader {MONTH_NAMES[month.month - 1]}"
+                         f"{', resten' if current else ''}"
+                         f"{', betalt ' + days.replace('fakturert ', '') if days else ''}"
+                         f", fra banken"
+                         f"{' utenom kjente regninger' if fixed >= 0.5 else ''}")
+            else:
+                label = (f"Driftskostnader {MONTH_NAMES[month.month - 1]}"
+                         f"{', resten' if current else ''}"
+                         f"{', ' + days if days else ''}"
+                         f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
+                         f"{' (inkl. moms)' if month_vat >= 0.5 else ''}")
+            # From the bank the committed part is also what comes whatever is
+            # sold: rent, loans, insurance, pension, fees, the accountant.
+            sure = (", den faste delen" if bank_costs
+                    else ", til den faste faktureringen")
+            if round(part * cost_tied) > 0:
+                committed.append({"date": pay, "amount": -part * cost_tied,
+                                  "kind": "opex_recurring", "label": label + sure})
+            if round(part * (1 - cost_tied)) > 0:
+                expected.append({"date": pay, "amount": -part * (1 - cost_tied),
                                  "kind": "opex", "label": label})
         month = (date(month.year + 1, 1, 1) if month.month == 12
                  else date(month.year, month.month + 1, 1))
@@ -1958,6 +2017,14 @@ async def build(today: date | None = None) -> dict:
     data["assumptions"]["mva_paa_kostnader"] = round(opex_vat, 2)
     data["assumptions"]["monthly_opex_cash"] = round(opex_cash, 2)
     data["assumptions"]["kostnader_bokfort_denne_maneden"] = round(booked_opex, 2)
+    # Where the running costs came from, and from the bank what they rest on.
+    data["assumptions"]["kostnader_kilde"] = "banken" if bank_costs else "regnskapet"
+    data["assumptions"]["kostnader_fra_banken"] = bank_costs and {
+        "nivaa_mnd": bank_costs["level"],
+        "maneder": bank_costs["months"],
+        "andeler": bank_costs["shares"],
+        "sikker_andel": bank_costs["certain_share"],
+        "betalt_denne_maneden": bank_costs["paid_this_month"]}
     # The recurring bills the committed line now carries, for the owner to
     # check against what he knows he pays.
     data["fixed_costs"] = fixed_found
@@ -2360,6 +2427,19 @@ def after_text(after: dict | None) -> str:
     return text + "."
 
 
+def _bank_cost_words(bank: dict) -> str:
+    """The running costs from the bank, said as the briefing says them."""
+    odd = [m for m in bank["maneder"] if m["unusual"]]
+    shares = ", ".join(f"{bankcat.LABELS.get(c, c).lower()} {round(v * 100)} %"
+                       for c, v in list(bank["andeler"].items())[:4])
+    return (f"driftskostnader {_kr(bank['nivaa_mnd'])} kr i måneden fra banken "
+            f"(medianen av {len(bank['maneder'])} hele måneder, med moms; {shares}"
+            + (f"; holdt utenfor som uvanlige: "
+               + ", ".join(f"{m['month']} ({_kr(m['amount'])} kr)" for m in odd) if odd else "")
+            + f"), hvorav {_kr(bank['betalt_denne_maneden'])} kr alt har gått ut denne "
+              f"måneden og bare resten lagt inn")
+
+
 def briefing(data: dict | None) -> str:
     """The forecast block injected into the system prompt."""
     if not data or not data.get("weeks"):
@@ -2433,14 +2513,15 @@ def briefing(data: dict | None) -> str:
     out.append(f"**Forutsetningene** — these are his to change, and saying them "
                f"out loud is what separates a forecast from a guess: fakturering "
                f"{_kr(a['monthly_revenue'])} kr i måneden, lønn "
-               f"{_kr(a['monthly_wages'])} kr, driftskostnader "
-               f"{_kr(a['monthly_opex'])} kr"
-               + (f" ({_kr(a['monthly_opex_cash'])} kr ut av kontoen med "
-                  f"{_kr(a['mva_paa_kostnader'])} kr inngående moms)"
-                  if a.get("mva_paa_kostnader") else "")
-               + (f", hvorav {_kr(a['kostnader_bokfort_denne_maneden'])} kr "
-                  f"alt er bokført denne måneden og bare resten lagt inn"
-                  if a.get("kostnader_bokfort_denne_maneden") else "")
+               f"{_kr(a['monthly_wages'])} kr, "
+               + (_bank_cost_words(bank) if (bank := a.get("kostnader_fra_banken")) else
+                  f"driftskostnader {_kr(a['monthly_opex'])} kr"
+                  + (f" ({_kr(a['monthly_opex_cash'])} kr ut av kontoen med "
+                     f"{_kr(a['mva_paa_kostnader'])} kr inngående moms)"
+                     if a.get("mva_paa_kostnader") else "")
+                  + (f", hvorav {_kr(a['kostnader_bokfort_denne_maneden'])} kr "
+                     f"alt er bokført denne måneden og bare resten lagt inn"
+                     if a.get("kostnader_bokfort_denne_maneden") else ""))
                + f", kredittid {a['credit_days']} dager "
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")

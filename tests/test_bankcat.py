@@ -114,3 +114,45 @@ def test_read_once_a_day_and_a_failure_is_not_kept():
     bankcat.CACHE.clear()
     assert asyncio.run(bankcat.measured(_Bank(fail=True), date(2026, 11, 8), set())) is None
     assert bankcat.CACHE == {}
+
+
+# ------------------------------------------------ the running costs (card 64)
+def _months(**extra):
+    """Six closed months of rent on the 1st and suppliers on the 20th, and
+    half of October. Wages and VAT are in the bank too, and stay out."""
+    out = []
+    for m in range(4, 10):
+        out += [({"date": f"2026-{m:02d}-01", "amount": -50_000.0}, "husleie"),
+                ({"date": f"2026-{m:02d}-20", "amount": -150_000.0}, "leverandorer"),
+                ({"date": f"2026-{m:02d}-20", "amount": -400_000.0}, "lonn"),
+                ({"date": f"2026-{m:02d}-10", "amount": -90_000.0}, "mva"),
+                ({"date": f"2026-{m:02d}-25", "amount": -5_000.0}, "ukjent"),
+                ({"date": f"2026-{m:02d}-15", "amount": 600_000.0}, "kunder")]
+    out += [({"date": "2026-10-01", "amount": -50_000.0}, "husleie")]
+    for month, amount in extra.items():
+        out.append(({"date": f"2026-{month}-21", "amount": -amount}, "leverandorer"))
+    return out
+
+
+def test_the_running_costs_are_the_usual_month_of_what_left():
+    c = bankcat.costs(_months(), date(2026, 10, 15))
+    assert c["level"] == 200_000.0, "rent and suppliers, not wages, VAT or unknown"
+    assert c["certain_share"] == 0.25 and c["shares"]["leverandorer"] == 0.75
+    assert c["paid_this_month"] == 50_000.0, "October's rent has left already"
+    assert [(p["from"], p["day"], p["share"], p["terms"]) for p in c["profile"]["periods"]] \
+        == [(1, 1, 0.25, 0), (15, 20, 0.75, 0)]
+    assert not any(m["unusual"] for m in c["months"])
+
+
+def test_a_month_far_above_the_usual_is_a_one_off():
+    """A big job's materials in August: named, not the level, and not where
+    in the month the money usually leaves."""
+    c = bankcat.costs(_months(**{"08": 400_000.0}), date(2026, 10, 15))
+    assert c["level"] == 200_000.0
+    assert [m["month"] for m in c["months"] if m["unusual"]] == ["2026-08"]
+    assert c["shares"]["leverandorer"] == 0.75, "August's job is not in the shares"
+
+
+def test_too_few_months_gives_no_costs():
+    lines = [l for l in _months() if l[0]["date"] >= "2026-08"]
+    assert bankcat.costs(lines, date(2026, 10, 15)) is None

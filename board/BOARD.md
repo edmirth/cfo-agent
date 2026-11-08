@@ -34,7 +34,6 @@ kanban-plugin: board
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
 - [ ] 61. A read-only page on the server that backtests each invoice run, predicted against sent, on the real books @edmir #forecast
 - [ ] 62. Score the forecast every Monday against what came in and went out, part by part @edmir #forecast
-- [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
 - [ ] 65. Find one-offs and the costs that came with them (a big job and its extra wage run), and ask the owner in Saker whether they were one-offs @edmir #forecast
 	  - Also from card 63: the owner says once what the bank lines with no category are, and it is remembered. Same question, same place in Saker.
 - [ ] 66. Let the owner add known events ahead (a big job, a contract ending, a purchase) as their own lines in the forecast @edmir #forecast
@@ -49,6 +48,8 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
+	  - Built 2026-11-08: the running costs from the bank lines at the median month, one-offs held out. In Doing until @edmir checks the chart after the deploy. Card: board/cards/bank-costs.md.
 - [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
 	  - #94 (2026-11-07): every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. The rest of the card is card 60: the invoice runs at month end, from the invoice register.
