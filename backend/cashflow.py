@@ -29,6 +29,7 @@ import statistics
 from calendar import monthrange
 from datetime import date, timedelta
 
+import bankcat
 import bankgap
 import brreg
 import commitments
@@ -1491,6 +1492,10 @@ async def build(today: date | None = None) -> dict:
         log.warning("Cashflow: innbetalingene kunne ikke leses: %s", paid)
         paid = None
     habits = payment_habits.habits(customer_history, paid)
+    # Every bank line with a category, once a day (card 63): what actually
+    # left the account, for the costs (card 64) and for the owner to see.
+    bank_categories = await bankcat.measured(
+        mcp, today, {r.get("customerName") or "" for r in customer_history})
     if paid is None or not habits["complete"]:
         warnings.append(
             "Innbetalingene på konto 1500 kunne ikke leses helt, så "
@@ -1983,6 +1988,7 @@ async def build(today: date | None = None) -> dict:
     data["bank"] = _bank_payload(booked, gap, ar_paid, ap_paid)
     data["items"] = _expected_items(ar_due, ap_due, today, habits)
     data["betalingsvaner"] = habits
+    data["bank_categories"] = bank_categories
     # What is still owed after the bank's unbooked receipts: a customer who
     # has paid must not be sent a reminder because the books are behind.
     data["ar_open"] = ar_due
@@ -2551,6 +2557,24 @@ def briefing(data: dict | None) -> str:
                if odd else "")
             + "Pengene som kommer inn er lest fra fakturaene, kunde for kunde, "
               "ikke fra inntektene i regnskapet.\n")
+
+    cats = data.get("bank_categories")
+    if cats and cats.get("months"):
+        closed = sorted(cats["months"])[:-1] or sorted(cats["months"])
+        per: dict = {}
+        for month in closed:
+            for cat, sides in cats["months"][month].items():
+                per[cat] = per.get(cat, 0.0) - sides.get("ut", 0.0)
+        out_lines = ", ".join(f"{bankcat.LABELS.get(c, c)} {_kr(v / len(closed))} kr"
+                              for c, v in sorted(per.items(), key=lambda kv: -kv[1]) if v >= 1)
+        odd = ", ".join(f"{u['name']} ({_kr(-u['amount'])} kr)" for u in cats["unknown"][:5]
+                        if u["amount"] < 0)
+        out.append(f"**Det som gikk ut av banken, per måned i snitt "
+                   f"({len(closed)} hele måneder):** {out_lines}. "
+                   f"{round(cats['unknown_share_out'] * 100)} % av utbetalingene har ingen "
+                   f"kategori ennå" + (f"; de største: {odd}" if odd else "") + ". "
+                   f"This is the bank, not the accounts: use it when he asks what the "
+                   f"business really spends, and ask him about the unknown ones.\n")
 
     # The half of the forecast that is easy to leave out, because it is a bill
     # arriving for money that already came in.
