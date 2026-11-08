@@ -36,12 +36,16 @@ kanban-plugin: board
 - [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
 - [ ] 55. Run the tests on GitHub for every PR, and let Render deploy only when they pass @edmir #platform
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
+- [ ] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast
+- [ ] 61. A read-only page on the server that backtests each invoice run, predicted against sent, on the real books @edmir #forecast
+- [ ] 62. Score the forecast every Monday against what came in and went out, part by part @edmir #forecast
 
 
 ## Next
 
 - [ ] 17. We only invoice with max 45 days, so most of the invoices go to 6 weeks ahead, so when we look at december we dont get the fully picture as the incvoices has not been sent out yet, and then it could look like we have a fall on the invooices around that time and low on cash, so we need to fix this, and maybe use like a average or try to predict what it could be around there.
 	  - Mostly solved by the cash-flow work (PRs #58, #60, #61): sales not yet invoiced are in the expected line with last year's season, the company's own invoice day and terms, and its customers' own lateness. Still open: a month whose sales are paid after week 13 is outside the window, so December looks light from October.
+	  - #94 (2026-11-07): every customer billed each month counts in the committed line, and each week opens to show what is in it. Card: board/cards/invoicing-ahead.md. The rest of the card is card 60: the invoice runs at month end, from the invoice register.
 - [ ] 19. Verify flags a figure written as "minus 845 481" as having no source, though −845 481 is in the facts @edmir #agent
 - [ ] 20. Build a daily collections list that flags repeat late payers @either #liquidity
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
@@ -49,6 +53,7 @@ kanban-plugin: board
 
 ## Doing
 
+- [ ] 59. VAT, employer's contribution and withheld tax past their deadline count as paid, also on the settlement accounts, instead of being paid again at the next deadline @edmir #forecast
 
 
 ## Done
