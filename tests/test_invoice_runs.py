@@ -47,8 +47,8 @@ def test_each_customer_is_invoiced_on_his_own_days_and_terms():
     assert (by["Midt AS"]["day"], by["Midt AS"]["terms"]) == (15, 45)
     october = [(f["customer"], f["date"].isoformat()) for f in flows
                if f["month"] == (2026, 10)]
-    assert october == [("Slutt AS", "2026-12-06"), ("Midt AS", "2026-12-06")], \
-        "30 Oct + 30 + 7 and 15 Oct + 45 + 7"
+    assert october == [("Slutt AS", "2026-12-07"), ("Midt AS", "2026-12-07")], \
+        "30 Oct + 30 + 7 and 15 Oct + 45 + 7 is a Sunday, so the Monday"
     labels = {f["label"] for f in flows if f["month"] == (2026, 10)}
     assert labels == {"Fakturering oktober (ikke sendt), 30 dager",
                       "Fakturering oktober (ikke sendt), 45 dager"}
@@ -62,7 +62,7 @@ def test_a_customer_invoiced_through_the_month_is_spread_as_he_is():
     flows, _, _ = cashflow._invoice_runs(history, date(2026, 10, 1), HORIZON)
     october = sorted((f["date"].isoformat(), round(f["amount"])) for f in flows
                      if f["month"] == (2026, 10))
-    assert october == [("2026-11-26", 30_000), ("2026-12-06", 30_000), ("2026-12-16", 30_000)]
+    assert october == [("2026-11-26", 30_000), ("2026-12-07", 30_000), ("2026-12-16", 30_000)]
 
 
 def test_this_month_only_the_days_still_to_come():
@@ -138,3 +138,21 @@ def test_the_accounts_are_a_check_on_the_register():
     nov = data["assumptions"]["fakturering_per_maned"][1]
     assert (nov["month"], nov["fast_vanlig"], nov["regnskapet"]) == ("november", 100_000.0, 500_000.0)
     assert any("Fakturaene sier 100 000 kr i november" in w for w in data["warnings"])
+
+
+def test_a_month_with_no_invoice_days_past_its_usual_day_leaves_the_committed_line():
+    """Usually invoiced on the 15th; on the 28th nothing has gone out. Perhaps
+    late, perhaps the contract has ended: the expected line keeps it, the
+    committed line does not stand on it."""
+    history = _monthly("Midt AS", 15, 45, 50_000.0)
+    flows, found, _ = cashflow._invoice_runs(history, date(2026, 10, 28), HORIZON)
+    assert (found[0]["committed"], found[0]["why"]) == (
+        False, "ingen faktura ennå denne måneden, vanligvis den 15.")
+    assert {f["kind"] for f in flows} == {"recurring_usual"}
+
+
+def test_money_due_on_a_weekend_lands_on_the_monday():
+    history = _monthly("Lørdag AS", 30, 30, 10_000.0)
+    flows, _, _ = cashflow._invoice_runs(history, TODAY, HORIZON)
+    october = [f["date"] for f in flows if f["month"] == (2026, 10)]
+    assert october == [date(2026, 12, 7)], "30 Oct + 30 + 7 = Sunday 6 December"

@@ -113,3 +113,23 @@ out of how the rest is timed, and named.
   than three months measured keeps the wage accounts. On the real books the
   measured pay day is about a tenth below the wage accounts' figure. Suite:
   545 passed.
+- 2026-11-08 — #99 merged (pay day from the payroll vouchers). A scan of the
+  receipts path with simulated invoicing (an invoice sent, above usual, a new
+  customer, one paid at once) found the money moved correctly to the due
+  date with the total unchanged, and five ways the chart could jump without
+  anything happening. Fixed on `forecast-robustness`:
+  - One invoice over 30 days late took a regular customer out of both lines;
+    a 2 000 kr invoice removed a whole customer. Now more than his usual
+    month late takes him out; over 5 000 kr and a quarter of his month takes
+    him out of the committed line only; less changes nothing.
+  - A month closed without his invoice dropped him from the regular
+    customers. Now five of six months keeps him regular; a missed month only
+    takes him out of the committed line.
+  - His usual invoice days ten days past with nothing sent left him in the
+    committed line. Now the expected line only.
+  - One month with no invoicing at all sent the whole forecast back to the
+    accounts. Now three of the last six months is enough.
+  - Money due on a weekend or holiday now lands on the next banking day.
+  - The pay day is read once a day, and an unread ledger is said.
+  The agent's briefing names the regular customers outside the committed
+  line and why. Suite: 551 passed.
