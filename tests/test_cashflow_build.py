@@ -750,17 +750,20 @@ def _sales_weeks(data, month):
     out: dict = {}
     for w in data["weeks"]:
         for i in w["items"]:
-            if i["kind"] in ("new_sales", "recurring") and month in i["label"]:
+            if i["kind"] in ("new_sales", "recurring", "recurring_usual") and month in i["label"]:
                 out[w["start"]] = out.get(w["start"], 0) + i["amount"]
     return [(start, round(amount)) for start, amount in out.items()]
 
 
 def test_sales_invoiced_on_the_10th_land_from_the_10th():
     """10 November on thirty days, seven days late: 17 December. The month-end
-    reading put it on 6 January."""
+    reading put it on 6 January. With a year of invoices to read, what comes
+    in is what the register says this customer is invoiced, not the revenue
+    in the accounts."""
     rows, _ = _invoiced_on_the_10th()
     data = _forecast([REVENUE], ar=rows)
-    assert _sales_weeks(data, "november") == [("2026-12-14", 500_000)]
+    assert _sales_weeks(data, "november") == [("2026-12-14", 10_000)]
+    assert data["assumptions"]["fakturering_fra"] == "fakturaregisteret"
     prof = data["assumptions"]["fakturaprofil"]
     assert prof["measured"] and prof["periods"][0]["day"] == 10
 
@@ -769,7 +772,7 @@ def test_sales_are_paid_as_late_as_the_customers_usually_pay():
     rows, pays = _invoiced_on_the_10th(late=14)
     data = _forecast([REVENUE], ar=rows, postings=pays)
     assert data["assumptions"]["fakturaprofil"]["forsinkelse_dager"] == 14
-    assert _sales_weeks(data, "november") == [("2026-12-21", 500_000)], "24 December"
+    assert _sales_weeks(data, "november") == [("2026-12-21", 10_000)], "24 December"
 
 
 def test_too_few_invoices_keep_the_month_end():
@@ -785,8 +788,8 @@ def test_this_months_remainder_follows_the_profile():
     """On the 5th, October's invoicing is still to go out on the 10th."""
     rows, _ = _invoiced_on_the_10th()
     data = _forecast([REVENUE], ar=rows)
-    assert _sales_weeks(data, "oktober") == [("2026-11-16", 390_000)], \
-        "10 October + 30 + 7, less what the stub says is already out"
+    assert _sales_weeks(data, "oktober") == [("2026-11-16", 10_000)], \
+        "10 October + 30 + 7"
 
 
 # ------------------------- the contract customers, in the committed line
@@ -801,14 +804,14 @@ def test_a_customer_invoiced_every_month_is_in_the_committed_line():
     rows, _ = _invoiced_on_the_10th()
     data = _forecast([REVENUE], ar=rows)
     assert data["recurring_sales"] == [{"name": "Kunde", "amount": 10_000.0,
-                                        "day": 10, "terms": 30, "late": 7,
+                                        "usual": 10_000.0, "day": 10, "terms": 30,
+                                        "term_steps": [30], "late": 7,
                                         "next": "2026-11-16"}]
     assert [(round(i["amount"]), i["label"]) for i in _committed(data, "recurring")] == [
-        (10_000, "Fast fakturering til Kunde, oktober"),
-        (10_000, "Fast fakturering til Kunde, november")]
-    nov = [i for i in _kinds(data, "new_sales") if "november" in i["label"]]
-    assert [round(i["amount"]) for i in nov] == [490_000], \
-        "the rest of the month, still in the expected line only"
+        (10_000, "Fakturering oktober (ikke sendt), 30 dager"),
+        (10_000, "Fakturering november (ikke sendt), 30 dager")]
+    assert not _kinds(data, "new_sales"), \
+        "the revenue in the accounts is a check now, not money coming in"
     assert data["assumptions"]["fast_fakturering_mnd"] == 10_000.0
     text = cashflow.briefing(data)
     assert "Fast fakturering i den bundne linjen" in text and "Kunde 10 000 kr" in text
@@ -821,14 +824,16 @@ def test_the_vat_on_contract_invoicing_is_committed_with_it():
     data = _forecast([REVENUE], ar=rows)
     assert [round(i["amount"]) for i in _committed(data, "vat_recurring")
             if "oktober" in i["label"]] == [-2_000], "10 000 / 1.25 × 25 %"
-    assert [round(i["amount"]) for i in _october_vat(data)] == [-98_000], \
-        "the month's VAT, less the contract's part already committed"
+    assert not _october_vat(data), "nothing else is to be invoiced in October"
 
 
 def test_running_costs_follow_the_contract_into_the_committed_line():
     """Serving a contract costs materials like any other sale. A fifth of
     November's invoicing is contract, so a fifth of its running costs is."""
     rows, _ = _invoiced_on_the_10th(amount=100_000.0)
+    # A customer invoiced four of the last six months: the other invoicing.
+    rows += [{**_invoice(0.0, f"2026-{m:02d}-10", f"2026-{m + 1:02d}-09", 600 + m),
+              "customerName": "Prosjekt AS", "amount": 400_000.0} for m in (6, 7, 8, 9)]
     costs = _cum("6800 Kontorrekvisita", [50_000.0] * 10)
     data = _forecast([REVENUE, costs], ar=rows)
     tied = [round(i["amount"]) for i in _committed(data, "opex_recurring")
@@ -846,8 +851,10 @@ def test_a_customer_billed_unevenly_is_still_billed_every_month():
     rows[9]["amount"] = 30_000.0          # August, three times the others
     rows[10]["amount"] = 6_000.0          # September, fewer hours
     data = _forecast([REVENUE], ar=rows)
-    assert [(f["name"], f["amount"]) for f in data["recurring_sales"]] == [("Kunde", 6_000.0)]
+    assert [(f["name"], f["amount"], f["usual"]) for f in data["recurring_sales"]] == [
+        ("Kunde", 6_000.0, 10_000.0)], "lowest of the last three; the median as usual"
     assert [round(i["amount"]) for i in _committed(data, "recurring")] == [6_000, 6_000]
+    assert [round(i["amount"]) for i in _kinds(data, "recurring_usual")] == [4_000, 4_000]
 
 
 def test_an_extra_invoice_this_month_leaves_the_rest_of_the_month_to_come():
@@ -858,8 +865,8 @@ def test_an_extra_invoice_this_month_leaves_the_rest_of_the_month_to_come():
                  "customerName": "Kunde", "amount": 4_000.0})
     data = _forecast([REVENUE], ar=rows)
     assert [(round(i["amount"]), i["label"]) for i in _committed(data, "recurring")] == [
-        (6_000, "Fast fakturering til Kunde, oktober"),
-        (10_000, "Fast fakturering til Kunde, november")]
+        (6_000, "Fakturering oktober (ikke sendt), 30 dager"),
+        (10_000, "Fakturering november (ikke sendt), 30 dager")]
 
 
 def test_a_customer_who_missed_a_month_is_not_a_contract():
@@ -895,7 +902,7 @@ def test_a_month_already_invoiced_is_not_projected_again():
                  "customerName": "Kunde", "amount": 10_000.0})
     data = _forecast([REVENUE], ar=rows)
     assert [i["label"] for i in _committed(data, "recurring")] == [
-        "Fast fakturering til Kunde, november"]
+        "Fakturering november (ikke sendt), 30 dager"]
 
 
 def test_a_contract_is_not_sent_before_today_nor_above_its_season():
@@ -903,11 +910,12 @@ def test_a_contract_is_not_sent_before_today_nor_above_its_season():
     and a contract still goes quiet in a month that always does."""
     rows, _ = _invoiced_on_the_10th()
     today = date(2026, 10, 15)
-    flows, found, by_month = cashflow._recurring_sales(
+    flows, found, by_month = cashflow._invoice_runs(
         rows, today, date(2027, 1, 11), None, {11: 0.5})
     assert [(f["date"].isoformat(), round(f["amount"])) for f in flows] == [
         ("2026-11-21", 10_000), ("2026-12-17", 5_000)], "15 Oct + 30 + 7; half in November"
-    assert by_month[(2026, 12)] == 10_000.0 and found[0]["amount"] == 10_000.0
+    assert by_month[(2026, 12)] == {"low": 10_000.0, "usual": 10_000.0}
+    assert found[0]["amount"] == 10_000.0
 
 
 # --------------------------------------- a half-read forecast expires early

@@ -40,14 +40,54 @@ Three parts, all from the invoice register:
 - The revenue in the accounts becomes a check: when the invoices for a month
   do not add up to the usual revenue for it, the forecast says so.
 
+Added 2026-11-08, from the plan in `smarter-cashflow.md`: the usual month is
+the median, never the average, and a month of other invoicing above 1.5 × the
+median is a one-off (the first customer had a big job in August). It is left
+out of how the rest is timed, and named.
+
 ## Done when
-- [ ] Receipts come from A, B and C, and the revenue in the accounts no
-      longer makes receipts
-- [ ] Each run is one line in the week table, with its 30- and 45-day parts
-- [ ] A sent run replaces the prediction for that month
-- [ ] The VAT on sales follows the invoices
-- [ ] A test company that invoices at month end on 30 and 45 days, seen from
-      mid-October and mid-November
-- [ ] Checked against the real books with card 61
+- [x] Receipts come from A, B and C, and the revenue in the accounts no
+      longer makes receipts (once the register has three closed months)
+- [x] Each run is one line in the week table per term, "Fakturering november
+      (ikke sendt), 45 dager", in the committed and the expected line
+- [x] A sent run replaces the prediction for that month
+- [x] The VAT on sales follows the invoices
+- [x] Tests: customers on their own days and terms, invoicing through the
+      month, this month's remainder, the median and the floor, a one-off big
+      job, a young register, the check against the accounts
+- [x] The method backtested on the real books through the Tripletex connector
+- [ ] @edmir checks the chart on app.arvaka.no after the deploy
+- [ ] A recurring backtest on the server (card 61)
 
 ## Log
+- 2026-11-08 — Built on `invoice-runs`.
+  - `backend/cashflow.py`: `_invoice_runs` replaces `_recurring_sales`. A
+    customer invoiced in 5 of the last 6 closed months and each of the last 3
+    is regular. Usual = the median of his months; the committed line takes the
+    lowest of the last 3, the expected line the rest up to his usual month.
+    Each customer on the days and terms of his last 3 months; this month only
+    the days still to come, less what he has been invoiced already.
+  - `_other_invoicing`: everyone else, as one stream at its median month, in
+    the expected line only. Months above `UNUSUAL` × the median are named in
+    `annen_fakturering.uvanlige` and left out of the timing.
+  - With fewer than `RUN_MIN_MONTHS` closed months in the register, the old
+    reading of the accounts stays. Otherwise the accounts are a check:
+    `fakturering_per_maned` holds both, and a warning says when next month
+    differs by more than 35 %.
+  - The VAT on future invoicing and the share of running costs tied to the
+    committed line follow the register.
+  - The agent's briefing says how the runs and the one-offs are read.
+  - Tests: 9 rewritten in `test_cashflow_build.py` (they assumed the revenue
+    in the accounts as receipts), 9 new in `test_invoice_runs.py`. Suite: 529
+    passed, 0 failed.
+  - Backtest of the method on the first customer's real invoices, through the
+    Tripletex connector (read only), predicting each month from the six
+    before it: the committed line for the regular customers was below what
+    was actually invoiced in August, September and October. The median kept
+    the August job out: in October an average would have put the other
+    invoicing about twice as high as what came, the median about a third
+    too high. August itself could not be predicted from history (−40 %); that
+    is what card 66 is for. September +15 %, October −23 %.
+  - Demo: all three companies read the register. Kvarnheim's project
+    invoicing is uneven, and the new check says its invoices and its accounts
+    differ for December (card 40, project mode).

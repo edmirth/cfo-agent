@@ -36,9 +36,12 @@ kanban-plugin: board
 - [ ] 54. Rotate the three keys shown in chat on 2026-10-25: Supabase service key (backups), CFO_BACKUP_KEY, Resend @edmir #platform
 - [ ] 55. Run the tests on GitHub for every PR, and let Render deploy only when they pass @edmir #platform
 - [ ] 56. Skip the Render deploy when a merge only changes the board or the docs @edmir #platform
-- [ ] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast
 - [ ] 61. A read-only page on the server that backtests each invoice run, predicted against sent, on the real books @edmir #forecast
 - [ ] 62. Score the forecast every Monday against what came in and went out, part by part @edmir #forecast
+- [ ] 63. Give every bank line a category (wages, taxes, VAT, loans, rent, suppliers, card, owner, customers): rules first, AI suggestions the owner approves once @edmir #forecast
+- [ ] 64. Build the money going out per stream from the bank lines (63), at the median month, with one-offs left out @edmir #forecast
+- [ ] 65. Find one-offs and the costs that came with them (a big job and its extra wage run), and ask the owner in Saker whether they were one-offs @edmir #forecast
+- [ ] 66. Let the owner add known events ahead (a big job, a contract ending, a purchase) as their own lines in the forecast @edmir #forecast
 
 
 ## Next
@@ -53,11 +56,12 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 59. VAT, employer's contribution and withheld tax past their deadline count as paid, also on the settlement accounts, instead of being paid again at the next deadline @edmir #forecast
+- [ ] 60. Build the cash coming in from the invoice register: sent invoices, the next invoice runs per customer (own day, own 30/45-day terms, own lateness), and other invoicing; each run shown as one line @edmir #forecast
 
 
 ## Done
 
+- [x] 59. VAT, employer's contribution and withheld tax past their deadline count as paid, also on the settlement accounts, instead of being paid again at the next deadline @edmir #forecast ✓ 2026-11-08
 - [x] 18. Say clearly when the Tripletex login has expired, and stop after one try @edmir #platform ✓ 2026-11-07
 - [x] 58. Design the Monday email: Arvaka's brand, built to work as an email (phone, Outlook, dark mode) @edmir #delivery ✓ 2026-11-04
 - [x] 11. Open and approve a card with one tap from the email (We need to wait until we have the server up and running and a web page so we can use it on the phone as well) @agent #delivery ✓ 2026-11-03
