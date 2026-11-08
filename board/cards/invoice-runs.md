@@ -91,3 +91,13 @@ out of how the rest is timed, and named.
   - Demo: all three companies read the register. Kvarnheim's project
     invoicing is uneven, and the new check says its invoices and its accounts
     differ for December (card 40, project mode).
+- 2026-11-08 — Merged as #97. @edmir's chart on app.arvaka.no read lower than
+  the forecast built by hand from the same books, by about a million kroner
+  from week 46 on. Cause, found on the real books through the connector: the
+  bank lines left unmatched in the reconciliation were all taken as unbooked
+  and set against the customers' other open invoices, though most of them had
+  been booked as payments on their invoices and only not matched. Fixed on
+  `settle-booked-payments`: `bankgap.unbooked` sets each line against the
+  booked, unmatched payments of the same counterparty first. On the real
+  books, what was taken off open invoices fell from about a million kroner to
+  two small payments that really were unbooked. Suite: 535 passed.

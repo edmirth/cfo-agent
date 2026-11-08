@@ -1385,7 +1385,10 @@ async def build(today: date | None = None) -> dict:
     # which compare the register with the ledger and must see what the
     # ledger sees, and for this month's invoicing, which is invoicing whether
     # or not it has been paid.
-    unbooked = gap["unbooked"] if gap else []
+    # Only what the books do not have: a line booked but not matched in the
+    # reconciliation has closed its invoice already (`bankgap.unbooked`).
+    unbooked = (bankgap.unbooked(gap["unbooked"], gap.get("booked_unmatched") or [])
+                if gap else [])
     ar_due, ar_paid = bankgap.settle(ar_open, unbooked, +1)
     ap_due, ap_paid = bankgap.settle(ap_open, unbooked, -1)
 
