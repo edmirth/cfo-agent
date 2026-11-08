@@ -156,6 +156,12 @@ def low_point(cf: dict, floor_rule: dict) -> dict:
         text = (f"Laveste punkt: {low['label'].lower()} (fra {_day(low['start'])}), "
                 f"{_kr(low['committed_close'])} kr — over gulvet på {_kr(floor)} kr "
                 f"alle {len(weeks)} ukene.")
+    # A low point in the last weeks is often the edge of the window: the wages
+    # and the VAT are in it, the invoicing that pays for them lands after it
+    # (card 17). Said, not netted: what goes out after week 13 is not known.
+    edge = cashflow.at_edge(cf, low["start"])
+    if edge:
+        text += " " + cashflow.after_text(cf.get("after"))
     if floor_rule.get("assumed"):
         text += f" Gulvet er {company.said(floor_rule)}."
     return {"week": low["label"], "start": low["start"],
@@ -164,6 +170,7 @@ def low_point(cf: dict, floor_rule: dict) -> dict:
             "under_floor": under, "short_of_floor": short,
             "first_under": first and {"week": first["label"], "start": first["start"],
                                       "amount": first["committed_close"]},
+            "after": cashflow.after_text(cf.get("after")) if edge else None,
             "text": text}
 
 

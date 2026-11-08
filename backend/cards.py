@@ -539,6 +539,10 @@ def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
     contracts = any(f.get("committed", True) for f in cf.get("recurring_sales") or [])
     assumed = (f" Gulvet er {company.said(floor)}; sett deres eget i Selskapet "
                f"om det skal ligge et annet sted." if floor["assumed"] else "")
+    # The last weeks of the window carry the wages and the VAT, and the
+    # invoicing that pays for them often lands after it (card 17).
+    edge = (" " + cashflow.after_text(cf.get("after"))
+            if cashflow.at_edge(cf, low.get("start")) else "")
     return [{
         "key": f"cash:{low.get('start')}",
         "kind": "cash", "urgency": "high", "amount": low["amount"],
@@ -551,7 +555,7 @@ def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
                     "Fakturerer du utover det som vanlig" if contracts else
                     ". Fakturerer du som vanlig")
                  + ", ligger du høyere, men da er det faktureringen som må "
-                 "skje i tide." + assumed),
+                 "skje i tide." + edge + assumed),
         "evidence": [{"label": "Uke", "value": f"{low.get('label')} ({low.get('start')})"},
                      {"label": "Bundet saldo", "value": f"{_kr(low['amount'])} kr"},
                      {"label": "Gulv", "value": f"{_kr(floor['value'])} kr "

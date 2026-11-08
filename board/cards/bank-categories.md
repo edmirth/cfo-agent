@@ -26,8 +26,8 @@ Card 64 builds the costs from them.
 - [x] Tests with made-up names
 - [x] On the real books through the Tripletex connector (read only): 96 % of
       the money going out over six months has a category
-- [ ] The owner says what the unknown ones are, once, and it is remembered.
-      Proposed to go with card 65, which asks the owner in Saker about the
+- [ ] ~~The owner says what the unknown ones are, once, and it is remembered.~~
+      Moved to card 65 on 2026-11-08, which asks the owner in Saker about the
       one-offs: the same question, the same place.
 
 ## Log
@@ -43,3 +43,4 @@ Card 64 builds the costs from them.
     leasing, accountant, insurance, pension, fees) are about a third above
     what the accounts give the forecast today. Card 64.
   - Suite: 570 passed.
+- 2026-11-08 — Merged as #102 and moved to Done. The last box went to card 65.

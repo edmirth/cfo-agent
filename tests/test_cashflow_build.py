@@ -954,7 +954,8 @@ def test_a_contract_is_not_sent_before_today_nor_above_its_season():
     today = date(2026, 10, 15)
     flows, found, by_month = cashflow._invoice_runs(
         rows, today, date(2027, 1, 11), None, {11: 0.5})
-    assert [(f["date"].isoformat(), round(f["amount"])) for f in flows] == [
+    inside = [f for f in flows if f["date"] < date(2027, 1, 11)]
+    assert [(f["date"].isoformat(), round(f["amount"])) for f in inside] == [
         ("2026-11-23", 10_000), ("2026-12-17", 5_000)], \
         "15 Oct + 30 + 7 is a Saturday, so Monday; half in November"
     assert by_month[(2026, 12)] == {"low": 10_000.0, "usual": 10_000.0}
@@ -1096,3 +1097,27 @@ def test_stated_payment_terms_are_used_when_no_invoice_shows_them():
     ar = [_invoice(100_000.0, "2026-09-20", "2026-10-04")]
     a = _forecast([REVENUE], ar=ar, settings={"kredittid_dager": 45})["assumptions"]
     assert (a["credit_days"], a["credit_days_source"]) == (14, "målt på fakturaene")
+
+
+# ------------------------------------------- paid after the window (card 17)
+def test_a_run_sent_inside_the_window_and_paid_after_it_is_kept():
+    """December's and January's invoices go out before the window ends and
+    are paid after it. They are what the last weeks are waiting for, so they
+    come back for the line after week 13; the weeks never see them."""
+    rows, _ = _invoiced_on_the_10th()
+    flows, found, _ = cashflow._invoice_runs(
+        rows, date(2026, 10, 15), date(2027, 1, 11), None, {11: 0.5})
+    after = [(f["date"].isoformat(), round(f["amount"])) for f in flows
+             if f["date"] >= date(2027, 1, 11)]
+    assert after == [("2027-01-18", 10_000), ("2027-02-16", 10_000)]
+    assert found[0]["next"] == "2026-11-23", "the next payment is still inside"
+
+
+def test_a_run_sent_after_the_window_is_not_kept():
+    """January's invoice goes out on the 10th; with the window ending on the
+    8th it is not sent inside it, so nothing of it is counted."""
+    rows, _ = _invoiced_on_the_10th()
+    flows, _, _ = cashflow._invoice_runs(
+        rows, date(2026, 10, 15), date(2027, 1, 8), None, {11: 0.5})
+    assert max(f["date"] for f in flows) == date(2027, 1, 18), \
+        "December's, sent on the 10th, paid on the 18th; not January's"

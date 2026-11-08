@@ -565,6 +565,56 @@ function WeekItems({ items }: { items: NonNullable<Week["items"]> }) {
   )
 }
 
+/** Pengene som kommer inn etter uke 13 fra fakturaer sendt innen da. Bare
+ *  inn, så saldokolonnene står tomme: det som går ut etter vinduet er ikke
+ *  regnet, og summen er ingen saldo. Uten den raden ser de siste ukene ut som
+ *  et fall, siden lønna og momsen er med, men ikke faktureringen de betaler. */
+function AfterRow({
+  after,
+  shown,
+  toggle,
+}: {
+  after: NonNullable<Cashflow["after"]>
+  shown: boolean
+  toggle: () => void
+}) {
+  const weeks =
+    after.first_week === after.last_week
+      ? `uke ${after.first_week}`
+      : `uke ${after.first_week}–${after.last_week}`
+  return (
+    <>
+      <TableRow onClick={toggle} aria-expanded={shown} className="cursor-pointer">
+        <TableCell className="py-2.5 font-medium">
+          <ChevronDown
+            className={`text-muted-foreground mr-1.5 inline size-3.5 stroke-[1.5] transition-transform ${
+              shown ? "rotate-180" : ""
+            }`}
+          />
+          Etter uke 13
+        </TableCell>
+        <TableCell className="text-muted-foreground py-2.5 text-[13px]">{weeks}</TableCell>
+        <TableCell className="py-2.5 text-right tabular-nums">{kr(after.in + after.expected_in)}</TableCell>
+        <TableCell className="text-muted-foreground/40 py-2.5 text-right">–</TableCell>
+        <TableCell className="text-muted-foreground/40 py-2.5 text-right">–</TableCell>
+        <TableCell className="text-muted-foreground/40 py-2.5 text-right">–</TableCell>
+      </TableRow>
+      {shown && (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={6} className="bg-muted/40 px-4 py-3 whitespace-normal">
+            <div className="sticky left-4 max-w-[calc(100vw-7.5rem)] sm:static sm:max-w-none">
+              <p className="text-muted-foreground mb-2 text-[13px] leading-5">
+                Bare pengene inn: det som går ut etter uke 13 er ikke regnet, så dette er ingen saldo.
+              </p>
+              <WeekItems items={after.items} />
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  )
+}
+
 function CashTable({ cash }: { cash: Cashflow }) {
   const low = cash.low_committed.label
   // Én uke åpen om gangen: tabellen skal fortsatt kunne leses som tretten rader.
@@ -665,6 +715,9 @@ function CashTable({ cash }: { cash: Cashflow }) {
             </Fragment>
           )
         })}
+        {cash.after && (
+          <AfterRow after={cash.after} shown={open === -1} toggle={() => setOpen(open === -1 ? null : -1)} />
+        )}
       </TableBody>
     </Table>
   )
@@ -735,6 +788,9 @@ function LowPoint({ low }: { low: WeeklyBrief["low_point"] }) {
             )}
           </span>
         </p>
+      )}
+      {low.after && (
+        <p className="text-muted-foreground mt-3 text-[13px] leading-5">{low.after}</p>
       )}
     </aside>
   )
@@ -1074,6 +1130,7 @@ export function Brief({ onCount }: { onCount?: (n: number) => void }) {
                     `, de faste kundene som faktureres hver måned (${kr(Number(d.cash.assumptions.fast_fakturering_mnd))} kr i måneden)`}
                   , lønn og skattedatoer.
                   Forventet legger vanlig drift på toppen, og er et anslag.
+                  {d.cash.after && ` ${d.cash.after.text}`}
                 </p>
                 <Collapsible>
                   <CollapsibleTrigger className="group text-good-text flex items-center gap-1.5 text-sm font-medium">

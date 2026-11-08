@@ -289,3 +289,39 @@ def test_the_brief_step_says_partial_when_the_model_did_not_write_it():
             raise AssertionError("a brief without a forecast passed")
         except scheduler.StepFailed:
             pass
+
+
+# ---------------------------------------- the low point at the edge (card 17)
+AFTER = {"in": 1_900_000.0, "expected_in": 0.0, "first_week": 7, "last_week": 9,
+         "text": "Etter uke 13 kommer 1 900 000 kr inn i uke 7–9 fra fakturaer "
+                 "som er sendt eller sendes før da."}
+
+
+def test_a_low_point_in_the_last_weeks_says_what_comes_after():
+    """The wages and the VAT are in the last weeks, the invoicing that pays
+    for them lands after week 13. The low point stays the low point; it says
+    what follows."""
+    cf = {**_cf(committed={11: 300000.0}), "after": AFTER}
+    low = brief.low_point(cf, FLOOR_RULE)
+    assert low["under_floor"] and low["week"] == cf["weeks"][11]["label"]
+    assert low["after"] == cashflow.after_text(AFTER)
+    assert low["text"].endswith(AFTER["text"]), low["text"]
+
+
+def test_a_low_point_before_the_last_weeks_says_nothing_about_after():
+    cf = {**_cf(committed={5: 300000.0}), "after": AFTER}
+    low = brief.low_point(cf, FLOOR_RULE)
+    assert low["after"] is None and "Etter uke 13" not in low["text"]
+
+
+def test_the_floor_card_at_the_edge_says_what_comes_after():
+    """Still a card: the week is under the floor. With the money after."""
+    cf = {**_cf(committed={12: 300000.0}), "after": AFTER}
+    cf["low_committed"] = {"label": cf["weeks"][12]["label"],
+                           "start": cf["weeks"][12]["start"], "amount": 300000.0}
+    out = cards._from_cashflow(cf, {"likviditetsgulv_kr": FLOOR_RULE})
+    assert len(out) == 1 and AFTER["text"] in out[0]["body"]
+    cf["low_committed"] = {"label": cf["weeks"][4]["label"],
+                           "start": cf["weeks"][4]["start"], "amount": 300000.0}
+    assert "Etter uke 13" not in cards._from_cashflow(
+        cf, {"likviditetsgulv_kr": FLOOR_RULE})[0]["body"]
