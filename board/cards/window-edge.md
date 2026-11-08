@@ -34,7 +34,7 @@ invoices it had dated after week 13.
       and in the agent's briefing. It stays the low point and the card is
       still made, since that week is under the floor
 - [x] Tests
-- [ ] @edmir checks the chart on app.arvaka.no after the deploy
+- [x] @edmir checks the chart on app.arvaka.no after the deploy
 
 ## Log
 - 2026-11-08 — Planned with six weeks calculated past the window and an
@@ -61,3 +61,4 @@ invoices it had dated after week 13.
     Suite: 577 passed.
   - Seen on the Lindeskar demo in a headless browser: low point in week 4,
     the last week; "Etter uke 13 kommer 2 447 177 kr inn i uke 5–10".
+- 2026-11-08 — Merged as #103 and moved to Done.
