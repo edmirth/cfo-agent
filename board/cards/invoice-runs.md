@@ -101,3 +101,15 @@ out of how the rest is timed, and named.
   booked, unmatched payments of the same counterparty first. On the real
   books, what was taken off open invoices fell from about a million kroner to
   two small payments that really were unbooked. Suite: 535 passed.
+- 2026-11-08 — #98 merged (booked but unmatched bank lines). @edmir asked
+  whether the pay day on the 10th is costed from what earlier pay days paid.
+  It was not: the amount came from the wage accounts, which carry accruals
+  and holiday pay as they are earned. On `payroll-from-payments`,
+  `cashflow.payroll_paid` reads the payroll vouchers instead (the vouchers
+  touching 5000–5099): what each pays out of the bank, or leaves owing on the
+  trekk and net-pay accounts when the payment is not booked. A pay day is the
+  median of the last six months' runs on the pay day; extra runs (the one
+  after August's one-off job) and the holiday-pay month are kept out. Fewer
+  than three months measured keeps the wage accounts. On the real books the
+  measured pay day is about a tenth below the wage accounts' figure. Suite:
+  545 passed.
