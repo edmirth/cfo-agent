@@ -105,6 +105,16 @@ RUN_MIN_MONTHS = 3
 # The register and the accounts are compared on next month: further apart than
 # this, the forecast says so rather than choosing between them.
 REGISTER_CHECK = 0.35
+# A regular customer leaves the committed line, never the forecast, when
+# something says his invoicing is less sure: more than BEHIND_MIN kroner and
+# BEHIND_SHARE of his usual month over LATE_DAYS late, or his usual invoice
+# days this month STALL_DAYS past with nothing sent. One small invoice a month
+# late used to take his whole invoicing out of both lines. Only a customer
+# with more than his usual month over LATE_DAYS late is out of both: that is a
+# customer in trouble, not a slow payment.
+BEHIND_MIN = 5_000.0
+BEHIND_SHARE = 0.25
+STALL_DAYS = 10
 # Terms are shown rounded to the ones companies use, so a week's runs merge.
 TERM_STEPS = (7, 10, 14, 20, 30, 45, 60, 90)
 
@@ -416,14 +426,16 @@ def _receipt_parts(inv: dict, today: date,
         # is not late by his own lights: his money comes when it usually does.
         usual = payment_habits.own(habits, inv.get("name") or "")
         if usual is not None and late < usual:
-            return [(due + timedelta(days=usual), inv["amount"])]
+            return [(workdays.forward(due + timedelta(days=usual)), inv["amount"])]
         per = inv["amount"] / LATE_SPREAD_WEEKS
         return [(today + timedelta(days=7 * (w + 1)), per)
                 for w in range(LATE_SPREAD_WEEKS)]
     # Not yet due: the customer's own lateness, the company's where he has too
     # little history, and the old seven days where there is none at all.
+    # On a banking day: a customer cannot pay on a Saturday, and money due on
+    # Christmas Eve lands after the holiday, often in the next week.
     lag = payment_habits.lag(habits, inv.get("name") or "", PAY_LAG_DAYS)
-    return [(due + timedelta(days=lag), inv["amount"])]
+    return [(workdays.forward(due + timedelta(days=lag)), inv["amount"])]
 
 
 def _days_overdue(inv: dict, today: date) -> int | None:
@@ -727,7 +739,8 @@ def _place_month(parts, y: int, mo: int, today: date, current: bool):
 
 def _invoice_runs(history: list, today: date, horizon: date,
                   habits: dict | None = None, season: dict | None = None,
-                  skip: set[str] = frozenset()) -> tuple[list, list, dict]:
+                  skip: set[str] = frozenset(),
+                  overdue: dict[str, float] | None = None) -> tuple[list, list, dict]:
     """The regular customers' invoicing still to be sent, from the register.
 
     Returns the flows (`recurring` in the committed line at the customer's
@@ -745,6 +758,15 @@ def _invoice_runs(history: list, today: date, horizon: date,
 
     The usual month is the median of his months, so one big job does not set
     it; the committed line still takes the lowest of the last three.
+
+    Regular is RUN_ACTIVE of the last RUN_MONTHS months. Only a customer
+    invoiced in each of the last RECURRING_MONTHS, not behind (`overdue`, his
+    invoices over LATE_DAYS late, against BEHIND_MIN and BEHIND_SHARE of his
+    usual month) and not stalled this month is in the committed line; the
+    others keep their usual month in the expected line. Each of those used to
+    take him out of both lines at once: one month invoiced late, or one small
+    invoice a month overdue, and a customer billed every month vanished from
+    the chart overnight. `skip` is the customers out altogether.
     """
     this = (today.year, today.month)
     closed = [_add_months(*this, -n) for n in range(1, RUN_MONTHS + 1)]
@@ -752,13 +774,33 @@ def _invoice_runs(history: list, today: date, horizon: date,
     for name, months in _invoice_months(history, skip).items():
         recent = closed[:RECURRING_MONTHS]
         active = [months[k]["amount"] for k in closed if k in months]
-        if len(active) < RUN_ACTIVE or not all(k in months for k in recent):
+        if len(active) < RUN_ACTIVE:
             continue
         usual = statistics.median(active)
-        low = min(months[k]["amount"] for k in recent)
-        if low <= 0:
+        if usual <= 0:
             continue
-        parts = _run_parts([p for k in recent for p in months[k]["parts"]])
+        timed = [k for k in closed if k in months][:RECURRING_MONTHS]
+        parts = _run_parts([p for k in timed for p in months[k]["parts"]])
+        why = None
+        behind = (overdue or {}).get(name, 0.0)
+        if behind > BEHIND_MIN and behind >= usual:
+            found.append({"name": name, "amount": 0.0, "usual": round(usual, 2),
+                          "committed": False, "excluded": True,
+                          "why": f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid, "
+                                 f"mer enn en vanlig måned",
+                          "day": None, "terms": None, "term_steps": [], "late": None,
+                          "next": None})
+            continue
+        if not all(k in months for k in recent):
+            why = "en av de siste månedene uten faktura"
+        elif behind > BEHIND_MIN and behind >= BEHIND_SHARE * usual:
+            why = f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid"
+        else:
+            sent_now = months.get(this, {}).get("amount", 0.0)
+            last_day = max(d for d, _, _ in parts)
+            if today.day > last_day + STALL_DAYS and sent_now < 0.5 * usual:
+                why = f"ingen faktura ennå denne måneden, vanligvis den {last_day}."
+        low = min(months[k]["amount"] for k in recent) if why is None else 0.0
         late = payment_habits.lag(habits, name, PAY_LAG_DAYS)
         upcoming = []
         y, mo = this
@@ -772,7 +814,7 @@ def _invoice_runs(history: list, today: date, horizon: date,
                 m["low"] += left_low
                 m["usual"] += left_usual
                 for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
-                    pay = issued + timedelta(days=terms + late)
+                    pay = workdays.forward(issued + timedelta(days=terms + late))
                     if pay >= horizon:
                         continue
                     label = (f"Fakturering {MONTH_NAMES[mo - 1]} (ikke sendt), "
@@ -789,6 +831,7 @@ def _invoice_runs(history: list, today: date, horizon: date,
             y, mo = _add_months(y, mo, 1)
         terms = sorted({_term_step(t) for _, t, _ in parts})
         found.append({"name": name, "amount": round(low, 2), "usual": round(usual, 2),
+                      "committed": why is None, "excluded": False, "why": why,
                       "day": int(statistics.median([d for d, _, _ in parts])),
                       "terms": int(statistics.median([t for _, t, _ in parts])),
                       "term_steps": terms, "late": late,
@@ -843,7 +886,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
         if left >= 0.5:
             by_month[(y, mo)] = left
             for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
-                pay = issued + timedelta(days=terms + lag)
+                pay = workdays.forward(issued + timedelta(days=terms + lag))
                 if pay < horizon and round(left * share) > 0:
                     flows.append({"date": pay, "amount": left * share, "kind": "new_sales",
                                   "month": (y, mo),
@@ -859,15 +902,12 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
 
 
 def _register_months(history: list, today: date) -> int:
-    """How many of the last closed months have any invoicing in the register,
-    counted back from last month until one has none."""
+    """How many of the last RUN_MONTHS closed months have any invoicing in the
+    register. Counted back until the first empty month, one quiet month in a
+    young book sent the whole forecast back to the accounts."""
     have = {(i.year, i.month) for i, _, _, _ in _sales_rows(history)}
-    n, k = 0, (today.year, today.month)
-    while True:
-        k = _add_months(*k, -1)
-        if k not in have:
-            return n
-        n += 1
+    this = (today.year, today.month)
+    return sum(1 for n in range(1, RUN_MONTHS + 1) if _add_months(*this, -n) in have)
 
 
 def _profile(bills: list[tuple[date, date, float]]) -> dict:
@@ -1339,9 +1379,18 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
                        for k, m in reversed(runs)]}
 
 
+# Closed months do not change by the hour: read once a day, not on every
+# rebuild of the forecast, which reads six months of bank postings each time.
+_payroll_cache: dict[str, dict | None] = {}
+
+
 async def _payroll_measured(today: date) -> dict | None:
-    """`payroll_paid` over the last PAYROLL_MONTHS closed months, or None when
-    the postings cannot be read."""
+    """`payroll_paid` over the last PAYROLL_MONTHS closed months, kept for the
+    day; None with too few months; {"unread": why} when the postings could not
+    be read, which is not kept, so the next build asks again."""
+    key = today.isoformat()
+    if key in _payroll_cache:
+        return _payroll_cache[key]
     start = date(*_add_months(today.year, today.month, -PAYROLL_MONTHS), 1)
     end = date(today.year, today.month, 1)
     ranges = [WAGE_ACCOUNTS, *PAID_FROM]
@@ -1349,8 +1398,10 @@ async def _payroll_measured(today: date) -> dict | None:
         parts = await asyncio.gather(*(_postings_in(lo, hi, start, end) for lo, hi in ranges))
     except Exception as exc:  # noqa: BLE001 — the accounts are the fallback
         log.warning("Cashflow: lønnsbilagene kunne ikke leses: %s", exc)
-        return None
-    return payroll_paid([p for part in parts for p in part], today)
+        return {"unread": str(exc)}
+    _payroll_cache.clear()
+    _payroll_cache[key] = payroll_paid([p for part in parts for p in part], today)
+    return _payroll_cache[key]
 
 
 async def build(today: date | None = None) -> dict:
@@ -1582,10 +1633,15 @@ async def build(today: date | None = None) -> dict:
     # VAT and the running costs that serving them brings, in the loop below.
     # Not those in trouble with the register, nor those already further behind
     # than ordinary lateness: their open invoices are not counted on either.
-    behind = {i["name"] for i in ar_due if (_days_overdue(i, today) or 0) > LATE_DAYS}
+    # What each customer has over LATE_DAYS late. It used to be a set of
+    # names, and any one invoice in it took the customer out of both lines.
+    behind: dict[str, float] = {}
+    for i in ar_due:
+        if (_days_overdue(i, today) or 0) > LATE_DAYS:
+            behind[i["name"]] = behind.get(i["name"], 0.0) + i["amount"]
     run_flows, recurring_found, run_by_month = _invoice_runs(
         customer_history, today, horizon, habits, season.get("revenue"),
-        set(risky) | behind)
+        set(risky), behind)
     committed += [f for f in run_flows if f["kind"] == "recurring"]
     # With RUN_MIN_MONTHS of invoicing to read, the register is the money
     # coming in, and the revenue in the accounts only a check on it. The
@@ -1598,7 +1654,7 @@ async def build(today: date | None = None) -> dict:
         expected += [f for f in run_flows if f["kind"] == "recurring_usual"]
         other_flows, other_by_month, other_measured = _other_invoicing(
             customer_history, today, horizon, sales_lag, season.get("revenue"),
-            {f["name"] for f in recurring_found}, set(risky) | behind)
+            {f["name"] for f in recurring_found}, set(risky))
         expected += other_flows
 
     # The same check as on 1500 above, which 2400 never had — and the asymmetry
@@ -1654,7 +1710,13 @@ async def build(today: date | None = None) -> dict:
     aga_booked = max(0.0, -aga_series[-1][1]) if aga_series else 0.0
     # What a pay day really pays, where the payroll vouchers say so; the wage
     # accounts otherwise.
-    wages_paid = wages_paid if isinstance(wages_paid, dict) else None
+    if isinstance(wages_paid, dict) and "unread" in wages_paid:
+        warnings.append(
+            "Lønnsbilagene kunne ikke leses, så lønningsdagen er regnet fra "
+            "lønnskontoene i stedet for det tidligere lønningsdager har betalt. "
+            "Det kan være for mye, fordi kontoene også har periodisering og "
+            "feriepenger i seg.")
+    wages_paid = wages_paid if isinstance(wages_paid, dict) and "per_run" in wages_paid else None
     pay_day_cash = wages_paid["per_run"] if wages_paid else rates["wages_cash"]
     committed += _payroll_runs(today, horizon, pay_day_cash,
                                rates["aga"], aga_booked)
@@ -1895,7 +1957,7 @@ async def build(today: date | None = None) -> dict:
     data["assumptions"]["fakturering_per_maned"] = invoicing_by_month
     data["assumptions"]["annen_fakturering"] = other_measured
     data["assumptions"]["fast_fakturering_vanlig_mnd"] = round(
-        sum(f.get("usual", f["amount"]) for f in recurring_found), 2)
+        sum(f.get("usual", f["amount"]) for f in recurring_found if not f.get("excluded")), 2)
     data["assumptions"]["kostnader_per_maned"] = costs_by_month
     data["assumptions"]["faste_regninger_mnd"] = round(sum(
         f["amount"] / (1 if f["cadence"] == "månedlig" else 3) for f in fixed_found), 2)
@@ -2419,7 +2481,17 @@ def briefing(data: dict | None) -> str:
 
     # The other side of the same floor: the invoicing it now counts on before
     # anything is sent, named customer by customer so he can strike one out.
-    contracts = data.get("recurring_sales") or []
+    everyone = data.get("recurring_sales") or []
+    contracts = [f for f in everyone if f.get("committed", True)]
+    aside = [f for f in everyone if not f.get("committed", True)]
+    if aside:
+        out.append("**Faste kunder utenfor den bundne linjen** — "
+                   + "; ".join(f"{f['name']}: {f['why']}"
+                               + (" (holdt utenfor prognosen)" if f.get("excluded")
+                                  else " (vanlig måned i den forventede linjen)")
+                               for f in aside[:8])
+                   + ". Say so if he asks why a regular customer is not in the "
+                     "safe line, and what would put him back.\n")
     if contracts:
         named = ", ".join(f"{f['name']} {_kr(f['amount'])} kr" for f in contracts[:8])
         more = f" og {len(contracts) - 8} til" if len(contracts) > 8 else ""

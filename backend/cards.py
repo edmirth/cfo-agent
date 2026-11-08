@@ -536,7 +536,7 @@ def _from_cashflow(cf: dict, rules: dict | None = None) -> list[dict]:
         return []
     # What the line counts on, said as it is: "bare de faste kundene" for a
     # company that has none would name a comfort the line does not contain.
-    contracts = bool(cf.get("recurring_sales"))
+    contracts = any(f.get("committed", True) for f in cf.get("recurring_sales") or [])
     assumed = (f" Gulvet er {company.said(floor)}; sett deres eget i Selskapet "
                f"om det skal ligge et annet sted." if floor["assumed"] else "")
     return [{

@@ -72,6 +72,7 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     """Run `build` against a stubbed ledger. Returns the payload."""
     import payment_habits
     payment_habits._cache.clear()
+    cashflow._payroll_cache.clear()
     stub = _Tripletex(rows, ar, ap, last, postings, cut_off)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting
@@ -797,6 +798,15 @@ def _committed(data, kind):
     return [i for i in _kinds(data, kind) if i["scenario"] == "committed"]
 
 
+def _by_month(items):
+    """Amounts summed per month named in the label, in order."""
+    out: dict = {}
+    for i in items:
+        month = i["label"].split()[1]
+        out[month] = out.get(month, 0) + i["amount"]
+    return [round(v) for v in out.values()]
+
+
 def test_a_customer_invoiced_every_month_is_in_the_committed_line():
     """The committed line held no invoicing that had not happened yet, so a
     company with every customer on a monthly contract was told it would stop
@@ -804,7 +814,8 @@ def test_a_customer_invoiced_every_month_is_in_the_committed_line():
     rows, _ = _invoiced_on_the_10th()
     data = _forecast([REVENUE], ar=rows)
     assert data["recurring_sales"] == [{"name": "Kunde", "amount": 10_000.0,
-                                        "usual": 10_000.0, "day": 10, "terms": 30,
+                                        "usual": 10_000.0, "committed": True,
+                                        "excluded": False, "why": None, "day": 10, "terms": 30,
                                         "term_steps": [30], "late": 7,
                                         "next": "2026-11-16"}]
     assert [(round(i["amount"]), i["label"]) for i in _committed(data, "recurring")] == [
@@ -869,20 +880,50 @@ def test_an_extra_invoice_this_month_leaves_the_rest_of_the_month_to_come():
         (10_000, "Fakturering november (ikke sendt), 30 dager")]
 
 
-def test_a_customer_who_missed_a_month_is_not_a_contract():
+def test_a_customer_who_missed_a_month_leaves_the_committed_line_only():
+    """Five of the last six months: still invoiced every month as a rule, so
+    his usual month stays in the expected line. Dropping him from both made a
+    month invoiced late look like a lost customer."""
     rows, _ = _invoiced_on_the_10th()
     del rows[9]                           # nothing in August
     data = _forecast([REVENUE], ar=rows)
-    assert data["recurring_sales"] == []
+    assert [(f["committed"], f["why"]) for f in data["recurring_sales"]] == [
+        (False, "en av de siste månedene uten faktura")]
+    assert not _committed(data, "recurring")
+    assert _by_month(_kinds(data, "recurring_usual")) == [10_000, 10_000]
 
 
-def test_a_customer_already_well_behind_is_not_counted_on():
-    """Thirty-five days late: his open invoice sits in the expected line only,
-    so new invoicing to him is no floor to stand on either."""
+def test_a_customer_more_than_a_month_behind_is_not_counted_on():
+    """Eight months of his invoicing over thirty days late: a customer in
+    trouble, so new invoicing to him is in neither line."""
     rows, _ = _invoiced_on_the_10th()
     late = {**_invoice(80_000.0, "2026-05-10", "2026-08-31", 900), "amount": 80_000.0}
     data = _forecast([REVENUE], ar=rows + [late])
-    assert data["recurring_sales"] == []
+    assert [(f["committed"], f["excluded"]) for f in data["recurring_sales"]] == [(False, True)]
+    assert not _kinds(data, "recurring") and not _kinds(data, "recurring_usual")
+    assert not _kinds(data, "new_sales"), "nor in the other invoicing"
+
+
+def test_one_small_invoice_overdue_changes_nothing():
+    """A 2 000 kr invoice a month late took a customer billed every month out
+    of both lines, and a chart could lose a big customer overnight."""
+    rows, _ = _invoiced_on_the_10th(amount=100_000.0)
+    late = {**_invoice(2_000.0, "2026-07-10", "2026-08-31", 900), "amount": 2_000.0}
+    data = _forecast([REVENUE], ar=rows + [late])
+    assert data["recurring_sales"][0]["committed"] is True
+    assert _by_month(_committed(data, "recurring"))[0] == 100_000, \
+        "October whole; November's 45-day share lands after the window"
+
+
+def test_a_customer_somewhat_behind_leaves_the_committed_line_only():
+    rows, _ = _invoiced_on_the_10th(amount=100_000.0)
+    late = {**_invoice(30_000.0, "2026-07-10", "2026-08-31", 900), "amount": 30_000.0}
+    data = _forecast([REVENUE], ar=rows + [late])
+    f = data["recurring_sales"][0]
+    assert (f["committed"], f["excluded"]) == (False, False)
+    assert "30 000 kr over 30 dager" in f["why"]
+    assert not _committed(data, "recurring")
+    assert _by_month(_kinds(data, "recurring_usual"))[0] == 100_000
 
 
 def test_a_customer_in_trouble_with_the_register_is_not_counted_on():
@@ -913,7 +954,8 @@ def test_a_contract_is_not_sent_before_today_nor_above_its_season():
     flows, found, by_month = cashflow._invoice_runs(
         rows, today, date(2027, 1, 11), None, {11: 0.5})
     assert [(f["date"].isoformat(), round(f["amount"])) for f in flows] == [
-        ("2026-11-21", 10_000), ("2026-12-17", 5_000)], "15 Oct + 30 + 7; half in November"
+        ("2026-11-23", 10_000), ("2026-12-17", 5_000)], \
+        "15 Oct + 30 + 7 is a Saturday, so Monday; half in November"
     assert by_month[(2026, 12)] == {"low": 10_000.0, "usual": 10_000.0}
     assert found[0]["amount"] == 10_000.0
 

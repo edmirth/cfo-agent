@@ -104,7 +104,8 @@ def light(cf: dict, floor: float, books: str = "clean") -> Light:
     weeks = cf.get("weeks") or []
     # Named only where the committed line holds any: "den faste
     # faktureringen" for a company with none is a comfort it does not have.
-    fast = " og den faste faktureringen" if cf.get("recurring_sales") else ""
+    fast = (" og den faste faktureringen"
+            if any(f.get("committed", True) for f in cf.get("recurring_sales") or []) else "")
     c_floor = _first(weeks, "committed_close", floor)
     e_floor = _first(weeks, "expected_close", floor)
     c_zero = _first(weeks, "committed_close", 0)
