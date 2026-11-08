@@ -123,7 +123,7 @@ def measure(periods: dict, unmatched: dict, moves: dict, balances: dict) -> dict
         if n and n.isdigit() and BANK[0] <= int(n) <= BANK[1]:
             by_account.setdefault(n, []).append(p)
 
-    accounts, unknown, lines = [], [], []
+    accounts, unknown, lines, booked = [], [], [], []
     approximate = False
     for n in sorted(set(by_account) | set(balances)):
         label = f"{n} {names.get(n, '')}".strip()
@@ -192,6 +192,17 @@ def measure(periods: dict, unmatched: dict, moves: dict, balances: dict) -> dict
                 lines.append({"account": n, "date": line.get("postedDate") or "",
                               "name": line.get("description") or "",
                               "amount": float(amount)})
+            # The other side of the same list: payments booked on the bank
+            # account with no bank line matched to them yet. Kept so `unbooked`
+            # can tell a bank line that is booked but not matched from one
+            # that is not booked at all.
+            for post in r.get("unmatchedPostings") or []:
+                amount = post.get("amountCurrency", post.get("amount"))
+                if not isinstance(amount, (int, float)):
+                    continue
+                booked.append({"account": n, "date": post.get("date") or "",
+                               "name": post.get("description") or "",
+                               "amount": float(amount)})
         acct = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in acct.items()}
         accounts.append(acct)
 
@@ -205,6 +216,7 @@ def measure(periods: dict, unmatched: dict, moves: dict, balances: dict) -> dict
         "latest": max((l["date"] for l in lines if l["date"]), default=None),
         "accounts": accounts,
         "unbooked": lines,
+        "booked_unmatched": booked,
         "unknown": unknown,
         "approximate": approximate,
     }
@@ -334,6 +346,58 @@ def _norm(name: str) -> str:
     s = re.sub(r"[æøå!?]", "_", (name or "").lower())
     words = [w for w in re.split(r"[^\w]+", s) if w and w not in SUFFIXES]
     return " ".join(words)
+
+
+# "Betaling: Faktura nummer 1001 til Kunde AS (30001)": the counterparty of a
+# payment Tripletex booked, as its description names it.
+PAYMENT_PARTY = re.compile(r"\b(?:til|fra)\s+(.+?)\s*(?:\(\d+\))?\s*$", re.IGNORECASE)
+
+
+def _party(description: str) -> str:
+    m = PAYMENT_PARTY.search(description or "")
+    return _norm(m.group(1)) if m else ""
+
+
+def unbooked(lines: list, booked: list) -> list:
+    """The bank lines that are not booked, of those not matched.
+
+    The reconciliation leaves a bank line unmatched whether the payment was
+    never booked or was booked without being matched to it. The second is the
+    common one: at the first customer more than a million kroner of customer
+    payments in October and November were booked against their invoices
+    ("Betaling: Faktura nummer … til …") and not matched to the bank lines.
+    Read as unbooked, each line was then taken off that customer's other open
+    invoices, and about as much invoicing not yet paid fell out of the
+    forecast.
+
+    So each line is set against the booked, unmatched payments of the same
+    counterparty and direction, oldest first, and only what is left over is
+    unbooked. A booked payment whose description names nobody matches a line
+    of the same amount."""
+    pool: dict = {}
+    loose = []
+    for p in booked:
+        key = _party(p["name"])
+        if len(key) >= NAME_MIN:
+            pool[(key, p["amount"] > 0)] = pool.get((key, p["amount"] > 0), 0.0) + abs(p["amount"])
+        else:
+            loose.append(abs(p["amount"]))
+    out = []
+    for line in sorted(lines, key=lambda l: l["date"]):
+        amount = abs(line["amount"])
+        key = (_norm(line["name"]), line["amount"] > 0)
+        take = min(pool.get(key, 0.0), amount)
+        if take:
+            pool[key] -= take
+            amount -= take
+        if amount > AMOUNT_TOLERANCE:
+            same = next((i for i, a in enumerate(loose) if abs(a - amount) <= AMOUNT_TOLERANCE), None)
+            if same is not None:
+                loose.pop(same)
+                amount = 0.0
+        if amount > AMOUNT_TOLERANCE:
+            out.append({**line, "amount": amount if line["amount"] > 0 else -amount})
+    return out
 
 
 def settle(items: list, lines: list, sign: int) -> tuple[list, list]:

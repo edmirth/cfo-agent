@@ -180,6 +180,61 @@ def test_outgoing_lines_settle_supplier_bills_not_customer_invoices():
     assert left == [] and paid[0]["amount"] == 76375.0
 
 
+# ----------------------------------------- booked, but not matched to the bank
+def _booked(description, amount, when="2026-10-15"):
+    return {"account": "1920", "date": when, "name": description, "amount": amount}
+
+
+def test_a_payment_booked_but_not_matched_is_not_unbooked():
+    """One lump payment in the bank, and the payments booked against each
+    invoice it paid, unmatched to it. Read as unbooked, the line took the
+    customer's other open invoices with it."""
+    lines = [_line("NORDLYS BYGG AS", 150_000, "2026-10-15")]
+    booked = [_booked("Betaling: Faktura nummer 1001 til Nordlys Bygg AS (30001)", 40_000),
+              _booked("Betaling: Faktura nummer 1002 til Nordlys Bygg AS (30001)", 110_000)]
+    assert bankgap.unbooked(lines, booked) == []
+
+
+def test_only_what_the_books_do_not_have_is_left():
+    lines = [_line("SKANSKA NORGE AS", 43_084)]
+    booked = [_booked("Betaling: Faktura nummer 1 til Skanska Norge AS (30010)", 30_000)]
+    assert [l["amount"] for l in bankgap.unbooked(lines, booked)] == [13_084]
+    left, paid = bankgap.settle(AR, bankgap.unbooked(lines, booked), +1)
+    assert [(p["number"], p["amount"]) for p in paid] == [(1, 13_084.0)]
+
+
+def test_a_booked_payment_settles_only_its_own_counterparty():
+    lines = [_line("SKANSKA NORGE AS", 43_084)]
+    booked = [_booked("Betaling: Faktura nummer 3 til Stø Entreprenør AS (30011)", 43_084)]
+    assert [l["amount"] for l in bankgap.unbooked(lines, booked)] == [43_084]
+
+
+def test_money_in_is_not_set_against_money_booked_out():
+    lines = [_line("SKANSKA NORGE AS", 43_084)]
+    booked = [_booked("Betaling til Skanska Norge AS", -43_084)]
+    assert [l["amount"] for l in bankgap.unbooked(lines, booked)] == [43_084]
+
+
+def test_a_booked_payment_naming_nobody_matches_on_the_amount():
+    lines = [_line("NAV", 44_304), _line("NAV", 17_340)]
+    booked = [_booked("Innbetaling", 44_304)]
+    assert [l["amount"] for l in bankgap.unbooked(lines, booked)] == [17_340]
+
+
+def test_the_reconciliation_keeps_the_booked_postings():
+    periods = {"accounts": [{"number": "1920", "name": "Bedriftskonto"}],
+               "periods": [{"accountNumber": "1920", "status": "open",
+                            "period": {"start": "2026-10-01"}}]}
+    answer = {"totals": {}, "unmatched": [{"postedDate": "2026-10-15", "description": "NORDLYS BYGG AS",
+                                           "amountCurrency": 150_000.0}],
+              "unmatchedPostings": [{"date": "2026-10-15", "amountCurrency": 40_000.0,
+                                     "description": "Betaling: Faktura nummer 1001 til Nordlys Bygg AS (30001)"}]}
+    gap = bankgap.measure(periods, {("1920", "2026-10-01"): answer}, {}, {})
+    assert gap["booked_unmatched"] == [{"account": "1920", "date": "2026-10-15", "amount": 40_000.0,
+                                        "name": "Betaling: Faktura nummer 1001 til Nordlys Bygg AS (30001)"}]
+    assert [l["amount"] for l in bankgap.unbooked(gap["unbooked"], gap["booked_unmatched"])] == [110_000.0]
+
+
 # ---------------------------------------------------------- through the forecast
 def _build(rows, ar, bank, gap):
     """The forecast with commitments stubbed as having measured `gap`."""
