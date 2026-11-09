@@ -193,7 +193,7 @@ def _low_point(low: dict) -> str:
     """The tightest week as a figure, the rest of its own sentence beneath."""
     rest = low["text"].split(" — ", 1)[1] if " — " in low["text"] else low["text"]
     when = low["week"] + (f", fra {brief._day(low['start'])}" if low.get("start") else "")
-    return (f'<tr><td class="a-pad" style="padding:20px 32px 0">'
+    return ('<tr><td class="a-pad" style="padding:20px 32px 0">'
             + _table(f'<tr><td class="a-tile" style="background:{GRAY_100};'
                      f'border-radius:6px;padding:16px 18px">'
                      f'{_label("Laveste punkt · " + when)}'

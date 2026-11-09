@@ -13,6 +13,10 @@
 # purring_etter_dager: 14        # dager etter forfall før en kunde purres
 # varsel_minimum_kr: 20 000      # beløp under dette gir ingen sak eller varsel (uten: 10 000)
 # lonnsandel_mal_pct: 75         # målet for lønn som andel av omsetningen
+# kostnadsavvik_pct: 50          # hvor mye over vanlig en kostnadskonto må ligge før det varsles (uten: 50)
+
+# Hvem mandagsbrevet sendes til. Uten den går det til den som logger inn.
+# brev_mottakere: navn@firma.no, okonomi@firma.no
 ---
 
 # Slik fungerer {selskap}

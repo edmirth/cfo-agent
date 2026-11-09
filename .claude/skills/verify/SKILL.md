@@ -25,7 +25,7 @@ Never start a second one on another port to "work around" a busy 8000.
 ## Launch
 
 ```bash
-cd /Users/edmir/cfo-agent
+cd "$(git rev-parse --show-toplevel)"
 nohup ./run.sh > /tmp/server.log 2>&1 &
 ```
 
@@ -51,10 +51,11 @@ curl -s "localhost:8000/api/trace?account=1920&date_from=2026-09-01&date_to=2026
 curl -s localhost:8000/api/dashboard localhost:8000/api/definitions localhost:8000/api/toolset
 ```
 
-`POST /api/cards/{id}/decide` only writes `state/cards.json` — `cards.py` has no
-mail server and never writes to Tripletex, so no card option sends anything
-outward. Back up `state/cards.json` and restore it after, or you leave the
-owner's deck changed.
+`POST /api/cards/{id}/decide` only writes the database (`state/cfo.db`: the
+card, its event, and a decision in the CFO's memory) — `cards.py` sends no mail
+and never writes to Tripletex, so no card option sends anything outward. It
+cannot be undone from the API: drive it on a demo company (below), or you
+leave the owner's deck changed.
 
 `POST /api/chat` streams SSE and needs credits on the key in `.env`. With an
 empty balance it still emits a clean `session` event then an `error` event, so
@@ -76,7 +77,9 @@ answers whether a figure the backend computed matches its source.
 - Every route but `/api/auth/config` needs a login. For curl on the Mac, start
   with `CFO_AUTH=off` (refused on a host), or drive a demo company:
   `CFO_DEMO=lindeskar CFO_AUTH=off CFO_SCHEDULER=off ./.venv/bin/uvicorn main:app --app-dir backend --port 8101`.
-- Reversed date ranges on `/api/trace` return HTTP 200 with an `{"error": ...}`
-  body, not a 4xx. Check the body, not just the status.
+- The front-page routes answer HTTP 200 with an `{"error": ...}` body when a
+  panel cannot be computed. Check the body, not just the status. `/api/trace`
+  is the exception: 400 for a bad or reversed date range, 502 when Tripletex
+  refuses.
 - Tripletex returns payables as *negative* in `Leverandørreskontro`, the same
   side as the GL account. Anything comparing the two must not negate one of them.

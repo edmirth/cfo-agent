@@ -6,8 +6,9 @@ a card: what it found, in plain words, with the draft already written and two
 or three buttons. The CEO spends his morning tapping, not prompting.
 
 A card is only honest if every button does what it says. This product does not
-write to Tripletex and has no mail server, so nothing here sends an invoice,
-posts a voucher or transfers money. What the buttons do is real but modest:
+write to Tripletex, and the only mail it sends is the Monday brief to the CEO
+himself, so nothing here sends an invoice, a reminder, posts a voucher or
+transfers money. What the buttons do is real but modest:
 approving hands over a finished draft and records that it was approved,
 deferring genuinely brings the card back on the day, and every decision is
 written to the CFO's memory so the next conversation starts from it instead of

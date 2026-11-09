@@ -8,13 +8,12 @@ only, numbers with a source, two findings at most, never twice.
 """
 import asyncio
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 import cards
 import cashflow
 import commitments
 import company
-import db
 import job_runs
 import memory
 import overview

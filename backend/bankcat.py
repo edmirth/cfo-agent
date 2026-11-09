@@ -38,7 +38,7 @@ of when in the month the money leaves.
 import asyncio
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date
 
 import commitments
 import workdays

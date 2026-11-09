@@ -67,3 +67,11 @@ def test_supplier_bills_keep_the_date_the_invoice_gave_them():
     # would be inventing a fact.
     sunday = date(2026, 11, 15)
     assert commitments._shift("leverandorgjeld", sunday) == sunday
+
+
+def test_the_same_day_last_year_exists_on_29_february():
+    """`date.replace(year=…)` raises on 29 February. The dashboard compared
+    with «the same day last year» that way, and would have had no figures to
+    show for the whole of 29 February 2028."""
+    assert workdays.year_before(date(2028, 2, 29)) == date(2027, 2, 28)
+    assert workdays.year_before(date(2026, 11, 9)) == date(2025, 11, 9)

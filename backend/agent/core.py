@@ -1,8 +1,8 @@
 """One way to run an AI job: Claude, the read-only toolset, and the checks.
 
 Every job the product does with a model — the chat, the front-page summary,
-the industry classification, and the brief, watch and health check still to
-come — needs the same machinery: a client, a tool loop, the local tools it is
+the industry classification, the Monday brief, the morning watch and the
+health check — needs the same machinery: a client, a tool loop, the local tools it is
 allowed and no others, `verify` on every figure in the answer, a turn that
 rolls back when it does not finish, and a record of what it cost. Built once
 here, and a job is described rather than re-implemented:
@@ -492,8 +492,8 @@ async def complete(job: Job, prompt: str | list[dict],
                    triggered_by: str | None = None) -> Result:
     """Run `job` to the end and return what it produced.
 
-    For jobs that are not a conversation: the summary, the classification, and
-    the brief, watch and health check to come. A cut-off or failed answer
+    For jobs that are not a conversation: the summary, the classification,
+    the brief, the watch and the health check. A cut-off or failed answer
     raises — a half-written summary on the front page is worse than none.
     """
     messages = ([{"role": "user", "content": prompt}] if isinstance(prompt, str)

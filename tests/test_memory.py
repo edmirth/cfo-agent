@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 
 import memory
 from tests import _tmp

@@ -233,7 +233,7 @@ class FakeTripletex:
                     "Totalrentabilitet i % (lønnsomhet)": pct(op, pos["assets"]),
                     "Rentabilitet av egenkapital": pct(net, pos["equity"])}
         now = figures(s, e)
-        before = figures(s.replace(year=s.year - 1), e.replace(year=e.year - 1))
+        before = figures(workdays.year_before(s), workdays.year_before(e))
         rows = [{"depth": 0, "path": k, "leaf": True, "percent": "%" in k or k in ("Overskuddsgrad", "Rentabilitet av egenkapital"),
                  "cells": [v, before[k]], "decimals": [2, 2]} for k, v in now.items()]
         return _report("Nøkkeltallsrapport", start, end, "Nøkkeltall",

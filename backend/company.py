@@ -351,7 +351,7 @@ def _rules_briefing() -> str:
            "against. Use these, never a rule of thumb of your own. When one is "
            "assumed rather than set by the company, say so whenever you rely "
            "on it, and that the CEO can set his own under Selskapet.\n"]
-    out.append(f"- Likviditetsgulv: " + (
+    out.append("- Likviditetsgulv: " + (
         f"{_kr(floor['value'])} kr, satt i Selskapet." if not floor["assumed"]
         else "ikke satt — antatt én månedslønn. Beløpet står med prognosen."))
     out.append(f"- Purring: når en kunde er {days['value']} dager forbi "

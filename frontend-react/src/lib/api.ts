@@ -31,6 +31,7 @@ export type Rules = {
   purring_etter_dager: Rule
   varsel_minimum_kr: Rule
   lonnsandel_mal_pct: Rule
+  kostnadsavvik_pct: Rule
 }
 
 export type Week = {

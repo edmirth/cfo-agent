@@ -26,3 +26,15 @@ def test_dso_grosses_up_vat():
 def test_variance_reports_pct():
     r = calc.metric("variance", {"actual": 504985, "budget": 1625897})
     assert r["value"] == -1120912 and r["pct"] == -68.9
+
+
+def test_what_python_refuses_is_a_calc_error():
+    """round(1, 2.5), min() and an overflow are Python's own refusals. They
+    reached the model as «Could not record that»; it is told how to correct a
+    CalcError, so that is what they are."""
+    for bad in ("round(1, 2.5)", "min()", "1e300 ** 2", "sum(1, 2, 3)", "(-8) ** 0.5"):
+        try:
+            calc.evaluate(bad)
+        except calc.CalcError:
+            continue
+        raise AssertionError(f"{bad} ble ikke avvist som en CalcError")

@@ -37,9 +37,11 @@ that have not been tied out — but fixing it never is.
   `cashflow.py`.
 - **Lane 2, KPIs and budget** — half built. `industry.py` tracks against
   industry norms, `overview.py` has revenue and result vs budget.
-- **Lane 3, monthly pack** — not built. It can write a brief when asked; there
-  is no pack.
-- **Lane 4, early warnings** — half built. `preflight.py` warns and `memory.py`
-  ages findings, but nothing is early because nothing runs unasked.
+- **Lane 3, monthly pack** — the pack itself is not built (card 27). What runs
+  on a cadence is the Monday brief (`brief.py`, emailed by `brief_email.py`)
+  and the monthly health check (`health.py`).
+- **Lane 4, early warnings** — built. `scheduler.py` runs the morning unasked:
+  `preflight.py` checks the books, `watch.py` raises cards and findings,
+  `brreg.py` flags customers in trouble, and `memory.py` ages the findings.
 - **Lane 5, decision support** — thin. The `afford` preset and the Python
   sandbox.

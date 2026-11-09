@@ -1,5 +1,6 @@
 /* Samtalene lagres i nettleseren, én session_id per samtale.
- * Backend holder historikken i minnet, så lista og det som ble sagt må ligge
+ * Backend har historikken modellen trenger i databasen (conversations.py),
+ * men ingen rute som gir den tilbake, så lista og det som ble sagt må ligge
  * her for at en samtale skal kunne åpnes igjen. Portert fra app.js. */
 
 export type Step =

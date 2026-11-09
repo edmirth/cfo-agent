@@ -5,7 +5,7 @@ Two things go on the web, both on Render, both from this repository.
 | Address | What | On Render |
 |---|---|---|
 | `arvaka.no`, `www.arvaka.no` | The landing page, `site/` | A static site, free |
-| `app.arvaka.no` | The platform | A web service with a disk, from `render.yaml`. Ready to set up (card 52); until then the platform runs on the Mac with `run.sh` |
+| `app.arvaka.no` | The platform | A web service with a disk, from `render.yaml`. Live since the switch-over (card 52); the Mac runs the demo companies |
 
 ## The landing page
 
@@ -54,7 +54,8 @@ Edit the file in `site-pages/`, never the built page, and run the script
 after a change to the front page's nav or footer too. A page marked
 `status: utkast` shows a draft banner, marks what is missing in yellow and
 asks search engines to stay away; remove the line when the page is approved.
-They are in Norwegian only for now, and the English front page links to them.
+The English versions are in `site-pages/en/` and are built into `site/en/<slug>/`
+by the same run; a new page needs its English slug in `ENGLISH` in the script.
 
 ### On Render
 

@@ -60,6 +60,15 @@ def forward(d: date) -> date:
     return d
 
 
+def year_before(d: date) -> date:
+    """The same day last year. 29 February has none, and `d.replace(year=…)`
+    raises on it, so that day answers with the 28th."""
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:
+        return d.replace(year=d.year - 1, day=28)
+
+
 def backward(d: date) -> date:
     """The last working day on or before `d` — a pay day."""
     while not is_working_day(d):

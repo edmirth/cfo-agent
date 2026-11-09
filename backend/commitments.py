@@ -902,8 +902,8 @@ def _bank_note(data: dict) -> str:
     gap = data.get("bank_gap")
     booked = data.get("bank_booked", data.get("bank"))
     if gap is None:
-        return (f" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
-                f"leses, så om banken står høyere eller lavere er ukjent.")
+        return (" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
+                "leses, så om banken står høyere eller lavere er ukjent.")
     if abs(gap["adjustment"]) < 1:
         return ""
     note = (f" i banken (bokført {_kr(booked)} kr; banken har {gap['lines']} "

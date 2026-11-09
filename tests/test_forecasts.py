@@ -1,5 +1,4 @@
 """Every forecast kept, with the bank balances it will be scored against."""
-import cashflow
 import db
 import forecasts
 import job_runs

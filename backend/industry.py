@@ -33,6 +33,7 @@ import commitments
 import company
 import config
 import overview
+import workdays
 from agent import core
 from mcp_client import mcp
 
@@ -227,7 +228,7 @@ async def _gather(today: date) -> tuple[dict, dict]:
     """Everything the KPIs need, and everything the classifier reads."""
     start = f"{today.year}-01-01"
     prev_start = f"{today.year - 1}-01-01"
-    prev_end = today.replace(year=today.year - 1).isoformat()
+    prev_end = workdays.year_before(today).isoformat()
 
     pnl, prev, ratios, ar, top, emp, invoices, com, ov = await asyncio.gather(
         _safe(mcp.call("fetch_report", {"report_name": "Resultatrapport",

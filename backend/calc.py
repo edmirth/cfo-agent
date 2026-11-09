@@ -88,9 +88,17 @@ def evaluate(expression: str) -> float:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise CalcError(f"Klarte ikke lese uttrykket: {exc.msg}") from exc
-    value = _node(tree)
+    try:
+        value = _node(tree)
+    except (TypeError, ValueError, OverflowError, ZeroDivisionError) as exc:
+        # round(1, 2.5), min(), 1e300 ** 2, 0 ** -1: Python's own refusals.
+        # The model is told how to correct a CalcError; anything else reached
+        # it as «Could not record that», which is not what went wrong.
+        raise CalcError(f"Regnestykket lar seg ikke regne ut: {exc}") from exc
     if isinstance(value, list):
         raise CalcError("Uttrykket ga en liste, ikke et tall")
+    if isinstance(value, complex):          # (-8) ** 0.5
+        raise CalcError("Regnestykket ga ikke et brukbart tall")
     if value != value or value in (float("inf"), float("-inf")):
         raise CalcError("Regnestykket ga ikke et brukbart tall")
     return float(value)

@@ -199,8 +199,12 @@ def track_record(today: date | None = None) -> dict:
                "actual": db.to_kr(r["actual_ore"]), "error_pct": r["error_pct"],
                "attribution": db.loads(r["attribution"], {})} for r in rows]
     by_h = {h: [s for s in scores if s["horizon_weeks"] == h] for h in HORIZONS}
-    mean = {h: (round(sum(abs(s["error_pct"]) for s in v[:RECENT]) / len(v[:RECENT]), 2)
-                if v else None) for h, v in by_h.items()}
+    # A week the bank closed on exactly zero has no percentage to be off by
+    # (`score` stores None), so it is left out of the average, not read as 0.
+    def mean_of(v: list) -> float | None:
+        errors = [abs(s["error_pct"]) for s in v[:RECENT] if s["error_pct"] is not None]
+        return round(sum(errors) / len(errors), 2) if errors else None
+    mean = {h: mean_of(v) for h, v in by_h.items()}
     return {"weekly_forecasts_kept": kept,
             "scores": scores,
             "latest": {h: (v[0] if v else None) for h, v in by_h.items()},
@@ -264,8 +268,8 @@ def briefing(today: date | None = None) -> str:
             continue
         line = (f"- **{h} uke{'r' if h > 1 else ''} fram**: prognosen fra "
                 f"{s['made_on']} sa {_kr(s['forecast'])} kr for uka som sluttet "
-                f"{s['target_date']}; banken viste {_kr(s['actual'])} kr — "
-                f"{s['error_pct']:+.1f} %.")
+                f"{s['target_date']}; banken viste {_kr(s['actual'])} kr"
+                + (f" — {s['error_pct']:+.1f} %." if s["error_pct"] is not None else "."))
         a = s["attribution"]
         if a.get("available") and a.get("names"):
             who = ", ".join(f"{n['name']} ({_kr(n['amount'])} kr)" for n in a["names"][:3])

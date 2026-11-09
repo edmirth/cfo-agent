@@ -141,6 +141,29 @@ def test_the_briefing_never_claims_an_accuracy_nobody_measured():
 
 
 # --------------------------------------------- the forecast keeps its invoices
+def test_a_week_the_bank_closed_on_zero_does_not_break_the_record():
+    """The bank at exactly 0 kr gives a miss in kroner and no percentage
+    (`error_pct` is None). The average and the two sentences that quote the
+    percentage raised on it: the briefing is part of every chat turn's system
+    prompt, so one such week stopped the chat and the Monday brief."""
+    import brief
+    _tmp.db()
+    _save(MON, {0: 50_000})
+    _bank("2026-10-16", 0.0)
+    assert scoring.score(date(2026, 10, 20)) == 1
+    rec = scoring.track_record(date(2026, 10, 20))
+    assert rec["latest"][1]["error_pct"] is None
+    assert rec["mean_abs_error_pct"][1] is None
+    assert "banken viste 0 kr." in scoring.briefing(date(2026, 10, 20))
+    latest = {"error_pct": None, "forecast": 50_000.0, "actual": 0.0}
+    record = {**rec, "latest": {scoring.STREAK_HORIZON: latest}}
+    real, scoring.track_record = scoring.track_record, lambda today=None: record
+    try:
+        assert "bommet med 50 000 kr sist" in brief.accuracy(date(2026, 10, 20))["text"]
+    finally:
+        scoring.track_record = real
+
+
 def test_the_invoice_list_kept_matches_what_the_forecast_scheduled():
     today = date(2026, 10, 12)
     late = {"name": "Seby AS", "due": "2026-09-30", "amount": 30000.0, "number": 7}

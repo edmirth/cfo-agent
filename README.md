@@ -16,8 +16,11 @@ invented figures.
 ## Quick start
 
 ```bash
-cp .env.example .env      # add ANTHROPIC_API_KEY and TRIPLETEX_MCP_TOKEN
-./run.sh                  # http://localhost:8000
+cp .env.example .env      # add ANTHROPIC_API_KEY and the login settings (Innlogging, below)
+./run.sh                  # builds .venv and the frontend; http://localhost:8000
+# Once, for the Tripletex login: stop run.sh, then
+./.venv/bin/python scripts/oauth_login.py   # writes TRIPLETEX_CLIENT_ID and TRIPLETEX_REFRESH_TOKEN to .env
+./run.sh
 ```
 
 Needs Python 3.10+ (`brew install python@3.13` — macOS ships 3.9, which the SDK
@@ -92,20 +95,22 @@ so no restart.
 - *Figures* (`backend/mcp_client.py` → `backend/overview.py`) are fetched by
   calling the MCP server directly over JSON-RPC. No model in the loop, so a page
   load is free, fast and exact.
-- *Answers* (`backend/agent.py`) go through Claude with the MCP connector, so
+- *Answers* (`backend/agent/core.py`) go through Claude with the MCP connector, so
   Anthropic runs the tool loop. There is no tool-execution code here to maintain.
 
 **Auth is a self-registered OAuth client.** Tripletex's own company API key is a
 refresh token bound to a client we cannot identify, so `scripts/oauth_login.py`
-registers our own client and runs the authorization-code flow once. Refresh
-tokens do not expire, so it stays headless afterwards.
+registers our own client and runs the authorization-code flow once. It stays
+headless afterwards, until the refresh token expires (it did on 7 October
+2026): the app then says so on every page, and the login is run again.
 `backend/tlx_oauth.py` swaps the refresh token for access tokens and keeps a
 rotated refresh token in `state/tripletex.json`, so a host with no `.env` to
 write to survives a restart. A new login in the setting replaces it.
 
 **Read-only, enforced at the toolset.** The Tripletex toolset is declared
 closed (`default_config: {enabled: false}`) and opened tool by tool from the
-allowlist in `backend/toolset.py` — 62 reads of the 146 the server offers, so a
+allowlist in `backend/toolset.py` — 62 reads out of everything the server offers
+(the start-up log says how many that is today), so a
 write tool cannot be reached even if the prompt asked for one. `/api/toolset`
 audits the list against the live server, because Tripletex adds tools and a new
 write tool should not slip in unnoticed.
@@ -125,7 +130,9 @@ is code, and every figure it states is traced back to a source afterwards.
 |---|---|
 | `.claude/agents/cfo.md` | The agent: scope, voice, standing analysis, data traps. Start here. |
 | `company.md` | Starter for what the company says about itself. Copied to `state/` on first run; edited in the app after that. |
-| `backend/agent.py` | The turn: Claude call, MCP wiring, local tools, stream → UI events, rollback on interruption |
+| `backend/agent/core.py` | One way to run an AI job: Claude call, MCP wiring, stream → UI events, the figure check, rollback on interruption, cost |
+| `backend/agent/tools.py` | The local tools, and which job may call which |
+| `backend/agent/jobs/chat.py` | The chat job; the other jobs live with their modules (`summary.py`, `brief.py`, `watch.py`, `health.py`, `industry.py`) |
 | `backend/prompt.py` | Assembles the system prompt: persona + company (cached), then the computed blocks |
 | `backend/toolset.py` | Read-only, enforced: the 62 Tripletex tools the model may see, and an audit against the server |
 | `backend/calc.py` | Arithmetic the model must not do in its head; named metrics carry the finance rules |
@@ -153,9 +160,13 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/metrics.py` | For the product owner (`#maling`, not in the menu): minutes in the app, decisions and the share approved unedited, cash dips with their weeks of warning, agent cost — per week |
 | `backend/brief.py` | The Monday cash brief: the light, the low point against the floor, what changed, up to three decisions. The engine decides; the model only phrases |
 | `backend/job_runs.py` | One row per run of anything: trigger, status, cost, and what each step of a scheduled run did |
-| `backend/main.py` | FastAPI routes and the in-memory session store |
-| `frontend/brief.js` | The front page: brief, cash chart, signals, KPIs, and the Saker deck |
-| `frontend/app.js` | Shell, routing, conversations, chat, the Selskapet editor |
+| `backend/main.py` | FastAPI routes |
+| `backend/conversations.py` | Chat history, in the database: a conversation survives a restart |
+| `backend/db.py` | The one door to the database (`state/cfo.db`, SQLite); `docs/database.md` has the design |
+| `backend/card_links.py` | The one-tap decision links in the Monday email: one card, one week, once |
+| `backend/demo/` | The made-up companies and their books (`./demo.sh`, `CFO_DEMO`) |
+| `frontend-react/` | The app: React, Vite and shadcn. `run.sh` and the Dockerfile build it to `frontend-react/dist`, which the backend serves |
+| `frontend/` | The old vanilla frontend, served only when `frontend-react/dist` is missing. It sends no login, so it works only with `CFO_AUTH=off` |
 | `site/` | The landing page at arvaka.no: plain files, Norwegian and English, nothing loaded from anyone else |
 | `site-pages/` | Kontakt, personvern and the other text pages, built into `site/` by `scripts/build_site_pages.py` |
 | `docs/hosting.md` | Where it all runs and how to put it there: Render, and DNS at domene.no |
@@ -165,18 +176,25 @@ is code, and every figure it states is traced back to a source afterwards.
 
 ## Endpoints
 
-Every route except `/api/auth/config` needs the CEO signed in: a Supabase
-access token as `Authorization: Bearer …`. Everything except `/api/chat` is
-computed without a model and works with no Anthropic credits.
+Every route needs the CEO signed in, with a Supabase access token as
+`Authorization: Bearer …`, except `/api/auth/config` and the two `/api/link`
+routes, which answer to a decision link's own token. The figures are computed
+without a model and work with no Anthropic credits; the chat, the summary, the
+brief, the watch, the health check and the first industry decision call one.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/auth/config` | What the browser needs to sign in. The only route that answers without a login |
+| `GET` | `/api/auth/config` | What the browser needs to sign in. Answers without a login |
+| `POST` | `/api/link`, `/api/link/decide` | `{token}` — the one card a link in the Monday email opens, and `{token, option}` to decide it. No login: the link is the key |
 | `GET` | `/api/health` | Key present, PID, read-only, tools allowed |
 | `GET` | `/api/overview` | Headline figures, cached 10 min |
 | `GET` | `/api/preflight` | Condition of the books |
 | `GET` | `/api/commitments` | Free cash and dated obligations |
 | `GET` | `/api/cashflow` | 13-week forecast |
+| `GET` | `/api/rules` | The company's rules as the calculations use them now, and which are assumed |
+| `GET` | `/api/summary` | The day's summary, written once a day; `?refresh=true` writes a new one |
+| `GET` | `/api/brief` | The latest Monday brief, and whether it is this week's |
+| `GET` | `/api/helsesjekk` | The latest health check and its clean-up list |
 | `GET` | `/api/dashboard` | Industry and its KPIs; `?refresh=true` re-decides the industry |
 | `GET` | `/api/cards` | The approval deck, rebuilt from the checks |
 | `POST` | `/api/cards/{id}/decide` | `{option, note}` — records the choice and does what it means |
@@ -187,7 +205,10 @@ computed without a model and works with no Anthropic credits.
 | `GET` | `/api/forecast-accuracy` | Each Monday's forecast against the bank 1, 2 and 4 weeks later, and the streak |
 | `GET` | `/api/job-runs` | `?job=chat&limit=50` — what ran, how it ended, tokens and cost |
 | `GET` | `/api/schedule` | What runs on its own, when next, how the last run went; `attention` when it did not do its job |
-| `POST` | `/api/schedule/morning/run` | Run the morning now, by hand; answers when it is done |
+| `POST` | `/api/schedule/{name}/run` | Run a scheduled job now, by hand (`morning`, `weekly_brief`, `weekly_mail`, `health_check`, `backup`); answers when it is done |
+| `GET` `POST` | `/api/consent` | Whether the user lets us measure use: yes, no, or not asked yet |
+| `POST` | `/api/activity`, `/api/email-tap` | A minute in the app, and a tap from the Monday email. Kept only with a yes |
+| `GET` | `/api/metrics` | For the product owner: minutes, decisions, cash dips and agent cost per week |
 | `GET` | `/api/presets` | The suggested questions |
 | `POST` | `/api/chat` | Chat turn, streamed as SSE; emits a `check` event tracing the figures |
 | `POST` | `/api/session/reset?session_id=…` | Clear a conversation |

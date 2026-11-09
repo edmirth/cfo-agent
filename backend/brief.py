@@ -308,8 +308,14 @@ def accuracy(today: date) -> dict:
                         f"({rec['weekly_forecasts_kept']} ukeprognose"
                         f"{'r' if rec['weekly_forecasts_kept'] != 1 else ''} lagret).{when}"}
     mean = rec["mean_abs_error_pct"].get(h)
-    text = (f"Treffsikkerhet: prognosen fire uker fram bommet med "
-            f"{latest['error_pct']:+.1f} % sist".replace(".", ","))
+    if latest["error_pct"] is None:
+        # The bank closed that week on exactly zero: a miss in kroner, but no
+        # percentage to state it in.
+        text = (f"Treffsikkerhet: prognosen fire uker fram bommet med "
+                f"{_kr(latest['forecast'] - latest['actual'])} kr sist")
+    else:
+        text = (f"Treffsikkerhet: prognosen fire uker fram bommet med "
+                f"{latest['error_pct']:+.1f} % sist".replace(".", ","))
     if mean is not None:
         text += f", ±{mean:.1f} % i snitt".replace(".", ",")
     text += (f". Innenfor ±{rec['within_pct']:.0f} % {rec['streak']} uke"

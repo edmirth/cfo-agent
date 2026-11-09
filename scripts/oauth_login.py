@@ -15,6 +15,7 @@ på nytt.
 """
 import base64
 import hashlib
+import html
 import http.server
 import re
 import secrets
@@ -45,7 +46,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         msg = ("<h2>Innlogging fullført</h2><p>Du kan lukke dette vinduet "
                "og gå tilbake til terminalen.</p>") if ok else \
-              f"<h2>Innlogging feilet</h2><pre>{q}</pre>"
+              f"<h2>Innlogging feilet</h2><pre>{html.escape(str(q))}</pre>"
         self.write_html(msg)
 
     def write_html(self, body: str):
@@ -62,7 +63,7 @@ def set_env(key: str, value: str) -> None:
     text = ENV.read_text() if ENV.exists() else ""
     line = f"{key}={value}"
     pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
-    text = pattern.sub(line, text) if pattern.search(text) else text.rstrip("\n") + f"\n{line}\n"
+    text = pattern.sub(lambda _: line, text) if pattern.search(text) else text.rstrip("\n") + f"\n{line}\n"
     ENV.write_text(text)
     ENV.chmod(0o600)
 
