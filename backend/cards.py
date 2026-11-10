@@ -34,6 +34,7 @@ import cashflow
 import company
 import config
 import db
+import innkreving
 import memory
 import preflight
 
@@ -394,32 +395,13 @@ def deck(today: date | None = None) -> dict:
 # a card and the brief can never disagree about where the floor is.
 
 
-def _reminder_draft(invoices: list[dict], total: float) -> dict:
-    lines = "\n".join(
-        f"- Faktura {i.get('number') or '—'}, forfalt {i['due']}, "
-        f"{_kr(i['amount'])} kr" for i in invoices)
-    return {
-        "kind": "e-post",
-        "to": next((i.get("email") for i in invoices if i.get("email")), ""),
-        "subject": f"Påminnelse – forfalte fakturaer fra {config.COMPANY_NAME}",
-        "text": (
-            f"Hei,\n\n"
-            f"Vi ser at følgende fakturaer står som ubetalte hos oss:\n\n"
-            f"{lines}\n\n"
-            f"Til sammen {_kr(total)} kr.\n\n"
-            f"Er det noe som er uklart, eller har det skjedd noe med "
-            f"faktureringen, så si fra — ellers setter vi pris på at beløpet "
-            f"blir gjort opp.\n\n"
-            f"Vennlig hilsen\n{config.COMPANY_NAME}"),
-    }
-
-
-def _collections(invoices: list[dict], today: date,
-                 rules: dict | None = None) -> list[dict]:
-    """One card per customer who is materially late, with the chase written."""
+def _late(invoices: list[dict], today: date, rules: dict | None = None,
+          habits: dict | None = None, history: list[dict] | None = None) -> list[dict]:
+    """Each customer materially late: what he owes, how late, against his own
+    habit, and which step of the chase he is on (`innkreving`)."""
     rules = rules or company.rules()
-    days_rule, min_rule = rules["purring_etter_dager"], rules["varsel_minimum_kr"]
-    late_days, minimum = days_rule["value"], min_rule["value"]
+    late_days = rules["purring_etter_dager"]["value"]
+    minimum = rules["varsel_minimum_kr"]["value"]
     by: dict[str, list[dict]] = {}
     for inv in invoices:
         try:
@@ -430,36 +412,89 @@ def _collections(invoices: list[dict], today: date,
         if late < late_days:
             continue
         by.setdefault(inv["name"], []).append({**inv, "late": late})
-
-    cards = []
+    out = []
     for customer, items in by.items():
         total = sum(i["amount"] for i in items)
         if total < minimum:
             continue
         worst = max(i["late"] for i in items)
-        cards.append({
-            "key": f"collections:{customer}",
-            "kind": "collections", "amount": total,
-            "urgency": "high" if worst >= 30 or total >= 100_000 else "medium",
-            "title": f"{customer} er {worst} dager på etterskudd med {_kr(total)} kr",
-            "body": (f"{len(items)} faktura(er) har stått ubetalt i {late_days} "
-                     f"dager eller mer. Lønnen din går ut hver måned uansett, "
-                     f"så det er dine penger som finansierer ventetiden."),
+        key = f"collections:{customer}"
+        dates = innkreving.sent(history or [], key)
+        out.append({"customer": customer, "key": key, "items": items,
+                    "amount": total, "worst": worst, "sent": dates,
+                    "step": innkreving.step(dates),
+                    "habit": innkreving.habit(customer, worst, habits, late_days)})
+    return out
+
+
+def _collections(invoices: list[dict], today: date,
+                 rules: dict | None = None, habits: dict | None = None,
+                 history: list[dict] | None = None) -> list[dict]:
+    """One card per customer who is materially late: the reminder drafted, the
+    second one firmer, and after two the next step left to the owner."""
+    rules = rules or company.rules()
+    days_rule, min_rule = rules["purring_etter_dager"], rules["varsel_minimum_kr"]
+    late_days, minimum = days_rule["value"], min_rule["value"]
+    account = company.setting("kontonummer")
+    cards = []
+    for c in _late(invoices, today, rules, habits, history):
+        customer, items, total, worst = c["customer"], c["items"], c["amount"], c["worst"]
+        h, n = c["habit"], c["step"]
+        unusual = h["kind"] == "uvanlig"
+        habit = innkreving.habit_text(h, worst)
+        ring = {"id": "call", "label": "Jeg ringer dem", "effect": "delegate"}
+        send = {"id": innkreving.SEND,
+                "label": "Send påminnelsen" if n == 1 else "Send den nye påminnelsen",
+                "effect": "approve"}
+        wait = {"id": "wait", "label": "Vent en uke", "effect": "snooze", "days": 7}
+        if n > innkreving.REMINDERS:
+            title = (f"{customer} har ikke betalt etter {innkreving.REMINDERS} "
+                     f"påminnelser: {_kr(total)} kr, {worst} dager")
+            body = (f"Påminnelser gikk ut {', '.join(c['sent'])}, og "
+                    f"{len(items)} faktura(er) står fortsatt ubetalt. Neste steg "
+                    f"er ditt: et inkassovarsel, en samtale, eller en avtale om "
+                    f"nedbetaling. " + habit).strip()
+            options = [{"id": "inkasso", "label": "Jeg sender inkassovarsel",
+                        "effect": "delegate"}, ring, wait]
+            urgency = "high"
+        else:
+            title = f"{customer} er {worst} dager på etterskudd med {_kr(total)} kr"
+            if n == 2:
+                title += " — andre påminnelse"
+            body = (f"{len(items)} faktura(er) har stått ubetalt i {late_days} "
+                    f"dager eller mer. " + (habit + " " if habit else "")
+                    + ("Ingen betaling siden påminnelsen "
+                       f"{c['sent'][-1]}: denne er strengere. " if n == 2 else "")
+                    + "Lønnen din går ut hver måned uansett, så det er dine "
+                      "penger som finansierer ventetiden.")
+            options = [ring, send, wait] if unusual else [send, wait, ring]
+            urgency = ("high" if unusual or worst >= 30 or total >= 100_000
+                       else "medium")
+            if h["kind"] == "fast" and total < 100_000:
+                urgency = "medium"
+        habit_fact = ([{"label": "Betaler vanligvis",
+                        "value": (f"{h['days']} dager etter forfall "
+                                  f"({h['invoices']} fakturaer)")}]
+                      if h["days"] is not None else [])
+        card = {
+            "key": c["key"], "kind": "collections", "amount": total,
+            "urgency": urgency, "title": title, "body": body,
             "evidence": [{"label": f"Faktura {i.get('number') or '—'}",
                           "value": f"{_kr(i['amount'])} kr, forfalt {i['due']} "
                                    f"({i['late']} d siden)"} for i in items[:6]]
+            + habit_fact
             # The rule that raised it, so a card the CEO thinks came too early
             # tells him where to change that.
             + [{"label": "Regel", "value": (
                 f"purring etter {late_days} dager ({company.said(days_rule)}), "
                 f"over {_kr(minimum)} kr ({company.said(min_rule)})")}],
-            "draft": _reminder_draft(items, total),
-            "options": [
-                {"id": "send", "label": "Send påminnelsen", "effect": "approve"},
-                {"id": "wait", "label": "Vent en uke", "effect": "snooze", "days": 7},
-                {"id": "call", "label": "Jeg ringer dem", "effect": "delegate"},
-            ],
-        })
+            "options": options,
+        }
+        d = innkreving.draft(items, total, n, today,
+                             c["sent"][-1] if c["sent"] else None, account)
+        if d:
+            card["draft"] = d
+        cards.append(card)
     return cards
 
 
@@ -643,11 +678,21 @@ async def refresh(today: date | None = None) -> dict:
         candidates += _from_cashflow(cf, rules)
         # The forecast already fetched the open invoices; reusing them keeps
         # the deck and the forecast on the same figures.
-        candidates += _collections(cf.get("ar_open") or [], today, rules)
+        history = _load()["cards"]
+        candidates += _collections(cf.get("ar_open") or [], today, rules,
+                                   cf.get("betalingsvaner"), history)
         candidates += _from_register(cf.get("ar_at_risk") or [])
 
     reconcile(candidates, sources_ok=True, unknown=_unknown(pf, cf))
-    return deck(today)
+    out = deck(today)
+    # The day's collections, from the same late customers as their cards and
+    # the deck as reconcile left it (card 20).
+    if cf and cf.get("ar_complete", True):
+        history = _load()["cards"]
+        out["collections"] = innkreving.today_list(
+            _late(cf.get("ar_open") or [], today, rules, cf.get("betalingsvaner"),
+                  history), history, today)
+    return out
 
 
 # Which derived cards each check produces, by key prefix. A check that could
