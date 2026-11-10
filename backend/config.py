@@ -1,5 +1,6 @@
 """Runtime configuration, read once from the environment."""
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -54,6 +55,13 @@ SCHEDULER = os.getenv("CFO_SCHEDULER", "on").strip().lower() not in ("off", "0",
 # The company's clock, whatever the machine's: a host in UTC still runs the
 # morning at seven in Norway.
 TIMEZONE = os.getenv("CFO_TIMEZONE", "Europe/Oslo")
+# And every date.today() in the code reads the company's day too. On a host in
+# UTC it was yesterday until one or two in the night: a card closed after
+# midnight was dated the day before, and the forecast's week began a day late,
+# while the scheduler, on its own clock, already said today.
+os.environ["TZ"] = TIMEZONE
+if hasattr(time, "tzset"):          # not on Windows
+    time.tzset()
 MORNING_AT = os.getenv("CFO_MORNING_AT", "07:00")
 
 # On a host anyone on the internet can reach. Render sets RENDER on every
