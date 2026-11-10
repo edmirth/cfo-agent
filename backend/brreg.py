@@ -25,7 +25,6 @@ customer list not loading, keeps the status the customer last had and records
 why; the morning run says the check was partial. Nothing is ever set to "ok"
 without the register having said so.
 """
-import asyncio
 import logging
 import re
 from datetime import date, timedelta
