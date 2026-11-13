@@ -1416,6 +1416,60 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
                        for k, m in reversed(runs)]}
 
 
+# The month's net movement on 2770 and 2700-2739 is what this month booked
+# there only until a term is paid or settled in it. Then the payment is in the
+# same figure, usually larger than the accrual, and the month read as nothing
+# booked: a run journalised before its pay day was forecast again on top of
+# the balance commitments dates, and so was the VAT already invoiced. The
+# month's postings find those vouchers; the movement less them is the accrual.
+VAT_ACCRUED = (2700, 2739)
+VAT_SETTLEMENT = (2740, 2749)
+VAT_OUTPUT, VAT_INPUT = (2700, 2709), (2710, 2719)
+AGA_ACCRUED = (2770, 2779)
+
+
+async def _tax_postings(today: date) -> list[dict]:
+    """This month's postings on the VAT and AGA accounts, settlement included."""
+    start = date(today.year, today.month, 1)
+    return await _postings_in(VAT_ACCRUED[0], AGA_ACCRUED[1], start,
+                              date(*_add_months(today.year, today.month, 1), 1))
+
+
+def _settled(postings: list[dict]) -> tuple[float, float]:
+    """(VAT, AGA): what this month's settlements and payments moved on the
+    accrual accounts, a debit positive, to take off the month's movement.
+
+    A VAT settlement is a voucher that reaches 2740, or one that clears output
+    against input VAT itself: a debit on 2700-2709 with a credit on 2710-2719.
+    An AGA payment is a voucher whose net on 2770-2779 is a debit; the payroll
+    voucher credits it, and a reversal of one is netted inside its own voucher.
+    """
+    def acct(p):
+        try:
+            return int(str(p.get("accountNumber"))[:4])
+        except (TypeError, ValueError):
+            return None
+
+    def within(n, rng):
+        return n is not None and rng[0] <= n <= rng[1]
+
+    vouchers: dict = {}
+    for i, p in enumerate(postings):
+        vouchers.setdefault(p.get("voucherId", ("loose", i)), []).append(
+            (acct(p), float(p.get("amount") or 0)))
+    vat = aga = 0.0
+    for lines in vouchers.values():
+        settles = (any(within(n, VAT_SETTLEMENT) for n, _ in lines)
+                   or (any(within(n, VAT_OUTPUT) and a > 0 for n, a in lines)
+                       and any(within(n, VAT_INPUT) and a < 0 for n, a in lines)))
+        if settles:
+            vat += sum(a for n, a in lines if within(n, VAT_ACCRUED))
+        on_aga = sum(a for n, a in lines if within(n, AGA_ACCRUED))
+        if on_aga > 0:
+            aga += on_aga
+    return vat, aga
+
+
 # Closed months do not change by the hour: read once a day, not on every
 # rebuild of the forecast, which reads six months of bank postings each time.
 _payroll_cache: dict[str, dict | None] = {}
@@ -1459,7 +1513,7 @@ async def build(today: date | None = None) -> dict:
     issued: dict = {}
     supplier_history: list = []
     customer_history: list = []
-    balance, com, ar, ap, prior, paid, wages_paid = await asyncio.gather(
+    balance, com, ar, ap, prior, paid, wages_paid, tax_posts = await asyncio.gather(
         saldobalanse.monthly(mcp, start_year, today.isoformat()),
         commitments.cached(),
         _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
@@ -1473,6 +1527,7 @@ async def build(today: date | None = None) -> dict:
         _prior(),
         payment_habits.payments(mcp, today),
         _payroll_measured(today),
+        _tax_postings(today),
         return_exceptions=True,
     )
     if isinstance(balance, Exception):
@@ -1747,8 +1802,14 @@ async def build(today: date | None = None) -> dict:
 
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative.
-    aga_series = _monthly(rows, columns, 2770, 2779)
-    aga_booked = max(0.0, -aga_series[-1][1]) if aga_series else 0.0
+    # Without the postings nothing is taken off the movement, as before.
+    if isinstance(tax_posts, Exception):
+        log.warning("Cashflow: månedens mva- og aga-posteringer kunne ikke leses: %s",
+                    tax_posts)
+        tax_posts = []
+    vat_settled, aga_paid = _settled(tax_posts)
+    aga_series = _monthly(rows, columns, *AGA_ACCRUED)
+    aga_booked = max(0.0, -(aga_series[-1][1] - aga_paid)) if aga_series else 0.0
     # What a pay day really pays, where the payroll vouchers say so; the wage
     # accounts otherwise.
     if isinstance(wages_paid, dict) and "unread" in wages_paid:
@@ -1794,9 +1855,9 @@ async def build(today: date | None = None) -> dict:
     # balance, so an accrual shows up as a negative movement; `commitments`
     # negates the same way when it turns a balance into an amount owed.
     booked_vat = 0.0
-    vat_series = _monthly(rows, columns, 2700, 2739)
+    vat_series = _monthly(rows, columns, *VAT_ACCRUED)
     if vat_series:
-        booked_vat = max(0.0, -vat_series[-1][1])
+        booked_vat = max(0.0, -(vat_series[-1][1] - vat_settled))
     # The same overlap on the way in. Invoicing already issued this month sits
     # in ar_open with a real due date of its own; forecasting a full month on
     # top of it collects the same krone twice. The opex leg three lines down
