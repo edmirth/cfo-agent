@@ -43,8 +43,6 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
-- [ ] 67. Give the cash forecast a test baseline: pytest in the venv, and snapshot tests of the full forecast @either #forecast
-
 - [ ] 68. Stop paying AGA and VAT twice in the months a tax payment goes out @either #forecast
 
 - [ ] 69. Split cashflow.py into a typed package without changing a single number @either #forecast
@@ -57,6 +55,8 @@ kanban-plugin: board
 
 
 ## Doing
+
+- [ ] 67. Give the cash forecast a test baseline: pytest in the venv, and snapshot tests of the full forecast @either #forecast
 
 
 
