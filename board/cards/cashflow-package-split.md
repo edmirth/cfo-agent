@@ -17,7 +17,8 @@ that changes on purpose is updated in its own commit with the reason.
 - [x] `backend/cashflow/` package as in §4.6. `import cashflow` and the public API unchanged
       (step 1; `build` lives in `pipeline.py` and `briefing` in `narrative.py`, so the module names
       do not shadow the functions `cashflow.build` and `cashflow.briefing`)
-- [ ] `models.py` with `Flow` and `FlowKind`. `texts.py` holds every user sentence
+- [x] `models.py` with `Flow` and `FlowKind`. `texts.py` holds every user sentence (step 4;
+      the briefing stays in `narrative.py`, which is all text)
 - [x] Shared helpers replace the duplicates listed in §4.7 (step 3)
 - [ ] Tests moved off private functions and module patching (`cashflow.mcp`,
       `cashflow.commitments`) onto `sources` fakes and the public functions
@@ -69,4 +70,19 @@ that changes on purpose is updated in its own commit with the reason.
   - 605 passed; demo snapshots and Ullensaker unchanged.
   - Left: Flow/FlowKind and texts.py (step 4); tests onto the public
     functions, ruff and mypy (step 5).
+- 2026-11-13 (claude): step 4 on `cashflow-package-split`.
+  - `FlowKind` (StrEnum, 17 kinds), each knowing its line and whether it
+    counts after week 13; `Flow` a TypedDict, so still a plain dict at
+    runtime. The stages add to one list; build splits it by kind, which
+    gives the same two sequences. Week items carry the kind as a string.
+    A test checks every item of a whole forecast is on its kind's line.
+  - `texts.py`: every sentence from the calculation modules, 46 functions,
+    lifted by a script with the expression copied exactly, then given
+    parameters that say what they quote. A scan finds none left behind.
+  - On the way: ast columns are UTF-8 bytes, which cut the first attempt
+    a character off on lines with å/ø (reverted, redone); and the replays
+    now refuse DNS too: a slow lookup had made the Ullensaker replay take
+    six minutes instead of one second.
+  - 606 passed; demo snapshots and Ullensaker unchanged.
+  - Left for step 5: tests onto the public functions, ruff and mypy.
 

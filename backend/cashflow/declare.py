@@ -8,8 +8,9 @@ import brreg
 import forecasts
 import scoring
 
-from .common import MONTH_NAMES, SEASON_WEIGHT, _kr
+from .common import MONTH_NAMES, SEASON_WEIGHT
 from .models import Pay, Runs, Sources
+from . import texts
 
 log = logging.getLogger("cfo.cashflow")
 
@@ -74,11 +75,7 @@ def _declare_sales(data: dict, runs: Runs, sales_profile: dict, sales_lag: int,
         invoiced = nxt["fast_vanlig"] + nxt["annen"]
         if abs(invoiced - nxt["regnskapet"]) > REGISTER_CHECK * nxt["regnskapet"]:
             warnings.append(
-                f"Fakturaene sier {_kr(invoiced)} kr i {nxt['month']} med moms, "
-                f"regnskapet {_kr(nxt['regnskapet'])} kr. Prognosen følger "
-                f"fakturaene, kunde for kunde. Er forskjellen inntekter som ikke "
-                f"faktureres i Tripletex, eller fakturering som har endret seg, "
-                f"er det verdt å vite.")
+                texts.register_against_accounts(invoiced, nxt))
     a["fakturering_per_maned"] = invoicing
     a["annen_fakturering"] = runs.other_measured
     a["fast_fakturering_vanlig_mnd"] = round(

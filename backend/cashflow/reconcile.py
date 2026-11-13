@@ -2,11 +2,12 @@
 the open invoices, payables on 2400-2409 against the open bills."""
 from datetime import date
 
-from .common import SLOW_WEEKS, _kr
+
 from .ledger import _closing_or_none
 from .models import FlowKind, Sources
 import bankgap
 import brreg
+from . import texts
 
 
 def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:
@@ -31,18 +32,8 @@ def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:
         return 0.0, False
     residual = gl_ar - ar_total
     counted = bool(src.issued.get("truncated")) or not src.ar_complete
-    head = (f"Konto 1500 viser {_kr(gl_ar)} kr i kundefordringer, men de "
-            f"åpne fakturaene summerer bare til {_kr(ar_total)} kr. ")
     warnings.append(
-        head + (f"Fakturalista er ikke lest helt, så de resterende "
-                f"{_kr(residual)} kr er trolig vanlige fakturaer som ikke "
-                f"ble lest. De ligger bare i den forventede linjen, fordelt "
-                f"over uke {SLOW_WEEKS[0]}–{SLOW_WEEKS[1]}."
-                if counted else
-                f"De resterende {_kr(residual)} kr er ikke regnet med i "
-                f"prognosen før noen har funnet ut hva de består av — "
-                f"gamle fakturaer, posteringer rett på kontoen eller "
-                f"innbetalinger som ikke er koblet til fakturaen."))
+        texts.ar_residual(gl_ar, ar_total, residual, counted))
     return residual, counted
 
 
@@ -64,12 +55,9 @@ def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) ->
         # must not be made to look further away than it is.
         flows.append({"date": today, "amount": -residual,
                           "kind": FlowKind.AP_UNMATCHED,
-                          "label": "Leverandørgjeld uten kjent faktura"})
+                          "label": texts.ap_unmatched_label()})
         warnings.append(
-            f"Konto 2400 viser {_kr(gl_ap)} kr i leverandørgjeld, men de åpne "
-            f"leverandørfakturaene summerer bare til {_kr(ap_total)} kr. De "
-            f"resterende {_kr(residual)} kr er lagt inn denne uka, uten "
-            f"forfallsdato å feste dem til. Noen bør finne ut hva de består av.")
+            texts.ap_residual_short(gl_ap, ap_total, residual))
     elif ap_total - gl_ap > 1000:
         # The other direction, and it is not symmetrical. The register claims
         # more is outstanding than the ledger says is owed. It is NOT trimmed
@@ -78,12 +66,7 @@ def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) ->
         # which supplier to stop paying. Said out loud instead, and left
         # standing — paying too early is the survivable mistake of the two.
         warnings.append(
-            f"De åpne leverandørfakturaene summerer til {_kr(ap_total)} kr, "
-            f"men konto 2400 viser bare {_kr(gl_ap)} kr i leverandørgjeld. "
-            f"Prognosen betaler ut hele {_kr(ap_total)} kr, altså "
-            f"{_kr(ap_total - gl_ap)} kr mer enn bøkene sier dere skylder. "
-            f"Som regel er det fakturaer som er betalt uten at restbeløpet ble "
-            f"nullet i reskontroen. Verdt å rydde i.")
+            texts.ap_residual_over(ap_total, gl_ap))
 
 
 def _opening(com: dict, warnings: list[str]):
@@ -99,25 +82,17 @@ def _opening(com: dict, warnings: list[str]):
     opening = com["bank"]
     if gap is None:
         warnings.append(
-            "Bankavstemmingen i Tripletex kunne ikke leses, så prognosen "
-            "starter på den bokførte banksaldoen. Har det kommet inn eller gått "
-            "ut penger som ikke er bokført ennå, er startpunktet feil med så "
-            "mye — og det er ukjent hvor mye.")
+            texts.bank_gap_unread())
         return gap, booked, opening
     warnings += gap["unknown"]
     # The figure is right as of the last imported line, so that date is
     # said whenever the feed is behind the last working day.
     if gap.get("stale"):
         warnings.append(
-            f"Bankfeeden i Tripletex har ingenting etter {gap['latest']}, "
-            f"så startsaldoen er pengene i banken per den dagen. Det som "
-            f"har kommet inn eller gått ut siden, er ikke med.")
+            texts.bank_feed_stale(gap["latest"]))
     if gap["approximate"]:
         warnings.append(
-            "For noen måneder i bankavstemmingen fantes ingen bokført "
-            "månedsbevegelse å måle mot, så forskjellen mellom bank og bøker "
-            "der er regnet ut fra de umatchede listene alene. De utelater "
-            "lønnsposteringer brukeren ikke har innsyn i.")
+            texts.bank_gap_approximate())
     return gap, booked, opening
 
 

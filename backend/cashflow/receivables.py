@@ -10,6 +10,7 @@ import statistics
 import company
 from .common import _iso
 from .models import FlowKind
+from . import texts
 
 
 def _receipt_parts(inv: dict, today: date,
@@ -79,23 +80,20 @@ def _schedule_receipts(invoices: list, today: date,
             continue
         for when, amount in parts:
             flows.append({"date": when, "amount": amount, "kind": FlowKind.AR,
-                          "label": f"Faktura til {inv['name']}"})
+                          "label": texts.invoice_label(inv["name"])})
     if overdue:
         for w in range(LATE_SPREAD_WEEKS):
             flows.append({"date": today + timedelta(days=7 * (w + 1)),
                           "amount": sum(p[w][1] for _, p in overdue),
                           "kind": FlowKind.AR_LATE,
-                          "label": f"Forfalte fakturaer ({len(overdue)} stk), "
-                                   f"fordelt over {LATE_SPREAD_WEEKS} uker"})
+                          "label": texts.overdue_label(len(overdue))})
     if slow:
         first, last = SLOW_WEEKS
         for n, w in enumerate(range(first, last + 1)):
             flows.append({"date": today + timedelta(days=7 * w),
                           "amount": sum(p[n][1] for p in slow),
                           "kind": FlowKind.AR_SLOW,
-                          "label": f"Fakturaer {LATE_DAYS + 1}–{DOUBTFUL_DAYS} "
-                                   f"dager på overtid ({len(slow)} stk), "
-                                   f"fordelt over uke {first}–{last}"})
+                          "label": texts.slow_label(first, last, len(slow))})
     return flows
 
 
@@ -142,8 +140,7 @@ def _receivables(ar_due: list, today: date, habits: dict, residual: float,
         for w in range(first, last + 1):
             flows.append({"date": today + timedelta(days=7 * w),
                           "amount": per, "kind": FlowKind.AR_UNMATCHED,
-                          "label": "Kundefordringer uten kjent faktura, "
-                                   "trolig fra en avkortet fakturaliste"})
+                          "label": texts.ar_unmatched_label()})
     return ar_doubtful, ages
 
 

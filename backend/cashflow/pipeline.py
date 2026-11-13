@@ -17,6 +17,7 @@ from .reconcile import _ap_residual, _ar_residual, _opening, _settle
 from .sources import _habits, _last_year, _read
 from .tax import _booked_vat, _settled, _statutory, _vat_input_share
 from .trading import _opex_in, _trading, _Trading
+from . import texts
 
 log = logging.getLogger("cfo.cashflow")
 
@@ -83,11 +84,7 @@ async def build(today: date | None = None) -> dict:
     months = _trading(trade, flows)
     if not vat_measured:
         warnings.append(
-            "Forholdet mellom utgående og inngående merverdiavgift lot seg "
-            "ikke måle — konto 2700 er tom eller nettopp gjort opp. Prognosen "
-            "legger derfor ut hele den utgående momsen på ny fakturering, uten "
-            "fradrag for moms på det dere selv kjøper. Det er for strengt, ikke "
-            "for snilt, men det er verdt å vite.")
+            texts.vat_share_unmeasured())
 
     committed, expected = split_lines(flows)
     data = _assemble(today, week0, opening, committed, expected,

@@ -11,6 +11,7 @@ from .common import MONTH_NAMES, MVA_RATE
 from .costs import _cost_parts
 from .common import _next_month
 from .models import FlowKind, Runs
+from . import texts
 
 
 def _revenue_in(rates: dict, season: dict, month_no: int) -> float:
@@ -114,9 +115,7 @@ def _month_sales(t: _Trading, m: _Month, flows: list) -> dict | None:
         if t.today <= landing < t.horizon and round(amount) > 0:
             flows.append({"date": landing, "amount": amount,
                              "kind": FlowKind.NEW_SALES,
-                             "label": f"Fakturering {m.name}"
-                                      f"{', ' + days.replace('fakturert ', '') if days else ''}"
-                                      f", betalt"})
+                             "label": texts.sales_label(m.name, days)})
     return row
 
 
@@ -156,11 +155,11 @@ def _month_vat(t: _Trading, m: _Month, flows: list) -> None:
     if t.today <= vat_due < t.horizon and round(contract_vat) > 0:
         flows.append({"date": vat_due, "amount": -contract_vat,
                           "kind": FlowKind.VAT_RECURRING,
-                          "label": f"Merverdiavgift på fast fakturering {m.name}"})
+                          "label": texts.vat_contract_label(m.name)})
     if t.today <= vat_due < t.horizon and round(net_vat) > 0:
         flows.append({"date": vat_due, "amount": -net_vat,
                          "kind": FlowKind.VAT_FUTURE,
-                         "label": f"Merverdiavgift på fakturering {m.name}"})
+                         "label": texts.vat_label(m.name)})
 
 
 def _month_costs(t: _Trading, m: _Month, flows: list) -> None:
@@ -195,26 +194,12 @@ def _month_costs(t: _Trading, m: _Month, flows: list) -> None:
         part = cost * share
         if pay >= t.horizon or round(part) <= 0:
             continue
-        label = _cost_label(t, m, days, fixed, month_vat)
-        sure = (", den faste delen" if t.bank_costs
-                else ", til den faste faktureringen")
+        label = texts.cost_label(m.name, m.current, days, fixed, month_vat,
+                                 bool(t.bank_costs))
+        sure = texts.cost_label_tail(bool(t.bank_costs))
         if round(part * cost_tied) > 0:
             flows.append({"date": pay, "amount": -part * cost_tied,
                               "kind": FlowKind.OPEX_RECURRING, "label": label + sure})
         if round(part * (1 - cost_tied)) > 0:
             flows.append({"date": pay, "amount": -part * (1 - cost_tied),
                              "kind": FlowKind.OPEX, "label": label})
-
-
-def _cost_label(t: _Trading, m: _Month, days: str, fixed: float, month_vat: float) -> str:
-    if t.bank_costs:
-        return (f"Driftskostnader {m.name}"
-                f"{', resten' if m.current else ''}"
-                f"{', betalt ' + days.replace('fakturert ', '') if days else ''}"
-                f", fra banken"
-                f"{' utenom kjente regninger' if fixed >= 0.5 else ''}")
-    return (f"Driftskostnader {m.name}"
-            f"{', resten' if m.current else ''}"
-            f"{', ' + days if days else ''}"
-            f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-            f"{' (inkl. moms)' if month_vat >= 0.5 else ''}")

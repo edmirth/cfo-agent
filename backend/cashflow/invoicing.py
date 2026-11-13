@@ -6,11 +6,12 @@ from datetime import date, timedelta
 import payment_habits
 import workdays
 
-from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, _add_months, _kr, _term_step
+from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, _add_months, _term_step
 from .costs import _profile
 from .models import FlowKind, Runs, Sources
 from .receivables import _days_overdue
 from .common import _iso, _months_until
+from . import texts
 
 
 # The rest of the invoicing, to customers not billed every month, is one stream
@@ -142,8 +143,7 @@ def _invoice_runs(history: list, today: date, horizon: date,
         if behind > BEHIND_MIN and behind >= usual:
             found.append({"name": name, "amount": 0.0, "usual": round(usual, 2),
                           "committed": False, "excluded": True,
-                          "why": f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid, "
-                                 f"mer enn en vanlig måned",
+                          "why": texts.aside_far_behind(behind),
                           "day": None, "terms": None, "term_steps": [], "late": None,
                           "next": None})
             continue
@@ -161,13 +161,13 @@ def _why_aside(months: dict, recent: list, behind: float, usual: float,
                parts: list, today: date) -> str | None:
     """Why a regular customer is in the expected line only, or None."""
     if not all(k in months for k in recent):
-        return "en av de siste månedene uten faktura"
+        return texts.aside_month_without_invoice()
     if behind > BEHIND_MIN and behind >= BEHIND_SHARE * usual:
-        return f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid"
+        return texts.aside_behind(behind)
     sent_now = months.get((today.year, today.month), {}).get("amount", 0.0)
     last_day = max(d for d, _, _ in parts)
     if today.day > last_day + STALL_DAYS and sent_now < 0.5 * usual:
-        return f"ingen faktura ennå denne måneden, vanligvis den {last_day}."
+        return texts.aside_stalled(last_day)
     return None
 
 
@@ -195,8 +195,7 @@ def _place_runs(name: str, months: dict, parts: list, low: float, usual: float,
                 # the weeks.
                 if issued >= horizon:
                     continue
-                label = (f"Fakturering {MONTH_NAMES[mo - 1]} (ikke sendt), "
-                         f"{_term_step(terms)} dager")
+                label = texts.run_label(terms, mo)
                 if round(left_low * share) > 0:
                     flows.append({"date": pay, "amount": left_low * share,
                                   "kind": FlowKind.RECURRING, "month": (y, mo),
@@ -270,8 +269,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                 if issued < horizon and round(left * share) > 0:
                     flows.append({"date": pay, "amount": left * share, "kind": FlowKind.NEW_SALES,
                                   "month": (y, mo),
-                                  "label": f"Annen fakturering {MONTH_NAMES[mo - 1]} "
-                                           f"(ikke sendt), {terms} dager"})
+                                  "label": texts.other_invoicing_label(terms, mo)})
     measured = {"nivaa_mnd": round(level, 2),
                 "maneder": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
                              "amount": round(months[k]["amount"], 2)} for k in reversed(closed)],

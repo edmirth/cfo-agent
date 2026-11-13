@@ -7,6 +7,7 @@ from .common import LATE_SPREAD_WEEKS, MONTH_NAMES, MVA_RATE, PAY_LAG_DAYS, WEEK
 from .payroll import _ferie_withheld
 from .narrative import after_text
 from .models import FlowKind
+from . import texts
 
 
 
@@ -87,7 +88,7 @@ def _empty_weeks(week0: date) -> list[dict]:
         start = week0 + timedelta(weeks=i)
         weeks.append({"index": i, "start": start.isoformat(),
                       "end": (start + timedelta(days=6)).isoformat(),
-                      "label": f"Uke {start.isocalendar().week}",
+                      "label": texts.week_label(start),
                       "in": 0.0, "out": 0.0, "expected_in": 0.0,
                       "expected_out": 0.0, "items": []})
     return weeks
