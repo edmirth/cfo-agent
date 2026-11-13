@@ -76,15 +76,15 @@ class _IgnoresOffset(_Paged):
 
 def _read(rows, id_key="voucherId", stub=None):
     stub = stub or _Stub(rows)
-    original = cashflow.mcp
-    cashflow.mcp = stub
+    original = cashflow.sources.mcp
+    cashflow.sources.mcp = stub
     try:
         out, warnings, _ = asyncio.run(cashflow._open_invoices(
             date(2026, 10, 2), "search_supplier_invoices", "Leverandørfakturaer",
             id_key, "outstandingAmount", "supplierName"))
         return out, warnings
     finally:
-        cashflow.mcp = original
+        cashflow.sources.mcp = original
 
 
 def test_supplier_invoices_are_actually_read():

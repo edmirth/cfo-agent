@@ -43,8 +43,6 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
-- [ ] 69. Split cashflow.py into a typed package without changing a single number @either #forecast
-
 - [ ] 70. Run the forecast on a per-company profile and data map instead of fixed constants @either #forecast
 
 - [ ] 71. Let the AI write the data map on connect, checked against the books before it counts @either #forecast
@@ -53,6 +51,8 @@ kanban-plugin: board
 
 
 ## Doing
+
+- [ ] 69. Split cashflow.py into a typed package without changing a single number @either #forecast
 
 
 

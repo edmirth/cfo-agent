@@ -104,16 +104,16 @@ def test_other_postings_are_not_payroll():
 
 
 def test_the_forecast_pays_the_measured_pay_day():
-    original = cashflow._payroll_measured
+    original = cashflow.sources._payroll_measured
 
     async def measured(today):
         return {"per_run": 850_000.0, "months": []}
 
-    cashflow._payroll_measured = measured
+    cashflow.sources._payroll_measured = measured
     try:
         data = _forecast([REVENUE, _wages()])
     finally:
-        cashflow._payroll_measured = original
+        cashflow.sources._payroll_measured = original
     assert {round(i["amount"]) for i in _kinds(data, "wages")} == {-850_000}
     assert data["assumptions"]["lonn_per_lonningsdag"]["kilde"] == "lønnsbilagene"
 
@@ -145,13 +145,13 @@ class _Ledger:
 
 def _measure(ledger):
     import asyncio
-    original_mcp, original_setting = cashflow.mcp, company.setting
-    cashflow.mcp = ledger
+    original_mcp, original_setting = cashflow.sources.mcp, company.setting
+    cashflow.sources.mcp = ledger
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
-        return asyncio.run(cashflow._payroll_measured(TODAY))
+        return asyncio.run(cashflow.sources._payroll_measured(TODAY))
     finally:
-        cashflow.mcp, company.setting = original_mcp, original_setting
+        cashflow.sources.mcp, company.setting = original_mcp, original_setting
 
 
 def test_the_pay_day_is_read_once_a_day_not_on_every_rebuild():
@@ -172,16 +172,16 @@ def test_an_unread_ledger_is_said_and_asked_again():
     calls = ledger.calls
     _measure(ledger)
     assert ledger.calls > calls, "a failure is not kept"
-    original = cashflow._payroll_measured
+    original = cashflow.sources._payroll_measured
 
     async def unread(today):
         return {"unread": "Tripletex svarte ikke"}
 
-    cashflow._payroll_measured = unread
+    cashflow.sources._payroll_measured = unread
     try:
         data = _forecast([REVENUE, _wages()])
     finally:
-        cashflow._payroll_measured = original
+        cashflow.sources._payroll_measured = original
     assert any("Lønnsbilagene kunne ikke leses" in w for w in data["warnings"])
     assert data["assumptions"]["lonn_per_lonningsdag"]["kilde"] == "lønnskontoene"
     cashflow._payroll_cache.clear()

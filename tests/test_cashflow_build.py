@@ -82,20 +82,20 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     cashflow._payroll_cache.clear()
     cashflow.bankcat.CACHE.clear()
     stub = _Tripletex(rows, ar, ap, last, postings, cut_off, today, columns)
-    old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
+    old_mcp, old_cached = cashflow.sources.mcp, cashflow.commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
 
     async def cached():
         return {"bank": bank, "items": list(items)}
 
-    cashflow.mcp = balance_sheet(stub)
+    cashflow.sources.mcp = balance_sheet(stub)
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: conf.get(k, d)
     try:
         return asyncio.run(cashflow.build(today))
     finally:
-        cashflow.mcp, cashflow.commitments.cached = old_mcp, old_cached
+        cashflow.sources.mcp, cashflow.commitments.cached = old_mcp, old_cached
         company.setting = old_setting
         payment_habits._cache.clear()
 
@@ -987,19 +987,19 @@ class _Broken(_Tripletex):
 
 
 def _forecast_with(stub):
-    old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
+    old_mcp, old_cached = cashflow.sources.mcp, cashflow.commitments.cached
     old_setting = company.setting
 
     async def cached():
         return {"bank": 1_000_000.0, "items": []}
 
-    cashflow.mcp = balance_sheet(stub)
+    cashflow.sources.mcp = balance_sheet(stub)
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
         return asyncio.run(cashflow.build(TODAY))
     finally:
-        cashflow.mcp, cashflow.commitments.cached = old_mcp, old_cached
+        cashflow.sources.mcp, cashflow.commitments.cached = old_mcp, old_cached
         company.setting = old_setting
 
 

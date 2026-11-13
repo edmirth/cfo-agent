@@ -112,8 +112,8 @@ def test_the_forecast_pays_the_pay_day_the_feed_has_not_shown():
         return {"bank": 1_000_000.0, "items": [], "paid_before": "2026-10-09"}
 
     stub = b._Tripletex([REVENUE, _cum("5000 Lønn til ansatte", [100_000.0] * 9)])
-    old = cashflow.mcp, cashflow.commitments.cached, company.setting
-    cashflow.mcp = b.balance_sheet(stub)
+    old = cashflow.sources.mcp, cashflow.commitments.cached, company.setting
+    cashflow.sources.mcp = b.balance_sheet(stub)
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     payment_habits._cache.clear()
@@ -121,7 +121,7 @@ def test_the_forecast_pays_the_pay_day_the_feed_has_not_shown():
     try:
         data = asyncio.run(cashflow.build(date(2026, 10, 12)))
     finally:
-        cashflow.mcp, cashflow.commitments.cached, company.setting = old
+        cashflow.sources.mcp, cashflow.commitments.cached, company.setting = old
         cashflow._payroll_cache.clear()
     wages = [w["start"] for w in data["weeks"] for i in w["items"] if i["kind"] == "wages"]
     assert wages[0] == "2026-10-12", "the 9th's pay day, in this week"
@@ -139,12 +139,12 @@ def test_a_credited_invoice_and_its_credit_note_count_once():
             first = args["invoiceDateFrom"] == "2026-08-01"
             return {"rows": rows if first and not args.get("from") else []}
 
-    original = cashflow.mcp
-    cashflow.mcp = _Register()
+    original = cashflow.sources.mcp
+    cashflow.sources.mcp = _Register()
     try:
         out, _, _ = asyncio.run(cashflow._open_invoices(
             date(2026, 11, 8), "search_invoices", "Kundefakturaer", "id",
             "amountOutstanding", "customerName", in_kroner=True))
     finally:
-        cashflow.mcp = original
+        cashflow.sources.mcp = original
     assert [(i["id"], i["amount"]) for i in out] == [(2, -5_200.0)]
