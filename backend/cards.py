@@ -32,7 +32,6 @@ from datetime import date, datetime, timedelta
 
 import cashflow
 import company
-import config
 import db
 import innkreving
 import memory

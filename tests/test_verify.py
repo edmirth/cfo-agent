@@ -51,6 +51,10 @@ def test_a_minus_written_out_is_read_as_one():
     assert verify.numbers("Kassa står i minus 845 481 kr") == {-845481.0}
     assert verify.numbers("Saldo −845 481 kr") == {-845481.0}
     assert verify.numbers("Resultat: –12 300 kr") == {-12300.0}
+    # After a figure, a minus subtracts.
+    assert verify.numbers("2 625 899 − 34 044") == {2625899.0, 34044.0}
+    assert verify.numbers("100 minus 20") == {100.0, 20.0}
+    assert verify.numbers("Saldo: −1 363 822") == {-1363822.0}
     # Ranges stay ranges.
     assert verify.numbers("uke 3–5") == {5.0}
     assert verify.numbers("100–200 kr") == {100.0, 200.0}

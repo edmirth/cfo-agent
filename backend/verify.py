@@ -81,10 +81,12 @@ _MILLION = re.compile(
 # A minus written out. The agent says "minus 845 481"; our own texts set a real
 # minus sign (U+2212) so the figure reads as one; and an en dash straight
 # before a digit, with no digit or dot before it, is a minus too. "uke 3–5"
-# and "16.–24. juli" are ranges, and stay so.
-_MINUS_WORD = re.compile(r"\bminus\s+(?=\d)", re.IGNORECASE)
-_MINUS_SIGN = re.compile(r"\u2212\s?(?=\d)")
-_EN_DASH_MINUS = re.compile(r"(?:(?<=^)|(?<=[\s(:=]))\u2013(?=\d)")
+# and "16.–24. juli" are ranges, and stay so. After a figure, a minus is a
+# subtraction ("2 625 899 − 34 044"), not a sign: the 34 044 is positive.
+_AFTER_FIGURE = r"(?<!\d)(?<!\d\s)(?<!\d\u00a0)"
+_MINUS_WORD = re.compile(_AFTER_FIGURE + r"\bminus\s+(?=\d)", re.IGNORECASE)
+_MINUS_SIGN = re.compile(_AFTER_FIGURE + r"\u2212\s?(?=\d)")
+_EN_DASH_MINUS = re.compile(r"(?:(?<=^)|(?<=[\s(:=]))(?<!\d\s)\u2013(?=\d)")
 
 
 def _signs(text: str) -> str:
