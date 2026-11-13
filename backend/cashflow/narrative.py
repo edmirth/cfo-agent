@@ -174,7 +174,21 @@ def briefing(data: dict | None) -> str:
            f"**{_kr(low_e['amount'])} kr** i {low_e['label']} "
            f"({low_e['start']}).",
            _floor_line(data)]
+    for say in (_verdict, _table, _assumptions, _overdue, _payers, _new_invoicing,
+                _season, _unexplained, _cost_timing, _fixed_bills, _contracts,
+                _other_invoicing, _bank_spend, _vat, _odd_months, _weaknesses):
+        say(data, a, out)
 
+    out.append("How to use it. The low point and its week are the answer to "
+               "\"will I make it\" — give the week by name and date, not a "
+               "reassurance. Any question about spending, hiring or buying is "
+               "answered against the low point, not against today's balance. "
+               "Always say which of the two lines you are quoting.")
+    return "\n".join(out)
+
+
+def _verdict(data: dict, a: dict, out: list[str]) -> None:
+    """Whether either line goes under zero, and which first."""
     # Said per line, never as one verdict. The floor and the forecast go dry
     # in different weeks and for different reasons, and "kontoen går i minus"
     # without saying which line means nothing he can act on.
@@ -208,6 +222,9 @@ def briefing(data: dict | None) -> str:
                    "plainly when asked; do not manufacture alarm from a low "
                    "point that is still comfortably positive.\n")
 
+
+def _table(data: dict, a: dict, out: list[str]) -> None:
+    """The thirteen weeks, and the money in after them."""
     out.append("| Uke | Fra | Inn | Ut | Bundet saldo | Forventet saldo |")
     out.append("|---|---|---:|---:|---:|---:|")
     for w in data["weeks"]:
@@ -220,6 +237,10 @@ def briefing(data: dict | None) -> str:
                    f"after the window, not what goes out then, so never add it "
                    f"to a balance. Say it when the last weeks look low: the "
                    f"invoicing that pays for them lands after week 13.")
+
+
+def _assumptions(data: dict, a: dict, out: list[str]) -> None:
+    """The figures the forecast rests on, said out loud."""
     out.append("")
     out.append(f"**Forutsetningene** — these are his to change, and saying them "
                f"out loud is what separates a forecast from a guess: fakturering "
@@ -237,6 +258,9 @@ def briefing(data: dict | None) -> str:
                f"pluss {a['pay_lag_days']} dagers forsinkelse, forfalte fakturaer "
                f"fordelt over {a['late_spread_weeks']} uker.\n")
 
+
+def _overdue(data: dict, a: dict, out: list[str]) -> None:
+    """How far the overdue book is counted on, by age."""
     # How far the overdue book is counted on, by age. Said whenever any of it
     # is held back, because the owner will otherwise count it himself.
     ages = a.get("forfalte_grupper") or {}
@@ -262,6 +286,9 @@ def briefing(data: dict | None) -> str:
                    f"the money is still his to chase, it is just not counted "
                    f"on.\n")
 
+
+def _payers(data: dict, a: dict, out: list[str]) -> None:
+    """When the customers pay, and who is always late."""
     # When the customers' money comes: their own habits, said with the slowest.
     h = data.get("betalingsvaner") or {}
     if h.get("measured"):
@@ -299,6 +326,9 @@ def briefing(data: dict | None) -> str:
                    f"et mønster i, så alle kunder er lagt inn med "
                    f"{PAY_LAG_DAYS} dager etter forfall.\n")
 
+
+def _new_invoicing(data: dict, a: dict, out: list[str]) -> None:
+    """When the sales not yet invoiced come in."""
     # When the sales not yet invoiced come in, and what that rests on.
     sp = a.get("fakturaprofil") or {}
     if sp.get("measured"):
@@ -316,6 +346,9 @@ def briefing(data: dict | None) -> str:
                    f"{sp.get('forsinkelse_dager', PAY_LAG_DAYS)} dagers "
                    f"forsinkelse.\n")
 
+
+def _season(data: dict, a: dict, out: list[str]) -> None:
+    """Which months are not like the others."""
     # The months are not alike, and the owner should hear which ones are not.
     seasons = a.get("sesong") or {}
     if seasons.get("revenue"):
@@ -340,6 +373,9 @@ def briefing(data: dict | None) -> str:
                    "noen måneder normalt stillere, er prognosen for snill i "
                    "dem.\n")
 
+
+def _unexplained(data: dict, a: dict, out: list[str]) -> None:
+    """Receivables on 1500 that no invoice explains."""
     # The receivables nobody can explain: never in the floor, and only in the
     # forecast when the invoice list is known to be short.
     unknown = a.get("ukjente_fordringer") or {}
@@ -356,6 +392,9 @@ def briefing(data: dict | None) -> str:
                    f"så det ligger i den forventede linjen, men ikke i den "
                    f"bundne.\n")
 
+
+def _cost_timing(data: dict, a: dict, out: list[str]) -> None:
+    """When the running costs leave."""
     # When the running costs leave, and what that rests on: it moves which week
     # is the tight one, so it is said either way.
     prof = a.get("kostnadsprofil") or {}
@@ -372,6 +411,9 @@ def briefing(data: dict | None) -> str:
                    "leverandørfakturaer til å se et mønster, så de løpende "
                    "kostnadene er lagt på siste dag i hver måned.\n")
 
+
+def _fixed_bills(data: dict, a: dict, out: list[str]) -> None:
+    """The fixed bills in the committed line, by name."""
     # The floor's newest part, named bill by bill so the owner can check it
     # against what he knows he pays — and what it cannot see, said every time.
     fixed = data.get("fixed_costs") or []
@@ -394,6 +436,9 @@ def briefing(data: dict | None) -> str:
                    f"har ingen husleie, leasing eller forsikring i seg. {gap} "
                    f"Say so if he asks how safe the bundne line is.\n")
 
+
+def _contracts(data: dict, a: dict, out: list[str]) -> None:
+    """The contract customers the committed line counts on."""
     # The other side of the same floor: the invoicing it now counts on before
     # anything is sent, named customer by customer so he can strike one out.
     everyone = data.get("recurring_sales") or []
@@ -433,6 +478,9 @@ def briefing(data: dict | None) -> str:
                    "it is what happens if nothing new is invoiced, not a "
                    "prediction that nothing will be.\n")
 
+
+def _other_invoicing(data: dict, a: dict, out: list[str]) -> None:
+    """The rest of the invoicing, in the expected line."""
     other = a.get("annen_fakturering")
     if a.get("fakturering_fra") == "fakturaregisteret" and other:
         odd = other.get("uvanlige") or []
@@ -448,6 +496,9 @@ def briefing(data: dict | None) -> str:
             + "Pengene som kommer inn er lest fra fakturaene, kunde for kunde, "
               "ikke fra inntektene i regnskapet.\n")
 
+
+def _bank_spend(data: dict, a: dict, out: list[str]) -> None:
+    """What actually left the bank, by category."""
     cats = data.get("bank_categories")
     if cats and cats.get("months"):
         closed = sorted(cats["months"])[:-1] or sorted(cats["months"])
@@ -466,6 +517,9 @@ def briefing(data: dict | None) -> str:
                    f"This is the bank, not the accounts: use it when he asks what the "
                    f"business really spends, and ask him about the unknown ones.\n")
 
+
+def _vat(data: dict, a: dict, out: list[str]) -> None:
+    """The VAT and AGA that new invoicing and payroll bring."""
     # The half of the forecast that is easy to leave out, because it is a bill
     # arriving for money that already came in.
     out.append(
@@ -487,6 +541,9 @@ def briefing(data: dict | None) -> str:
           f"måneden. Begge deler er anslag som følger av omsetnings- og "
           f"lønnsraten over: endrer han den ene, endrer han disse.\n")
 
+
+def _odd_months(data: dict, a: dict, out: list[str]) -> None:
+    """The holiday-pay month and December, when inside the window."""
     # The two months that do not behave like the other ten. Only said when one
     # of them is actually inside the window: a note about December in February
     # is noise, and noise is what gets the real notes skimmed past.
@@ -523,15 +580,11 @@ def briefing(data: dict | None) -> str:
             f"en vanlig måned. Si det hvis han venter en tyngre desember av "
             f"den grunn — desember er tung av andre grunner, ikke denne.\n")
 
+
+def _weaknesses(data: dict, a: dict, out: list[str]) -> None:
+    """What weakens the forecast, from its warnings."""
     if data.get("warnings"):
         out.append("**Det som svekker prognosen** — say these in the owner's "
                    "words whenever you quote a figure that rests on them:\n")
         out += [f"- {w}" for w in data["warnings"]]
         out.append("")
-
-    out.append("How to use it. The low point and its week are the answer to "
-               "\"will I make it\" — give the week by name and date, not a "
-               "reassurance. Any question about spending, hiring or buying is "
-               "answered against the low point, not against today's balance. "
-               "Always say which of the two lines you are quoting.")
-    return "\n".join(out)
