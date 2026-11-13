@@ -134,7 +134,7 @@ is code, and every figure it states is traced back to a source afterwards.
 | `backend/definitions.py` | What each KPI means, fingerprinted over wording *and* code, versioned append-only |
 | `backend/preflight.py` | Do the books tie out — unbooked vouchers, subledgers vs accounts, is this month posted |
 | `backend/commitments.py` | How much of the bank is actually the company's, dated by when each obligation falls due |
-| `backend/cashflow.py` | Thirteen weeks on two lines: committed and expected |
+| `backend/cashflow/` | Thirteen weeks on two lines: committed and expected. `pipeline.py` builds it from `sources.py` (every Tripletex read), the receivables, payables, invoicing, costs, ledger, tax and payroll modules, `assemble.py` and `narrative.py`; `import cashflow` as before |
 | `backend/industry.py` | Works out the trade from the ledger; the model picks KPIs from a computable catalogue |
 | `backend/cards.py` | Work prepared for one-tap approval; derived cards refresh and close with the facts |
 | `backend/memory.py` | Snapshots, findings, forecasts, decisions — carried between conversations |

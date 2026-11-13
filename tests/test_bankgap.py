@@ -239,18 +239,18 @@ def test_the_reconciliation_keeps_the_booked_postings():
 def _build(rows, ar, bank, gap):
     """The forecast with commitments stubbed as having measured `gap`."""
     stub = _Tripletex(rows, ar)
-    old_mcp, old_cached, old_setting = cashflow.mcp, cashflow.commitments.cached, company.setting
+    old_mcp, old_cached, old_setting = cashflow.sources.mcp, cashflow.commitments.cached, company.setting
 
     async def cached():
         return {"bank": bank + (gap["adjustment"] if gap else 0.0),
                 "bank_booked": bank, "bank_gap": gap, "items": []}
 
-    cashflow.mcp, cashflow.commitments.cached = balance_sheet(stub), cached
+    cashflow.sources.mcp, cashflow.commitments.cached = balance_sheet(stub), cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
         return asyncio.run(cashflow.build(TODAY))
     finally:
-        cashflow.mcp, cashflow.commitments.cached, company.setting = old_mcp, old_cached, old_setting
+        cashflow.sources.mcp, cashflow.commitments.cached, company.setting = old_mcp, old_cached, old_setting
 
 
 OCTOBER_RECEIPT = bankgap.measure(
