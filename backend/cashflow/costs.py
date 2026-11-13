@@ -46,82 +46,97 @@ def _fixed_bills(history: list, today: date,
     is placed anyway, on its usual due date or today, since a bill that is
     late or in the inbox is still owed.
     """
+    this = (today.year, today.month)
+    flows, found, by_month = [], [], {}
+    for s in _by_supplier(history).values():
+        cadence = _cadence(s["months"], this)
+        if cadence is None:
+            continue
+        step, name, basis = cadence
+        months = s["months"]
+        latest = max(months, key=lambda k: months[k]["last"])
+        amount = months[latest]["amount"]
+        day = int(statistics.median([d for k in basis for d in months[k]["days"]]))
+        terms = int(statistics.median([t for k in basis for t in months[k]["terms"]]))
+        upcoming = _place_fixed(s, step, amount, day, terms, today, horizon,
+                                by_month, flows)
+        found.append({"name": s["name"], "amount": round(amount, 2),
+                      "cadence": name, "day": day, "terms": terms,
+                      "next": min(upcoming).isoformat() if upcoming else None})
+    found.sort(key=lambda f: -f["amount"])
+    return flows, found, by_month
+
+
+def _by_supplier(history: list) -> dict:
+    """{supplier: {"name", "months": {(year, month): {amount, days, terms, last}}}}
+    from every readable NOK bill with a supplier name."""
     by_supplier: dict = {}
-    for row in history:
-        if row.get("isCreditNote") or (row.get("currency") or "NOK").upper() != "NOK":
+    for issued, due, amount, name, key in _bill_rows(history):
+        if not name:
             continue
-        try:
-            issued = date.fromisoformat(row["invoiceDate"])
-            due = date.fromisoformat(row["dueDate"])
-        except (ValueError, TypeError, KeyError):
-            continue
-        amount = float(row.get("amountCurrency") or row.get("amount") or 0)
-        name = row.get("supplierName") or ""
-        if amount <= 0 or not name:
-            continue
-        s = by_supplier.setdefault(row.get("supplierId") or name,
-                                   {"name": name, "months": {}})
+        s = by_supplier.setdefault(key, {"name": name, "months": {}})
         m = s["months"].setdefault((issued.year, issued.month),
                                    {"amount": 0.0, "days": [], "terms": [], "last": issued})
         m["amount"] += amount
         m["days"].append(issued.day)
         m["terms"].append((due - issued).days)
         m["last"] = max(m["last"], issued)
+    return by_supplier
 
-    this = (today.year, today.month)
+
+def _cadence(months: dict, this: tuple) -> tuple[int, str, list] | None:
+    """(step in months, name, the months it rests on) for a supplier who bills
+    the same every month or every quarter, or None."""
     closed = [_add_months(*this, -n) for n in range(1, FIXED_LOOKBACK + 1)]
-    flows, found, by_month = [], [], {}
-    for s in by_supplier.values():
-        months = s["months"]
-        past = sorted(k for k in months if k < this)
-        if not past:
-            continue
+    past = sorted(k for k in months if k < this)
+    if not past:
+        return None
 
-        def stable(keys) -> bool:
-            values = [months[k]["amount"] for k in keys]
-            mid = statistics.median(values)
-            return mid > 0 and all(abs(v - mid) <= FIXED_TOLERANCE * mid for v in values)
+    def stable(keys) -> bool:
+        values = [months[k]["amount"] for k in keys]
+        mid = statistics.median(values)
+        return mid > 0 and all(abs(v - mid) <= FIXED_TOLERANCE * mid for v in values)
 
-        recent = [k for k in closed if k in months]
-        gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in zip(past, past[1:])]
-        if len(recent) >= FIXED_MIN and stable(recent):
-            step, cadence, basis = 1, "månedlig", recent
-        elif len(past) >= FIXED_MIN and gaps and all(g == 3 for g in gaps) \
-                and stable(past) and _add_months(*past[-1], 3) >= this:
-            step, cadence, basis = 3, "kvartalsvis", past
-        else:
-            continue
+    recent = [k for k in closed if k in months]
+    gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in zip(past, past[1:])]
+    if len(recent) >= FIXED_MIN and stable(recent):
+        return 1, "månedlig", recent
+    if len(past) >= FIXED_MIN and gaps and all(g == 3 for g in gaps) \
+            and stable(past) and _add_months(*past[-1], 3) >= this:
+        return 3, "kvartalsvis", past
+    return None
 
-        latest = max(months, key=lambda k: months[k]["last"])
-        amount = months[latest]["amount"]
-        day = int(statistics.median([d for k in basis for d in months[k]["days"]]))
-        terms = int(statistics.median([t for k in basis for t in months[k]["terms"]]))
-        upcoming = []
-        y, mo = _add_months(*past[-1], step)
-        while True:
-            issued = date(y, mo, min(day, monthrange(y, mo)[1]))
-            if issued >= horizon:
-                break
-            pay = max(issued + timedelta(days=terms), today)
-            due_now = (y, mo) >= this and (y, mo) not in months
-            if due_now:
-                by_month[(y, mo)] = by_month.get((y, mo), 0.0) + amount
-            if due_now and pay < horizon:
-                flows.append({"date": pay, "amount": -amount, "kind": "fixed",
-                              "month": (y, mo),
-                              "label": f"Fast regning fra {s['name']}"})
-                upcoming.append(pay)
-            y, mo = _add_months(y, mo, step)
-        found.append({"name": s["name"], "amount": round(amount, 2),
-                      "cadence": cadence, "day": day, "terms": terms,
-                      "next": min(upcoming).isoformat() if upcoming else None})
-    found.sort(key=lambda f: -f["amount"])
-    return flows, found, by_month
+
+def _place_fixed(s: dict, step: int, amount: float, day: int, terms: int,
+                 today: date, horizon: date, by_month: dict, flows: list) -> list[date]:
+    """A fixed supplier's bills still to come, from the month after his last.
+    Returns the pay days inside the window."""
+    this = (today.year, today.month)
+    months = s["months"]
+    past = sorted(k for k in months if k < this)
+    upcoming = []
+    y, mo = _add_months(*past[-1], step)
+    while True:
+        issued = date(y, mo, min(day, monthrange(y, mo)[1]))
+        if issued >= horizon:
+            break
+        pay = max(issued + timedelta(days=terms), today)
+        due_now = (y, mo) >= this and (y, mo) not in months
+        if due_now:
+            by_month[(y, mo)] = by_month.get((y, mo), 0.0) + amount
+        if due_now and pay < horizon:
+            flows.append({"date": pay, "amount": -amount, "kind": "fixed",
+                          "month": (y, mo),
+                          "label": f"Fast regning fra {s['name']}"})
+            upcoming.append(pay)
+        y, mo = _add_months(y, mo, step)
+    return upcoming
 
 
 def _bill_rows(history: list):
-    """(issued, due, gross, supplier) for every readable NOK bill in the
-    supplier history. Credit notes and foreign currency are left out."""
+    """(issued, due, gross, supplier, supplier key) for every readable NOK
+    bill in the supplier history. Credit notes and foreign currency are left
+    out. The key is the supplier's id, or his name where there is none."""
     for row in history:
         if row.get("isCreditNote") or (row.get("currency") or "NOK").upper() != "NOK":
             continue
@@ -132,7 +147,8 @@ def _bill_rows(history: list):
             continue
         amount = float(row.get("amountCurrency") or row.get("amount") or 0)
         if amount > 0:
-            yield issued, due, amount, row.get("supplierName") or ""
+            name = row.get("supplierName") or ""
+            yield issued, due, amount, name, row.get("supplierId") or name
 
 
 def _cost_profile(history: list, fixed_names: set[str]) -> dict:
@@ -154,7 +170,7 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     Too few bills to read a pattern off, and the month-end lump is kept and
     said to be kept.
     """
-    return _profile([(i, d, a) for i, d, a, who in _bill_rows(history)
+    return _profile([(i, d, a) for i, d, a, who, _ in _bill_rows(history)
                      if who not in fixed_names])
 
 

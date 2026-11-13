@@ -110,7 +110,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
           for back in range(AR_MONTHS_BACK)),
         return_exceptions=True)
 
-    seen, out, warnings = set(), [], []
+    seen: set = set()
+    out: list = []
+    warnings: list[str] = []
     complete = not any(isinstance(r, Exception) for r in results)
     for back, r in enumerate(results):
         start, _ = _month_bounds(today, back)
@@ -119,31 +121,9 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
             warnings.append(f"{what} for {when} kunne ikke hentes ({r}). "
                             f"Tallene under er ufullstendige.")
             continue
-        # The search answers partially rather than failing when one of the two
-        # registers is unreadable, and says so in `complete` with a note about
-        # what is missing. Only an exception was being counted as incomplete,
-        # so a half-read register passed for a whole one — and an empty half
-        # reads exactly like a company that owes nobody.
-        if r.get("complete") is False:
+        if not _month_notes(r, what, when, back, issued, warnings):
             complete = False
-            note = r.get("degradedNote") or "en av registrene svarte ikke"
-            warnings.append(f"{what} for {when} ble bare delvis lest "
-                            f"({note}). Tallene under er ufullstendige.")
-        rows = r.get("rows") or []
-        if back == 0 and issued is not None:
-            # In kroner: `amount` is the base currency, 0 for an invoice in
-            # another currency not yet converted, which then counts at face.
-            # A cancelled invoice and its credit note are both rows, and net
-            # to nothing together.
-            issued["this_month"] = sum(
-                float(row.get("amount") or row.get("amountCurrency") or 0)
-                for row in rows)
-        if r.get("truncated"):
-            warnings.append(f"Det er minst {len(rows)} {what.lower()} i {when}; "
-                            f"lista kan være avkortet.")
-            if issued is not None:
-                issued["truncated"] = True
-        for row in rows:
+        for row in r.get("rows") or []:
             # A row with no id is not a duplicate of the last row with no id.
             # Putting None in `seen` made the first one swallow every one after.
             key = row.get(id_key)
@@ -153,35 +133,77 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
                 seen.add(key)
             if history is not None:
                 history.append(row)
-            # A credited invoice and its credit note both report the balance
-            # left between them; the credit note carries it. Counted on both,
-            # a 5 200 kr credit came to 10 400.
-            if row.get("isCredited"):
-                continue
-            amount = row.get(outstanding_key) or 0
-            if not amount or not row.get("dueDate"):
-                continue
-            # outstandingAmount is in the *invoice's* currency, not NOK. There
-            # is no rate here and inventing one is not this module's job, so
-            # the money stays in the forecast at face value — dropping it
-            # would understate what leaves — and the shortfall is declared
-            # instead of quietly standing in for kroner.
-            currency = (row.get("currency") or "NOK").upper()
-            if currency != "NOK" and not in_kroner:
-                warnings.append(
-                    f"{row.get(name_key) or 'En faktura'} står i {currency}, "
-                    f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
-                    f"er lagt inn som om det var kroner, så prognosen er feil "
-                    f"på denne posten med hele valutakursen.")
-            out.append({"id": key, "name": row.get(name_key) or "",
-                        "due": row["dueDate"], "invoiced": row.get("invoiceDate"),
-                        "amount": float(amount),
-                        # Carried for the reminder drafts in cards.py: a chase
-                        # letter without invoice numbers is not a chase letter.
-                        "number": row.get("invoiceNumber"),
-                        "email": row.get("customerEmail") or "",
-                        "url": row.get("url") or ""})
+            item = _open_row(row, key, outstanding_key, name_key, in_kroner, warnings)
+            if item:
+                out.append(item)
     return out, warnings, complete
+
+
+def _month_notes(r: dict, what: str, when: str, back: int, issued: dict | None,
+                 warnings: list[str]) -> bool:
+    """What one month's answer says about itself; False if it is partial.
+
+    The search answers partially rather than failing when one of the two
+    registers is unreadable, and says so in `complete` with a note about
+    what is missing. Only an exception was being counted as incomplete, so a
+    half-read register passed for a whole one — and an empty half reads
+    exactly like a company that owes nobody."""
+    whole = True
+    if r.get("complete") is False:
+        whole = False
+        note = r.get("degradedNote") or "en av registrene svarte ikke"
+        warnings.append(f"{what} for {when} ble bare delvis lest "
+                        f"({note}). Tallene under er ufullstendige.")
+    rows = r.get("rows") or []
+    if back == 0 and issued is not None:
+        # In kroner: `amount` is the base currency, 0 for an invoice in
+        # another currency not yet converted, which then counts at face.
+        # A cancelled invoice and its credit note are both rows, and net
+        # to nothing together.
+        issued["this_month"] = sum(
+            float(row.get("amount") or row.get("amountCurrency") or 0)
+            for row in rows)
+    if r.get("truncated"):
+        warnings.append(f"Det er minst {len(rows)} {what.lower()} i {when}; "
+                        f"lista kan være avkortet.")
+        if issued is not None:
+            issued["truncated"] = True
+    return whole
+
+
+def _open_row(row: dict, key, outstanding_key: str, name_key: str, in_kroner: bool,
+              warnings: list[str]) -> dict | None:
+    """One register row as an open item, or None if nothing is owed on it."""
+    # A credited invoice and its credit note both report the balance left
+    # between them; the credit note carries it. Counted on both, a 5 200 kr
+    # credit came to 10 400.
+    if row.get("isCredited"):
+        return None
+    amount = row.get(outstanding_key) or 0
+    if not amount or not row.get("dueDate"):
+        return None
+    # outstandingAmount is in the *invoice's* currency, not NOK. There is no
+    # rate here and inventing one is not this module's job, so the money stays
+    # in the forecast at face value — dropping it would understate what
+    # leaves — and the shortfall is declared instead of quietly standing in
+    # for kroner.
+    currency = (row.get("currency") or "NOK").upper()
+    if currency != "NOK" and not in_kroner:
+        warnings.append(
+            f"{row.get(name_key) or 'En faktura'} står i {currency}, "
+            f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
+            f"er lagt inn som om det var kroner, så prognosen er feil "
+            f"på denne posten med hele valutakursen.")
+    return {"id": key, "name": row.get(name_key) or "",
+            "due": row["dueDate"], "invoiced": row.get("invoiceDate"),
+            "amount": float(amount),
+            # Carried for the reminder drafts in cards.py: a chase letter
+            # without invoice numbers is not a chase letter.
+            "number": row.get("invoiceNumber"),
+            "email": row.get("customerEmail") or "",
+            "url": row.get("url") or ""}
+
+
 PAYROLL_PAGES = 50
 
 
