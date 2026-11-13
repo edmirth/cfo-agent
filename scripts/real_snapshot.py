@@ -57,6 +57,7 @@ if MODE == "replay":
         raise OSError("network refused in replay")
     socket.create_connection = refuse
     socket.socket.connect = lambda self, *a: refuse()
+    socket.getaddrinfo = refuse
 
 sys.path.insert(0, "backend")
 import asyncio, mcp_client, cashflow

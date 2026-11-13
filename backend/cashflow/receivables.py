@@ -9,6 +9,8 @@ from .payables import _payment_parts
 import statistics
 import company
 from .common import _iso
+from .models import FlowKind
+from . import texts
 
 
 def _receipt_parts(inv: dict, today: date,
@@ -77,24 +79,21 @@ def _schedule_receipts(invoices: list, today: date,
             overdue.append((inv, parts))
             continue
         for when, amount in parts:
-            flows.append({"date": when, "amount": amount, "kind": "ar",
-                          "label": f"Faktura til {inv['name']}"})
+            flows.append({"date": when, "amount": amount, "kind": FlowKind.AR,
+                          "label": texts.invoice_label(inv["name"])})
     if overdue:
         for w in range(LATE_SPREAD_WEEKS):
             flows.append({"date": today + timedelta(days=7 * (w + 1)),
                           "amount": sum(p[w][1] for _, p in overdue),
-                          "kind": "ar_late",
-                          "label": f"Forfalte fakturaer ({len(overdue)} stk), "
-                                   f"fordelt over {LATE_SPREAD_WEEKS} uker"})
+                          "kind": FlowKind.AR_LATE,
+                          "label": texts.overdue_label(len(overdue))})
     if slow:
         first, last = SLOW_WEEKS
         for n, w in enumerate(range(first, last + 1)):
             flows.append({"date": today + timedelta(days=7 * w),
                           "amount": sum(p[n][1] for p in slow),
-                          "kind": "ar_slow",
-                          "label": f"Fakturaer {LATE_DAYS + 1}–{DOUBTFUL_DAYS} "
-                                   f"dager på overtid ({len(slow)} stk), "
-                                   f"fordelt over uke {first}–{last}"})
+                          "kind": FlowKind.AR_SLOW,
+                          "label": texts.slow_label(first, last, len(slow))})
     return flows
 
 
@@ -119,11 +118,10 @@ def _expected_items(invoices: list, bills: list, today: date,
 
 
 def _receivables(ar_due: list, today: date, habits: dict, residual: float,
-                 counted: bool, committed: list, expected: list):
+                 counted: bool, flows: list):
     """The open invoices on the weeks. Returns (ar_doubtful, ages)."""
     receipts = _schedule_receipts(ar_due, today, habits)
-    committed += [f for f in receipts if f["kind"] != "ar_slow"]
-    expected += [f for f in receipts if f["kind"] == "ar_slow"]
+    flows += receipts
     # The ones not counted on at all, named so they are chased.
     ar_doubtful = [{**i, "days_overdue": _days_overdue(i, today)} for i in ar_due
                    if (_days_overdue(i, today) or 0) > DOUBTFUL_DAYS]
@@ -140,10 +138,9 @@ def _receivables(ar_due: list, today: date, habits: dict, residual: float,
         first, last = SLOW_WEEKS
         per = residual / (last - first + 1)
         for w in range(first, last + 1):
-            expected.append({"date": today + timedelta(days=7 * w),
-                             "amount": per, "kind": "ar_unmatched",
-                             "label": "Kundefordringer uten kjent faktura, "
-                                      "trolig fra en avkortet fakturaliste"})
+            flows.append({"date": today + timedelta(days=7 * w),
+                          "amount": per, "kind": FlowKind.AR_UNMATCHED,
+                          "label": texts.ar_unmatched_label()})
     return ar_doubtful, ages
 
 

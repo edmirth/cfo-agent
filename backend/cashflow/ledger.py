@@ -5,7 +5,8 @@ from dataclasses import dataclass
 import saldobalanse
 from preflight import _account, _monthly
 
-from .common import LEVEL_MONTHS, OPEX_RANGES, SEASON_WEIGHT, _kr
+from .common import LEVEL_MONTHS, OPEX_RANGES, SEASON_WEIGHT
+from . import texts
 
 
 SEASON_LIMITS = (0.5, 1.5)
@@ -155,9 +156,7 @@ def _rate(ledger: _Ledger, ranges, flip: int, name: str, notes: list[str],
         # forecast must not pass for a quiet month — so that one is said.
         if not full:
             return 0.0
-        notes.append(f"{name} kunne ikke beregnes — det finnes ingen "
-                     f"avsluttede måneder å regne snittet på, så den er "
-                     f"satt til 0 i prognosen.")
+        notes.append(texts.rate_unmeasured(name))
         return 0.0
     mid = statistics.median(values)
     if mid <= 0:
@@ -182,23 +181,15 @@ def _say_outliers(series: list, mid: float, average: float, name: str,
     low_months = [m for m, v in series if v < 0.5 * mid]
     high_months = [m for m, v in series if v > 2 * mid]
     # Format the number on its own: the sentence has commas of its own.
-    said = (f"{name} er lagt inn med {_kr(average)} kr i måneden"
-            f"{' før sesong' if seasonal else ''}.")
+    said = texts.rate_said(name, average, seasonal)
     why = []
     if low_months:
-        why.append(
-            f"{', '.join(low_months)} er holdt utenfor — de ligger langt "
-            f"under de andre månedene, og det betyr nesten alltid at bilag "
-            f"ikke er bokført, ikke at kostnaden forsvant.")
+        why.append(texts.rate_held_low(low_months))
     if high_months:
         # Said for the same reason the low ones are. A month at several
         # times the median pulls the rate down when it is dropped, and a
         # rate quietly lowered is the dangerous direction to be wrong in.
-        why.append(
-            f"{', '.join(high_months)} er holdt utenfor — de ligger langt "
-            f"over de andre månedene. Det er som regel etterslep som ble "
-            f"bokført på én gang, eller noe som bare skjedde denne ene "
-            f"gangen, men sjekk det før du stoler på snittet.")
+        why.append(texts.rate_held_high(high_months))
     if why:
         notes.append(" ".join([said] + why))
 

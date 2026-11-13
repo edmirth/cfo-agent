@@ -9,8 +9,9 @@ import workdays
 
 from .common import MONTH_NAMES, MVA_RATE
 from .costs import _cost_parts
-from .models import Runs
 from .common import _next_month
+from .models import FlowKind, Runs
+from . import texts
 
 
 def _revenue_in(rates: dict, season: dict, month_no: int) -> float:
@@ -59,7 +60,7 @@ class _Month:
         return MONTH_NAMES[self.start.month - 1]
 
 
-def _trading(t: _Trading, committed: list, expected: list) -> dict:
+def _trading(t: _Trading, flows: list) -> dict:
     """Six months of trading that has not happened yet: the sales still to
     be invoiced, the VAT on them, and the running costs. Returns what each
     month rests on, for the assumptions."""
@@ -72,16 +73,16 @@ def _trading(t: _Trading, committed: list, expected: list) -> dict:
         sales.append({"month": m.name, "amount": round(m.revenue, 2)})
         costs.append({"month": m.name, "amount": round(
             t.bank_costs["level"] if t.bank_costs else m.opex, 2)})
-        row = _month_sales(t, m, expected)
+        row = _month_sales(t, m, flows)
         if row:
             invoicing.append(row)
-        _month_vat(t, m, committed, expected)
-        _month_costs(t, m, committed, expected)
+        _month_vat(t, m, flows)
+        _month_costs(t, m, flows)
         month = _next_month(month)
     return {"sales": sales, "costs": costs, "invoicing": invoicing}
 
 
-def _month_sales(t: _Trading, m: _Month, expected: list) -> dict | None:
+def _month_sales(t: _Trading, m: _Month, flows: list) -> dict | None:
     """The month's invoicing still to be won, on the expected line. Sets the
     month's gross, its contract part and the share tied to the contracts.
     Returns the register's reading of the month, when it is the source.
@@ -112,11 +113,9 @@ def _month_sales(t: _Trading, m: _Month, expected: list) -> dict | None:
     for landing, share, days in _sales_landing(t, m):
         amount = m.gross * share
         if t.today <= landing < t.horizon and round(amount) > 0:
-            expected.append({"date": landing, "amount": amount,
-                             "kind": "new_sales",
-                             "label": f"Fakturering {m.name}"
-                                      f"{', ' + days.replace('fakturert ', '') if days else ''}"
-                                      f", betalt"})
+            flows.append({"date": landing, "amount": amount,
+                             "kind": FlowKind.NEW_SALES,
+                             "label": texts.sales_label(m.name, days)})
     return row
 
 
@@ -136,7 +135,7 @@ def _sales_landing(t: _Trading, m: _Month) -> list:
     return [(month_end + timedelta(days=t.credit_days + t.sales_lag), 1.0, "")]
 
 
-def _month_vat(t: _Trading, m: _Month, committed: list, expected: list) -> None:
+def _month_vat(t: _Trading, m: _Month, flows: list) -> None:
     """The VAT on the month's invoicing, whether or not the customer has paid
     by then — the deadline does not wait for the money. Scheduled even when
     the receipt itself falls outside the window, because that is the case that
@@ -154,16 +153,16 @@ def _month_vat(t: _Trading, m: _Month, committed: list, expected: list) -> None:
     vat_due = workdays.forward(
         commitments.term_due(m.start.year, m.start.month, commitments.MVA_TERMS))
     if t.today <= vat_due < t.horizon and round(contract_vat) > 0:
-        committed.append({"date": vat_due, "amount": -contract_vat,
-                          "kind": "vat_recurring",
-                          "label": f"Merverdiavgift på fast fakturering {m.name}"})
+        flows.append({"date": vat_due, "amount": -contract_vat,
+                          "kind": FlowKind.VAT_RECURRING,
+                          "label": texts.vat_contract_label(m.name)})
     if t.today <= vat_due < t.horizon and round(net_vat) > 0:
-        expected.append({"date": vat_due, "amount": -net_vat,
-                         "kind": "vat_future",
-                         "label": f"Merverdiavgift på fakturering {m.name}"})
+        flows.append({"date": vat_due, "amount": -net_vat,
+                         "kind": FlowKind.VAT_FUTURE,
+                         "label": texts.vat_label(m.name)})
 
 
-def _month_costs(t: _Trading, m: _Month, committed: list, expected: list) -> None:
+def _month_costs(t: _Trading, m: _Month, flows: list) -> None:
     """The month's running costs, by when the bills are paid. A part paid
     after the window leaves it, as sales collected after it do. The share
     tied to the contracts (from the bank: also what comes whatever is sold)
@@ -195,26 +194,12 @@ def _month_costs(t: _Trading, m: _Month, committed: list, expected: list) -> Non
         part = cost * share
         if pay >= t.horizon or round(part) <= 0:
             continue
-        label = _cost_label(t, m, days, fixed, month_vat)
-        sure = (", den faste delen" if t.bank_costs
-                else ", til den faste faktureringen")
+        label = texts.cost_label(m.name, m.current, days, fixed, month_vat,
+                                 bool(t.bank_costs))
+        sure = texts.cost_label_tail(bool(t.bank_costs))
         if round(part * cost_tied) > 0:
-            committed.append({"date": pay, "amount": -part * cost_tied,
-                              "kind": "opex_recurring", "label": label + sure})
+            flows.append({"date": pay, "amount": -part * cost_tied,
+                              "kind": FlowKind.OPEX_RECURRING, "label": label + sure})
         if round(part * (1 - cost_tied)) > 0:
-            expected.append({"date": pay, "amount": -part * (1 - cost_tied),
-                             "kind": "opex", "label": label})
-
-
-def _cost_label(t: _Trading, m: _Month, days: str, fixed: float, month_vat: float) -> str:
-    if t.bank_costs:
-        return (f"Driftskostnader {m.name}"
-                f"{', resten' if m.current else ''}"
-                f"{', betalt ' + days.replace('fakturert ', '') if days else ''}"
-                f", fra banken"
-                f"{' utenom kjente regninger' if fixed >= 0.5 else ''}")
-    return (f"Driftskostnader {m.name}"
-            f"{', resten' if m.current else ''}"
-            f"{', ' + days if days else ''}"
-            f"{' utenom faste regninger' if fixed >= 0.5 else ''}"
-            f"{' (inkl. moms)' if month_vat >= 0.5 else ''}")
+            flows.append({"date": pay, "amount": -part * (1 - cost_tied),
+                             "kind": FlowKind.OPEX, "label": label})

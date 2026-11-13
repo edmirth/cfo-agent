@@ -4,11 +4,11 @@ from calendar import monthrange
 from datetime import date, timedelta
 
 from .common import BANK_UNKNOWN_MAX, COST_PERIODS, _add_months, _weighted_median
-import bankcat
 from preflight import _monthly
 from .common import OPEX_RANGES
-from .models import Sources
+from .models import FlowKind, Sources
 from .common import _iso
+from . import texts
 
 
 # What makes a supplier's bill a fixed one, for the committed line: billed in
@@ -126,9 +126,9 @@ def _place_fixed(s: dict, step: int, amount: float, day: int, terms: int,
         if due_now:
             by_month[(y, mo)] = by_month.get((y, mo), 0.0) + amount
         if due_now and pay < horizon:
-            flows.append({"date": pay, "amount": -amount, "kind": "fixed",
+            flows.append({"date": pay, "amount": -amount, "kind": FlowKind.FIXED,
                           "month": (y, mo),
-                          "label": f"Fast regning fra {s['name']}"})
+                          "label": texts.fixed_bill(s["name"])})
             upcoming.append(pay)
         y, mo = _add_months(y, mo, step)
     return upcoming
@@ -244,15 +244,15 @@ def _cost_parts(profile: dict, month: date, today: date,
     return out
 
 
-def _fixed(src: Sources, today: date, horizon: date, committed: list):
+def _fixed(src: Sources, today: date, horizon: date, flows: list):
     """The fixed bills on the committed line, and when in the month the
     other bills are dated and paid. Returns (found, by_month, profile).
 
     Rent, leasing, insurance: certain whether anyone sells anything, so the
     floor carries them. The expected line's running costs already contain
     them, and are netted month by month."""
-    flows, found, by_month = _fixed_bills(src.supplier_history, today, horizon)
-    committed += flows
+    fixed, found, by_month = _fixed_bills(src.supplier_history, today, horizon)
+    flows += fixed
     profile = _cost_profile(src.supplier_history, {f["name"] for f in found})
     return found, by_month, profile
 
@@ -278,20 +278,16 @@ def _bank_costs_or_say(bank_categories: dict | None, warnings: list[str]) -> dic
     bank_costs = _bank_costs(bank_categories)
     if bank_categories and not bank_costs:
         warnings.append(
-            "Driftskostnadene er regnet fra regnskapet, ikke fra banken: "
-            + ("for mange utbetalinger i banken har ingen kategori ennå "
-               f"({round(bank_categories.get('unknown_share_out', 0) * 100)} %)."
-               if bank_categories.get("unknown_share_out", 0) > BANK_UNKNOWN_MAX
-               else f"færre enn {bankcat.COST_MIN_MONTHS} hele måneder å lese."))
+            texts.costs_from_accounts(bank_categories))
     return bank_costs
 
 
-def _known_by_month(committed: list) -> dict:
+def _known_by_month(flows: list) -> dict:
     """What is already dated in each month and is part of the same money out:
     the open bills, the fixed bills, and the bills booked without one."""
     known: dict = {}
-    for f in committed:
-        if f["kind"] in ("ap", "fixed", "ap_unmatched"):
+    for f in flows:
+        if f["kind"] in (FlowKind.AP, FlowKind.FIXED, FlowKind.AP_UNMATCHED):
             key = (f["date"].year, f["date"].month)
             known[key] = known.get(key, 0.0) - f["amount"]
     return known
