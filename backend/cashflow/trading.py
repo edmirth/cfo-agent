@@ -10,6 +10,7 @@ import workdays
 from .common import MONTH_NAMES, MVA_RATE
 from .costs import _cost_parts
 from .models import Runs
+from .common import _next_month
 
 
 def _revenue_in(rates: dict, season: dict, month_no: int) -> float:
@@ -76,8 +77,7 @@ def _trading(t: _Trading, committed: list, expected: list) -> dict:
             invoicing.append(row)
         _month_vat(t, m, committed, expected)
         _month_costs(t, m, committed, expected)
-        month = (date(month.year + 1, 1, 1) if month.month == 12
-                 else date(month.year, month.month + 1, 1))
+        month = _next_month(month)
     return {"sales": sales, "costs": costs, "invoicing": invoicing}
 
 

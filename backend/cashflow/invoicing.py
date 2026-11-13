@@ -10,6 +10,7 @@ from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRIN
 from .costs import _profile
 from .models import Runs, Sources
 from .receivables import _days_overdue
+from .common import _iso, _months_until
 
 
 # The rest of the invoicing, to customers not billed every month, is one stream
@@ -35,10 +36,8 @@ def _sales_rows(history: list):
     for row in history:
         if row.get("isCredited"):
             continue
-        try:
-            issued = date.fromisoformat(row["invoiceDate"])
-            due = date.fromisoformat(row["dueDate"])
-        except (ValueError, TypeError, KeyError):
+        issued, due = _iso(row.get("invoiceDate")), _iso(row.get("dueDate"))
+        if issued is None or due is None:
             continue
         amount = float(row.get("amount") or row.get("amountCurrency") or 0)
         if amount > 0:
@@ -180,8 +179,7 @@ def _place_runs(name: str, months: dict, parts: list, low: float, usual: float,
     expected. Returns the pay days inside the window."""
     this = (today.year, today.month)
     upcoming = []
-    y, mo = this
-    while date(y, mo, 1) < horizon:
+    for y, mo in _months_until(*this, horizon):
         s = (season or {}).get(mo, 1.0)
         sent = months.get((y, mo), {}).get("amount", 0.0)
         left_low = max(0.0, low * min(1.0, s) - sent)
@@ -209,7 +207,6 @@ def _place_runs(name: str, months: dict, parts: list, low: float, usual: float,
                     flows.append({"date": pay, "amount": (left_usual - left_low) * share,
                                   "kind": "recurring_usual", "month": (y, mo),
                                   "customer": name, "label": label})
-        y, mo = _add_months(y, mo, 1)
     return upcoming
 
 
@@ -263,8 +260,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
     parts = [(int(statistics.median(days)), terms, share)
              for (_, terms), (share, days) in sorted(grouped.items())]
     flows, by_month = [], {}
-    y, mo = this
-    while level > 0 and parts and date(y, mo, 1) < horizon:
+    for y, mo in (_months_until(*this, horizon) if level > 0 and parts else ()):
         s = (season or {}).get(mo, 1.0)
         left = max(0.0, level * s - (sent if (y, mo) == this else 0.0))
         if left >= 0.5:
@@ -276,7 +272,6 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                                   "month": (y, mo),
                                   "label": f"Annen fakturering {MONTH_NAMES[mo - 1]} "
                                            f"(ikke sendt), {terms} dager"})
-        y, mo = _add_months(y, mo, 1)
     measured = {"nivaa_mnd": round(level, 2),
                 "maneder": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
                              "amount": round(months[k]["amount"], 2)} for k in reversed(closed)],
@@ -349,9 +344,8 @@ def _invoiced_this_month(src: Sources, today: date) -> float:
     stays the floor, for a month whose invoices could not be read."""
     total = 0.0
     for i in src.ar_open:
-        try:
-            issued_on = date.fromisoformat(i["invoiced"])
-        except (ValueError, TypeError, KeyError):
+        issued_on = _iso(i.get("invoiced"))
+        if issued_on is None:
             continue
         if (issued_on.year, issued_on.month) == (today.year, today.month):
             total += i["amount"]

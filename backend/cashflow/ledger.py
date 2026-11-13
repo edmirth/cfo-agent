@@ -203,6 +203,15 @@ def _say_outliers(series: list, mid: float, average: float, name: str,
         notes.append(" ".join([said] + why))
 
 
+def _accrued_this_month(rows: list, columns: list, accounts: tuple[int, int],
+                        paid: float = 0.0) -> float:
+    """What this month has put on a liability range: its movement this month,
+    less any payment or settlement made in it (card 68), negated, since a
+    liability is a credit balance and an accrual a negative movement."""
+    series = _monthly(rows, columns, *accounts)
+    return max(0.0, -(series[-1][1] - paid)) if series else 0.0
+
+
 def _closing_range(rows: list, low: int, high: int) -> float:
     """Closing balance across an account range, from the last numeric cell."""
     total = 0.0

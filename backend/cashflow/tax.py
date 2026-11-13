@@ -2,7 +2,8 @@
 from .common import AGA_ACCRUED, VAT_ACCRUED
 from .ledger import _closing_range
 from datetime import date
-from preflight import _monthly
+from .common import _iso
+from .ledger import _accrued_this_month
 
 
 # Below this the output-VAT balance is too small to read a ratio off, which
@@ -103,9 +104,8 @@ def _statutory(com: dict, today: date) -> list[dict]:
     for item in com["items"]:
         if item["id"] not in STATUTORY_FROM_COMMITMENTS:
             continue
-        try:
-            due = date.fromisoformat(item["due"])
-        except (ValueError, TypeError):
+        due = _iso(item.get("due"))
+        if due is None:
             continue
         flows.append({"date": max(due, today), "amount": -item["amount"],
                       "kind": "statutory", "label": item["label"]})
@@ -120,5 +120,4 @@ def _booked_vat(rows: list, columns: list, settled: float) -> float:
     date — so what is already booked is netted off, or it is paid twice. A
     liability is a credit balance, so an accrual is a negative movement, and
     a settlement this month comes off the movement first (card 68)."""
-    series = _monthly(rows, columns, *VAT_ACCRUED)
-    return max(0.0, -(series[-1][1] - settled)) if series else 0.0
+    return _accrued_this_month(rows, columns, VAT_ACCRUED, settled)

@@ -8,6 +8,7 @@ import bankcat
 from preflight import _monthly
 from .common import OPEX_RANGES
 from .models import Sources
+from .common import _iso
 
 
 # What makes a supplier's bill a fixed one, for the committed line: billed in
@@ -140,10 +141,8 @@ def _bill_rows(history: list):
     for row in history:
         if row.get("isCreditNote") or (row.get("currency") or "NOK").upper() != "NOK":
             continue
-        try:
-            issued = date.fromisoformat(row["invoiceDate"])
-            due = date.fromisoformat(row["dueDate"])
-        except (ValueError, TypeError, KeyError):
+        issued, due = _iso(row.get("invoiceDate")), _iso(row.get("dueDate"))
+        if issued is None or due is None:
             continue
         amount = float(row.get("amountCurrency") or row.get("amount") or 0)
         if amount > 0:

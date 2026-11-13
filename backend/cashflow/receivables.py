@@ -8,6 +8,7 @@ from .common import DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, PAY_LAG_DAYS, S
 from .payables import _payment_parts
 import statistics
 import company
+from .common import _iso
 
 
 def _receipt_parts(inv: dict, today: date,
@@ -51,11 +52,8 @@ def _receipt_parts(inv: dict, today: date,
 
 def _days_overdue(inv: dict, today: date) -> int | None:
     """Days past due, 0 for one not yet due, None without a due date."""
-    try:
-        due = date.fromisoformat(inv["due"])
-    except (ValueError, TypeError, KeyError):
-        return None
-    return max(0, (today - due).days)
+    due = _iso(inv.get("due"))
+    return None if due is None else max(0, (today - due).days)
 
 
 def _schedule_receipts(invoices: list, today: date,
