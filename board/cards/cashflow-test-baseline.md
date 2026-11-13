@@ -43,3 +43,15 @@ that changes on purpose is updated in its own commit with the reason.
   - For card 68: on 2026-11-26 the November pay day has passed, so the
     snapshots may not show the AGA double count. Card 68 should reproduce it
     with a test of its own before fixing.
+- 2026-11-13 (claude): and on the real company, at @edmir's request.
+  - `scripts/real_snapshot.py record` fetches the connected company's books
+    once (read-only, its own Tripletex client so Render's login is not
+    rotated), runs the forecast on a copy of state/cfo.db, and saves the
+    answers, the forecast and the db copy under state/snapshots/cashflow/,
+    which git ignores. `check` replays them with the calendar frozen and the
+    network refused; `check --update` accepts a change.
+  - Ullensaker Renholdsteknikk, 2026-11-13: 161 Tripletex answers, 622
+    forecast lines, not partial; replay reproduces it exactly.
+  - Seen on the way, for card 70: the measured input-VAT share is 0.004,
+    read three days after the 10 November settlement cleared 2700/2710.
+    A share taken from the balances that early in a term is noise.
