@@ -39,4 +39,20 @@ that changes on purpose is updated in its own commit with the reason.
   - Left for the next steps: break `build` (657 lines) and `briefing` (383)
     into stages; Flow/FlowKind and texts.py; shared helpers; tests onto the
     public functions; ruff and mypy.
+- 2026-11-13 (claude): step 2 on `cashflow-package-split`.
+  - `build()` (657 lines) is the list of its stages, 75 lines. Each stage
+    is a function beside the code it uses: reading, last year, payment
+    habits (sources); opening, bank settlement, the 1500/2400 checks
+    (reconcile); receivables; invoicing; fixed bills and costs; statutory
+    items and booked VAT (tax); payroll; six months of trading, per month
+    as sales, VAT and costs (trading); the assumptions and keeping the
+    forecast (declare). Stages hand each other Sources, Runs, Pay (models).
+  - `briefing()` (383 lines) is 34: sixteen sections, each its own
+    function, cut by line range so the text is unchanged.
+  - The snapshots caught one slip on the way: `faste_regninger_mnd` was
+    dropped in the move, and Ullensaker's briefing said "Til sammen — kr".
+    Put back before the commit.
+  - 602 passed; the nine demo snapshots and Ullensaker unchanged.
+  - Still over 60 lines, for step 3: `_assemble` 158, `_run_rates` 117,
+    `_open_invoices` 111, `_invoice_runs` 105, `_fixed_bills` 96.
 

@@ -8,6 +8,8 @@ import workdays
 
 from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, _add_months, _kr, _term_step
 from .costs import _profile
+from .models import Runs, Sources
+from .receivables import _days_overdue
 
 
 # The rest of the invoicing, to customers not billed every month, is one stream
@@ -268,3 +270,67 @@ def _register_months(history: list, today: date) -> int:
     have = {(i.year, i.month) for i, _, _, _ in _sales_rows(history)}
     this = (today.year, today.month)
     return sum(1 for n in range(1, RUN_MONTHS + 1) if _add_months(*this, -n) in have)
+
+
+# The register is read for this many closed months before it is trusted over
+# the revenue in the accounts; a younger book keeps the old reading.
+RUN_MIN_MONTHS = 3
+
+
+def _sales_timing(src: Sources, habits: dict) -> tuple[dict, int]:
+    """When in the month this company invoices, on what terms, and how late
+    its customers pay on top. Returns (profile, lag)."""
+    lag = habits["company"] if habits.get("company") is not None else PAY_LAG_DAYS
+    return _sales_profile(src.customer_history), lag
+
+
+def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: dict,
+               risky: dict, ar_due: list, sales_lag: int,
+               committed: list, expected: list) -> Runs:
+    """The contract customers' runs on the committed line, and with enough
+    register to read, the rest of the invoicing on the expected line.
+
+    The customers on a contract are invoiced whether or not anyone sells
+    anything, so the floor carries them, as it carries the rent. Not those in
+    trouble with the register, nor those already further behind than ordinary
+    lateness: their open invoices are not counted on either."""
+    # What each customer has over LATE_DAYS late. It used to be a set of
+    # names, and any one invoice in it took the customer out of both lines.
+    behind: dict[str, float] = {}
+    for i in ar_due:
+        if (_days_overdue(i, today) or 0) > LATE_DAYS:
+            behind[i["name"]] = behind.get(i["name"], 0.0) + i["amount"]
+    run_flows, found, by_month = _invoice_runs(
+        src.customer_history, today, horizon, habits, season.get("revenue"),
+        set(risky), behind)
+    committed += [f for f in run_flows if f["kind"] == "recurring"]
+    # With RUN_MIN_MONTHS of invoicing to read, the register is the money
+    # coming in, and the revenue in the accounts only a check on it. A book
+    # younger than that keeps the accounts.
+    from_register = _register_months(src.customer_history, today) >= RUN_MIN_MONTHS
+    other_by_month, other_measured = {}, None
+    if from_register:
+        expected += [f for f in run_flows if f["kind"] == "recurring_usual"]
+        other_flows, other_by_month, other_measured = _other_invoicing(
+            src.customer_history, today, horizon, sales_lag, season.get("revenue"),
+            {f["name"] for f in found}, set(risky))
+        expected += other_flows
+    return Runs(by_month, found, from_register, other_by_month, other_measured)
+
+
+def _invoiced_this_month(src: Sources, today: date) -> float:
+    """Invoicing already issued this month, gross, to net off the month.
+
+    The open invoices issued this month, or everything invoiced this month
+    paid ones included, whichever is more: an invoice sent on the 2nd and paid
+    on the 9th has its money in the opening balance already. The open list
+    stays the floor, for a month whose invoices could not be read."""
+    total = 0.0
+    for i in src.ar_open:
+        try:
+            issued_on = date.fromisoformat(i["invoiced"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        if (issued_on.year, issued_on.month) == (today.year, today.month):
+            total += i["amount"]
+    return max(total, src.issued.get("this_month", 0.0))

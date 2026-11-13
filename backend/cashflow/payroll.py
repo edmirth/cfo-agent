@@ -7,6 +7,9 @@ import company
 import workdays
 
 from .common import MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, WAGE_ACCOUNTS, _add_months
+from preflight import _monthly
+from .common import AGA_ACCRUED
+from .models import Pay, Sources
 
 
 # **The feriepenger month.** In the month holiday pay goes out, staff draw
@@ -171,3 +174,34 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
             "months": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
                         "run": round(m["run"], 2), "extra": round(m["extra"], 2)}
                        for k, m in reversed(runs)]}
+
+
+def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: float,
+             committed: list, warnings: list[str]) -> Pay:
+    """Every pay day in the window, and its employer's contribution."""
+    # What this month's payroll has already put on 2770, if it has been run
+    # and posted. A liability is a credit balance, so an accrual is negative,
+    # and a term paid this month comes off the movement first (card 68).
+    aga_series = _monthly(src.rows, src.columns, *AGA_ACCRUED)
+    aga_booked = max(0.0, -(aga_series[-1][1] - aga_paid)) if aga_series else 0.0
+    # What a pay day really pays, where the payroll vouchers say so; the wage
+    # accounts otherwise.
+    wages_paid = src.wages_paid
+    if isinstance(wages_paid, dict) and "unread" in wages_paid:
+        warnings.append(
+            "Lønnsbilagene kunne ikke leses, så lønningsdagen er regnet fra "
+            "lønnskontoene i stedet for det tidligere lønningsdager har betalt. "
+            "Det kan være for mye, fordi kontoene også har periodisering og "
+            "feriepenger i seg.")
+    measured = wages_paid if isinstance(wages_paid, dict) and "per_run" in wages_paid else None
+    per_day = measured["per_run"] if measured else rates["wages_cash"]
+    # The bank figure is as of its last line, not today: a pay day after it is
+    # still to go out, as commitments dates the taxes.
+    try:
+        paid_before = date.fromisoformat(src.com.get("paid_before") or "")
+    except ValueError:
+        paid_before = today
+    committed += _payroll_runs(today, horizon, per_day,
+                               rates["aga"], aga_booked, paid_before)
+    months = [m for _, m, _ in _pay_days(today, horizon, paid_before)]
+    return Pay(per_day, measured, months)
