@@ -284,12 +284,12 @@ tests from phase 0 must stay green in every phase. Where a phase changes numbers
 snapshot is updated in its own commit with the reason.
 
 ### Phase 0: baseline
-- [ ] pytest installed in `.venv` and in `requirements` (dev). The four cashflow test files run
-      green (`tests/test_cashflow*.py`, `tests/test_payday_cash.py`)
-- [ ] Snapshot tests: the full `build()` output (weeks, flows, assumptions, warnings) and
-      `briefing()` text for the demo company and at least two fixture ledgers, saved and compared
-      exactly
-- [ ] How to run the tests is documented in `README.md`
+- [x] Tests run green before any change. The plain runner (`python -m tests.run`) stays;
+      pytest added beside it through `requirements-dev.txt`, `pytest.ini` and `tests/conftest.py`
+- [x] Snapshot tests: the full `build()` output (weeks, flows, assumptions, warnings) and
+      `briefing()` text for the three demo companies on three days each, saved and compared
+      exactly (`tests/test_cashflow_snapshots.py`)
+- [x] How to run the tests is documented in `README.md`
 
 ### Phase 1: fix D1
 - [ ] AGA and VAT "already this month" read from credits only
