@@ -54,11 +54,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 68. Stop paying AGA and VAT twice in the months a tax payment goes out @either #forecast
-
 
 
 ## Done
+
+- [x] 68. Stop paying AGA and VAT twice in the months a tax payment goes out @either #forecast ✓ 2026-11-13
 
 - [x] 67. Give the cash forecast a test baseline: pytest in the venv, and snapshot tests of the full forecast @either #forecast ✓ 2026-11-13
 
