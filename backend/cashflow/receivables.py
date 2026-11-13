@@ -6,6 +6,8 @@ import workdays
 
 from .common import DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, PAY_LAG_DAYS, SLOW_WEEKS
 from .payables import _payment_parts
+import statistics
+import company
 
 
 def _receipt_parts(inv: dict, today: date,
@@ -116,3 +118,46 @@ def _expected_items(invoices: list, bills: list, today: date,
         return out
     return {"ar": items(invoices, lambda r, t: _receipt_parts(r, t, habits)),
             "ap": items(bills, _payment_parts)}
+
+
+def _receivables(ar_due: list, today: date, habits: dict, residual: float,
+                 counted: bool, committed: list, expected: list):
+    """The open invoices on the weeks. Returns (ar_doubtful, ages)."""
+    receipts = _schedule_receipts(ar_due, today, habits)
+    committed += [f for f in receipts if f["kind"] != "ar_slow"]
+    expected += [f for f in receipts if f["kind"] == "ar_slow"]
+    # The ones not counted on at all, named so they are chased.
+    ar_doubtful = [{**i, "days_overdue": _days_overdue(i, today)} for i in ar_due
+                   if (_days_overdue(i, today) or 0) > DOUBTFUL_DAYS]
+    ar_doubtful.sort(key=lambda i: -i["amount"])
+    ages = {"i_rute": 0.0, "inntil_30": 0.0, "31_90": 0.0, "over_90": 0.0}
+    for i in ar_due:
+        late = _days_overdue(i, today)
+        if late is None:
+            continue
+        key = ("i_rute" if late == 0 else "inntil_30" if late <= LATE_DAYS
+               else "31_90" if late <= DOUBTFUL_DAYS else "over_90")
+        ages[key] += i["amount"]
+    if residual and counted:
+        first, last = SLOW_WEEKS
+        per = residual / (last - first + 1)
+        for w in range(first, last + 1):
+            expected.append({"date": today + timedelta(days=7 * w),
+                             "amount": per, "kind": "ar_unmatched",
+                             "label": "Kundefordringer uten kjent faktura, "
+                                      "trolig fra en avkortet fakturaliste"})
+    return ar_doubtful, ages
+
+
+def _credit_days(ar_open: list) -> tuple[int, str]:
+    """The terms new invoicing is collected on, and where they came from:
+    the customers' own invoices first; the company's stated terms where there
+    are none to measure; 30 days only where neither exists."""
+    terms = [(date.fromisoformat(i["due"]) - date.fromisoformat(i["invoiced"])).days
+             for i in ar_open if i.get("invoiced") and i.get("due")]
+    stated_terms = company.setting("kredittid_dager")
+    if terms:
+        return int(statistics.median(terms)), "målt på fakturaene"
+    if stated_terms and 0 < int(stated_terms) <= 365:
+        return int(stated_terms), "fra company.md"
+    return 30, "antatt"

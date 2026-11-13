@@ -8,8 +8,20 @@ from mcp_client import mcp
 
 from .common import AGA_ACCRUED, MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, VAT_ACCRUED, WAGE_ACCOUNTS, _add_months, _kr, _month_bounds
 from .payroll import payroll_paid
+import bankcat
+import commitments
+import payment_habits
+import saldobalanse
+from preflight import _rows
+from .common import PAY_LAG_DAYS
+from .ledger import _seasons
+from .models import Sources
 
 log = logging.getLogger("cfo.cashflow")
+
+# The fewest closed months a run-rate is allowed to rest on. Before April this
+# year has fewer, and the gap is made up from the end of last year.
+MIN_CLOSED_MONTHS = 3
 
 
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
@@ -216,3 +228,112 @@ async def _payroll_measured(today: date) -> dict | None:
     _payroll_cache.clear()
     _payroll_cache[key] = payroll_paid([p for part in parts for p in part], today)
     return _payroll_cache[key]
+
+
+async def _read(today: date) -> Sources:
+    """Every source at once. The trial balance and the commitments are the
+    floor of the forecast, and without either there is none; any other read
+    that fails is carried as what it is, and the stage that needs it says so."""
+    last_year = today.year - 1
+
+    # Last year always: early in the year for the months this year lacks,
+    # and every month for the seasonal pattern.
+    async def _prior():
+        return await saldobalanse.monthly(mcp, f"{last_year}-01-01", f"{last_year}-12-31")
+
+    issued: dict = {}
+    supplier_history: list = []
+    customer_history: list = []
+    balance, com, ar, ap, prior, paid, wages_paid, tax_posts = await asyncio.gather(
+        saldobalanse.monthly(mcp, f"{today.year}-01-01", today.isoformat()),
+        commitments.cached(),
+        _open_invoices(today, "search_invoices", "Kundefakturaer", "id",
+                       "amountOutstanding", "customerName", issued,
+                       # Kroner already, for a foreign-currency invoice too.
+                       in_kroner=True, history=customer_history),
+        # Supplier rows are keyed by voucherId, not id.
+        _open_invoices(today, "search_supplier_invoices", "Leverandørfakturaer",
+                       "voucherId", "outstandingAmount", "supplierName",
+                       history=supplier_history),
+        _prior(),
+        payment_habits.payments(mcp, today),
+        _payroll_measured(today),
+        _tax_postings(today),
+        return_exceptions=True,
+    )
+    if isinstance(balance, Exception):
+        raise RuntimeError(f"Kunne ikke lese saldobalansen: {balance}")
+    if isinstance(com, Exception):
+        raise RuntimeError(f"Kunne ikke lese forpliktelsene: {com}")
+    ar_open, ar_warn, ar_complete = ([], ["Kundefakturaer kunne ikke hentes."], False) \
+        if isinstance(ar, Exception) else ar
+    ap_open, ap_warn, ap_complete = ([], ["Leverandørfakturaer kunne ikke hentes."], False) \
+        if isinstance(ap, Exception) else ap
+    # Without this month's tax postings nothing is taken off the movement on
+    # 2770 and 2700-2739, as before card 68.
+    if isinstance(tax_posts, Exception):
+        log.warning("Cashflow: månedens mva- og aga-posteringer kunne ikke leses: %s",
+                    tax_posts)
+        tax_posts = []
+    return Sources(
+        rows=_rows(balance),
+        columns=[c.get("name") for c in balance.get("table", {}).get("columns", [])],
+        com=com, ar_open=ar_open, ar_complete=ar_complete,
+        ap_open=ap_open, ap_complete=ap_complete, prior=prior, paid=paid,
+        wages_paid=wages_paid, tax_posts=tax_posts, issued=issued,
+        supplier_history=supplier_history, customer_history=customer_history,
+        warnings=ar_warn + ap_warn)
+
+
+def _last_year(src: Sources, today: date, warnings: list[str]):
+    """Last year's trial balance: its final months in front of this year's
+    while this year has too few closed ones, and its pattern as the season.
+    Returns (prior_months, history, season)."""
+    # The current month is not closed, so January has none of this year's.
+    keep = max(0, MIN_CLOSED_MONTHS - (today.month - 1))
+    last_year = today.year - 1
+    prior = src.prior
+    read = isinstance(prior, dict) and "table" in prior
+    prior_months = None
+    if keep:
+        if read:
+            prior_months = (_rows(prior),
+                            [c.get("name") for c in prior["table"].get("columns", [])],
+                            last_year, keep)
+            warnings.append(
+                f"Det er for tidlig på året til å regne løpende tall på "
+                f"{today.year} alene, så de siste {keep} månedene av "
+                f"{last_year} er tatt med i snittet.")
+        else:
+            log.warning("Cashflow: fjorårets saldobalanse feilet: %s", prior)
+            warnings.append(
+                f"Saldobalansen for {last_year} kunne ikke hentes, så de "
+                f"løpende tallene hviler på færre enn {MIN_CLOSED_MONTHS} "
+                f"måneder.")
+    history = None
+    if read:
+        history = (_rows(prior),
+                   [c.get("name") for c in prior["table"].get("columns", [])])
+    return prior_months, history, _seasons(history)
+
+
+async def _habits(src: Sources, today: date, warnings: list[str]):
+    """How late each customer pays, and every bank line with a category.
+    Returns (habits, bank_categories)."""
+    # How late each customer pays, from a year of payments on 1500. Without
+    # it every customer is the old seven days late, and that is said.
+    paid = src.paid
+    if isinstance(paid, Exception):
+        log.warning("Cashflow: innbetalingene kunne ikke leses: %s", paid)
+        paid = None
+    habits = payment_habits.habits(src.customer_history, paid)
+    # Every bank line with a category, once a day (card 63): what actually
+    # left the account, for the costs (card 64) and for the owner to see.
+    bank_categories = await bankcat.measured(
+        mcp, today, {r.get("customerName") or "" for r in src.customer_history})
+    if paid is None or not habits["complete"]:
+        warnings.append(
+            "Innbetalingene på konto 1500 kunne ikke leses helt, så "
+            "betalingsvanene er ufullstendige; kunder uten nok historikk er "
+            f"regnet med {PAY_LAG_DAYS} dager etter forfall.")
+    return habits, bank_categories

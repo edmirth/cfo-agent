@@ -158,11 +158,11 @@ from .assemble import (  # noqa: F401
     _assemble,
     _bank_payload,
 )
+from .declare import REGISTER_CHECK  # noqa: F401
+from .invoicing import RUN_MIN_MONTHS  # noqa: F401
+from .sources import MIN_CLOSED_MONTHS  # noqa: F401
+from .tax import STATUTORY_FROM_COMMITMENTS  # noqa: F401
 from .pipeline import (  # noqa: F401
-    MIN_CLOSED_MONTHS,
-    REGISTER_CHECK,
-    RUN_MIN_MONTHS,
-    STATUTORY_FROM_COMMITMENTS,
     build,
 )
 
