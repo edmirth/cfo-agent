@@ -56,11 +56,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 67. Give the cash forecast a test baseline: pytest in the venv, and snapshot tests of the full forecast @either #forecast
-
 
 
 ## Done
+
+- [x] 67. Give the cash forecast a test baseline: pytest in the venv, and snapshot tests of the full forecast @either #forecast ✓ 2026-11-13
 
 - [x] 20. Build a daily collections list that flags repeat late payers @either #liquidity ✓ 2026-11-08
 	  - Built 2026-11-08: each late customer against his own habit (uvanlig sen: ring; fast sen betaler: a reminder), two reminders and then the owner decides, and "Innkreving i dag" at the top of Saker. Card: board/cards/collections-process.md.
