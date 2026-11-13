@@ -4,7 +4,7 @@ from datetime import date
 
 from .common import SLOW_WEEKS, _kr
 from .ledger import _closing_or_none
-from .models import Sources
+from .models import FlowKind, Sources
 import bankgap
 import brreg
 
@@ -46,7 +46,7 @@ def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:
     return residual, counted
 
 
-def _ap_residual(src: Sources, today: date, committed: list, warnings: list[str]) -> None:
+def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) -> None:
     """The same check on 2400-2409 against the open bills.
 
     Being short on receivables flatters the forecast; being short on payables
@@ -62,8 +62,8 @@ def _ap_residual(src: Sources, today: date, committed: list, warnings: list[str]
         # Dated to this week, not spread like the receivables. An undated bill
         # is already late more often than it is early, and the overdue book
         # must not be made to look further away than it is.
-        committed.append({"date": today, "amount": -residual,
-                          "kind": "ap_unmatched",
+        flows.append({"date": today, "amount": -residual,
+                          "kind": FlowKind.AP_UNMATCHED,
                           "label": "Leverandørgjeld uten kjent faktura"})
         warnings.append(
             f"Konto 2400 viser {_kr(gl_ap)} kr i leverandørgjeld, men de åpne "

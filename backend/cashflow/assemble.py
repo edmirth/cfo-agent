@@ -6,12 +6,9 @@ import commitments
 from .common import LATE_SPREAD_WEEKS, MONTH_NAMES, MVA_RATE, PAY_LAG_DAYS, WEEKS
 from .payroll import _ferie_withheld
 from .narrative import after_text
+from .models import FlowKind
 
 
-# The money in that is kept when it lands after the window: customer invoices
-# sent, and the invoicing sent inside the window. Not the slow and doubtful
-# spreads, which are ours, nor the accounts' fallback, which has no invoice.
-AFTER_KINDS = {"ar", "recurring", "recurring_usual", "new_sales"}
 
 
 def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
@@ -107,19 +104,19 @@ def _place(flows: list, scenario: str, weeks: list, week0: date, after: dict) ->
             continue
         key = pre + ("in" if flow["amount"] >= 0 else "out")
         weeks[i][key] += abs(flow["amount"])
-        weeks[i]["items"].append({"label": flow["label"], "kind": flow["kind"],
+        weeks[i]["items"].append({"label": flow["label"], "kind": str(flow["kind"]),
                                   "amount": round(flow["amount"], 2),
                                   "scenario": scenario})
 
 
 def _keep_after(flow: dict, scenario: str, after: dict) -> None:
-    if flow["amount"] <= 0 or flow.get("kind") not in AFTER_KINDS:
+    if flow["amount"] <= 0 or not FlowKind(flow["kind"]).counts_after:
         return
     after["in" if scenario == "committed" else "expected_in"] += flow["amount"]
     day = flow["date"].isoformat()
     after["first"] = min(after["first"] or day, day)
     after["last"] = max(after["last"] or day, day)
-    after["items"].append({"label": flow["label"], "kind": flow["kind"],
+    after["items"].append({"label": flow["label"], "kind": str(flow["kind"]),
                            "amount": round(flow["amount"], 2),
                            "date": day, "scenario": scenario})
 

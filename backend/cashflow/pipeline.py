@@ -9,6 +9,7 @@ from .declare import (_declare_costs, _declare_pay, _declare_receivables, _decla
                       _keep)
 from .invoicing import _invoiced_this_month, _invoicing, _sales_timing
 from .ledger import _run_rates
+from .models import Flow, split_lines
 from .payables import _schedule_payments
 from .payroll import _payroll
 from .receivables import _credit_days, _expected_items, _receivables
@@ -32,7 +33,7 @@ log = logging.getLogger("cfo.cashflow")
 async def build(today: date | None = None) -> dict:
     """Thirteen weeks of cash on two lines, from the books as they stand.
 
-    Each stage below adds its flows to the committed or the expected line and
+    Each stage below adds its flows to one list, each knowing its line, and
     its warnings to the one list, in a fixed order: the weeks list them in
     the order they were added, so the order is part of the answer."""
     today = today or date.today()
@@ -51,19 +52,18 @@ async def build(today: date | None = None) -> dict:
     ar_due, ar_paid, ap_due, ap_paid, risky, ar_at_risk = _settle(src, gap)
     ar_residual, residual_counted = _ar_residual(src, warnings)
 
-    committed: list[dict] = []
-    expected: list[dict] = []
+    flows: list[Flow] = []
     ar_doubtful, ages = _receivables(ar_due, today, habits, ar_residual,
-                                     residual_counted, committed, expected)
-    committed += _schedule_payments(ap_due, today)
-    fixed_found, fixed_by_month, profile = _fixed(src, today, horizon, committed)
+                                     residual_counted, flows)
+    flows += _schedule_payments(ap_due, today)
+    fixed_found, fixed_by_month, profile = _fixed(src, today, horizon, flows)
     sales_profile, sales_lag = _sales_timing(src, habits)
     runs = _invoicing(src, today, horizon, habits, season, risky, ar_due, sales_lag,
-                      committed, expected)
-    _ap_residual(src, today, committed, warnings)
-    committed += _statutory(src.com, today)
+                      flows)
+    _ap_residual(src, today, flows, warnings)
+    flows += _statutory(src.com, today)
     vat_settled, aga_paid = _settled(src.tax_posts)
-    pay = _payroll(src, rates, today, horizon, aga_paid, committed, warnings)
+    pay = _payroll(src, rates, today, horizon, aga_paid, flows, warnings)
 
     credit_days, credit_source = _credit_days(src.ar_open)
     vat_share, vat_measured = _vat_input_share(rows)
@@ -77,10 +77,10 @@ async def build(today: date | None = None) -> dict:
         vat_share=vat_share, booked_vat=booked_vat,
         invoiced_this_month=invoiced_this_month, runs=runs,
         sales_profile=sales_profile, sales_lag=sales_lag, credit_days=credit_days,
-        bank_costs=bank_costs, known_by_month=_known_by_month(committed),
+        bank_costs=bank_costs, known_by_month=_known_by_month(flows),
         fixed_by_month=fixed_by_month, profile=profile,
         opex_left=max(0.0, _opex_in(rates, season, today.month) - booked_opex))
-    months = _trading(trade, committed, expected)
+    months = _trading(trade, flows)
     if not vat_measured:
         warnings.append(
             "Forholdet mellom utgående og inngående merverdiavgift lot seg "
@@ -89,6 +89,7 @@ async def build(today: date | None = None) -> dict:
             "fradrag for moms på det dere selv kjøper. Det er for strengt, ikke "
             "for snilt, men det er verdt å vite.")
 
+    committed, expected = split_lines(flows)
     data = _assemble(today, week0, opening, committed, expected,
                      rates, credit_days, warnings, ar_due, ap_due,
                      vat_share, vat_measured, booked_vat,

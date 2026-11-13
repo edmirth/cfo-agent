@@ -4,6 +4,7 @@ from .ledger import _closing_range
 from datetime import date
 from .common import _iso
 from .ledger import _accrued_this_month
+from .models import FlowKind
 
 
 # Below this the output-VAT balance is too small to read a ratio off, which
@@ -108,7 +109,7 @@ def _statutory(com: dict, today: date) -> list[dict]:
         if due is None:
             continue
         flows.append({"date": max(due, today), "amount": -item["amount"],
-                      "kind": "statutory", "label": item["label"]})
+                      "kind": FlowKind.STATUTORY, "label": item["label"]})
     return flows
 
 

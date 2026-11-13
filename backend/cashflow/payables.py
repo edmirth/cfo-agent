@@ -1,6 +1,7 @@
 """Our own bills: when they leave the account."""
 from datetime import date
 from .common import _iso
+from .models import FlowKind
 
 
 
@@ -20,5 +21,5 @@ def _schedule_payments(bills: list, today: date) -> list:
     for bill in bills:
         for when, amount in _payment_parts(bill, today) or []:
             flows.append({"date": when, "amount": -amount,
-                          "kind": "ap", "label": f"Regning fra {bill['name']}"})
+                          "kind": FlowKind.AP, "label": f"Regning fra {bill['name']}"})
     return flows

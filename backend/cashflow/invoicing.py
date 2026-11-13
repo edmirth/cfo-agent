@@ -8,7 +8,7 @@ import workdays
 
 from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, _add_months, _kr, _term_step
 from .costs import _profile
-from .models import Runs, Sources
+from .models import FlowKind, Runs, Sources
 from .receivables import _days_overdue
 from .common import _iso, _months_until
 
@@ -199,13 +199,13 @@ def _place_runs(name: str, months: dict, parts: list, low: float, usual: float,
                          f"{_term_step(terms)} dager")
                 if round(left_low * share) > 0:
                     flows.append({"date": pay, "amount": left_low * share,
-                                  "kind": "recurring", "month": (y, mo),
+                                  "kind": FlowKind.RECURRING, "month": (y, mo),
                                   "customer": name, "label": label})
                     if pay < horizon:
                         upcoming.append(pay)
                 if round((left_usual - left_low) * share) > 0:
                     flows.append({"date": pay, "amount": (left_usual - left_low) * share,
-                                  "kind": "recurring_usual", "month": (y, mo),
+                                  "kind": FlowKind.RECURRING_USUAL, "month": (y, mo),
                                   "customer": name, "label": label})
     return upcoming
 
@@ -268,7 +268,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
             for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
                 pay = workdays.forward(issued + timedelta(days=terms + lag))
                 if issued < horizon and round(left * share) > 0:
-                    flows.append({"date": pay, "amount": left * share, "kind": "new_sales",
+                    flows.append({"date": pay, "amount": left * share, "kind": FlowKind.NEW_SALES,
                                   "month": (y, mo),
                                   "label": f"Annen fakturering {MONTH_NAMES[mo - 1]} "
                                            f"(ikke sendt), {terms} dager"})
@@ -303,7 +303,7 @@ def _sales_timing(src: Sources, habits: dict) -> tuple[dict, int]:
 
 def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: dict,
                risky: dict, ar_due: list, sales_lag: int,
-               committed: list, expected: list) -> Runs:
+               flows: list) -> Runs:
     """The contract customers' runs on the committed line, and with enough
     register to read, the rest of the invoicing on the expected line.
 
@@ -320,18 +320,18 @@ def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: d
     run_flows, found, by_month = _invoice_runs(
         src.customer_history, today, horizon, habits, season.get("revenue"),
         set(risky), behind)
-    committed += [f for f in run_flows if f["kind"] == "recurring"]
+    flows += [f for f in run_flows if f["kind"] == FlowKind.RECURRING]
     # With RUN_MIN_MONTHS of invoicing to read, the register is the money
     # coming in, and the revenue in the accounts only a check on it. A book
     # younger than that keeps the accounts.
     from_register = _register_months(src.customer_history, today) >= RUN_MIN_MONTHS
     other_by_month, other_measured = {}, None
     if from_register:
-        expected += [f for f in run_flows if f["kind"] == "recurring_usual"]
+        flows += [f for f in run_flows if f["kind"] == FlowKind.RECURRING_USUAL]
         other_flows, other_by_month, other_measured = _other_invoicing(
             src.customer_history, today, horizon, sales_lag, season.get("revenue"),
             {f["name"] for f in found}, set(risky))
-        expected += other_flows
+        flows += other_flows
     return Runs(by_month, found, from_register, other_by_month, other_measured)
 
 

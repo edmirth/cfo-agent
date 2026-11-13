@@ -8,7 +8,7 @@ import workdays
 
 from .common import MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, WAGE_ACCOUNTS, _add_months
 from .common import AGA_ACCRUED
-from .models import Pay, Sources
+from .models import FlowKind, Pay, Sources
 from .common import _next_month
 from .ledger import _accrued_this_month
 
@@ -91,7 +91,7 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
         # month, and a 0 kr wage line beside it reads like an error.
         if round(amount) > 0:
             flows.append({"date": pay_day, "amount": -amount,
-                          "kind": "wages", "label": label})
+                          "kind": FlowKind.WAGES, "label": label})
 
         # Arbeidsgiveravgift on that run, due on the term covering the month it
         # is paid in, and added to the 2770 balance commitments already dates
@@ -114,7 +114,7 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                 month.year, month.month, commitments.SKATT_TERMS))
             if today <= due < horizon:
                 flows.append({
-                    "date": due, "amount": -aga, "kind": "aga_future",
+                    "date": due, "amount": -aga, "kind": FlowKind.AGA_FUTURE,
                     "label": f"Arbeidsgiveravgift på lønn "
                              f"{MONTH_NAMES[month.month - 1]}"})
     return flows
@@ -177,7 +177,7 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
 
 
 def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: float,
-             committed: list, warnings: list[str]) -> Pay:
+             flows: list, warnings: list[str]) -> Pay:
     """Every pay day in the window, and its employer's contribution."""
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative,
@@ -200,7 +200,7 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
         paid_before = date.fromisoformat(src.com.get("paid_before") or "")
     except ValueError:
         paid_before = today
-    committed += _payroll_runs(today, horizon, per_day,
+    flows += _payroll_runs(today, horizon, per_day,
                                rates["aga"], aga_booked, paid_before)
     months = [m for _, m, _ in _pay_days(today, horizon, paid_before)]
     return Pay(per_day, measured, months)
