@@ -1,5 +1,6 @@
 """Monthly run rates and balances read off the trial balance."""
 import statistics
+from dataclasses import dataclass
 
 import saldobalanse
 from preflight import _account, _monthly
@@ -91,94 +92,124 @@ def _run_rates(rows: list, columns: list,
     month's season back on. Without a season, the median of the closed months
     as before.
     """
+    ledger = _Ledger(rows, columns, prior, season, history)
     notes: list[str] = []
-    merged = _merged
-
-    def series_for(ranges) -> list:
-        """Last year's tail, if asked for, then this year's months."""
-        head = []
-        if prior:
-            p_rows, p_columns, year, keep = prior
-            # Named with the year: "Des" alone would read as this December.
-            head = [(f"{m} {year}", v)
-                    for m, v in merged(p_rows, p_columns, ranges)][-keep:]
-        return head + merged(rows, columns, ranges)
-
-    def rate(ranges, flip, name, key=None):
-        idx = (season or {}).get(key) if key else None
-        full = series_for(ranges)
-        series = [(m, v * flip) for m, v in full][:-1]
-        if idx and series:
-            past = []
-            if history:
-                h_rows, h_cols, year = history
-                past = [(f"{m} {year}", v * flip)
-                        for m, v in merged(h_rows, h_cols, ranges)]
-            this = [(m, v * flip) for m, v in merged(rows, columns, ranges)][:-1]
-            series = [(m, v / idx.get(_month_no(m) or 0, 1.0))
-                      for m, v in (past + this)[-LEVEL_MONTHS:]]
-        values = [v for _, v in series]
-        if not values:
-            # No account in the range at all is a real zero: a company without
-            # staff has no payroll. Accounts with only the open month behind
-            # them is not, and a zero rate that drops payroll out of the
-            # forecast must not pass for a quiet month — so that one is said.
-            if not full:
-                return 0.0
-            notes.append(f"{name} kunne ikke beregnes — det finnes ingen "
-                         f"avsluttede måneder å regne snittet på, så den er "
-                         f"satt til 0 i prognosen.")
-            return 0.0
-        mid = statistics.median(values)
-        if mid <= 0:
-            return sum(values) / len(values)
-        kept = [v for _, v in series if 0.5 * mid <= v <= 2 * mid]
-        low_months = [m for m, v in series if v < 0.5 * mid]
-        high_months = [m for m, v in series if v > 2 * mid]
-        # Computed once, and before it is quoted. Quoting it inside the note
-        # while `kept` was empty divided by zero and took the whole forecast
-        # down with it — reachable whenever credit notes put some months below
-        # half the median and others above double it.
-        average = (sum(kept) / len(kept)) if kept else mid
-        # Format the number on its own: the sentence has commas of its own.
-        said = (f"{name} er lagt inn med {_kr(average)} kr i måneden"
-                f"{' før sesong' if idx else ''}.")
-        # One note per rate, not one per direction. A range with both a quiet
-        # month and a loud one used to produce two notes opening on the same
-        # sentence, which reads like the figure was stated twice.
-        why = []
-        if low_months:
-            why.append(
-                f"{', '.join(low_months)} er holdt utenfor — de ligger langt "
-                f"under de andre månedene, og det betyr nesten alltid at bilag "
-                f"ikke er bokført, ikke at kostnaden forsvant.")
-        if high_months:
-            # Said for the same reason the low ones are. A month at several
-            # times the median pulls the rate down when it is dropped, and a
-            # rate quietly lowered is the dangerous direction to be wrong in.
-            why.append(
-                f"{', '.join(high_months)} er holdt utenfor — de ligger langt "
-                f"over de andre månedene. Det er som regel etterslep som ble "
-                f"bokført på én gang, eller noe som bare skjedde denne ene "
-                f"gangen, men sjekk det før du stoler på snittet.")
-        if why:
-            notes.append(" ".join([said] + why))
-        return average
-
-    rates = {"revenue": rate([(3000, 3999)], -1, "Omsetning", "revenue"),
+    rates = {"revenue": _rate(ledger, [(3000, 3999)], -1, "Omsetning", notes, "revenue"),
              # The full wage cost, accrual and all — what the P&L carries.
-             "wages": rate([(5000, 5099)], 1, "Lønn"),
+             "wages": _rate(ledger, [(5000, 5099)], 1, "Lønn", notes),
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
-             "wages_cash": rate([(5000, 5019), (5030, 5099)], 1,
-                                "Lønn som går ut på lønningsdagen"),
+             "wages_cash": _rate(ledger, [(5000, 5019), (5030, 5099)], 1,
+                                 "Lønn som går ut på lønningsdagen", notes),
              # Not part of opex, and not double counted: commitments dates the
              # 2770 balance for payrolls already reported, this rates the ones
              # still to come. 5401 stays out, being the feriepenger's own.
-             "aga": rate([(5400, 5400)], 1, "Arbeidsgiveravgift"),
-             "opex": rate(OPEX_RANGES, 1, "Driftskostnader", "opex")}
+             "aga": _rate(ledger, [(5400, 5400)], 1, "Arbeidsgiveravgift", notes),
+             "opex": _rate(ledger, OPEX_RANGES, 1, "Driftskostnader", notes, "opex")}
     return rates, notes
+
+
+@dataclass(frozen=True)
+class _Ledger:
+    """The trial balances a run rate is read from (see `_run_rates`)."""
+    rows: list
+    columns: list
+    prior: tuple | None
+    season: dict | None
+    history: tuple | None
+
+
+def _series(ledger: _Ledger, ranges) -> list:
+    """Last year's tail, if asked for, then this year's months."""
+    head = []
+    if ledger.prior:
+        p_rows, p_columns, year, keep = ledger.prior
+        # Named with the year: "Des" alone would read as this December.
+        head = [(f"{m} {year}", v)
+                for m, v in _merged(p_rows, p_columns, ranges)][-keep:]
+    return head + _merged(ledger.rows, ledger.columns, ranges)
+
+
+def _rate(ledger: _Ledger, ranges, flip: int, name: str, notes: list[str],
+          key: str | None = None) -> float:
+    """One run rate: the closed months, or with a season the level of the
+    last LEVEL_MONTHS with the season taken out; outliers kept out and named."""
+    idx = (ledger.season or {}).get(key) if key else None
+    full = _series(ledger, ranges)
+    series = [(m, v * flip) for m, v in full][:-1]
+    if idx and series:
+        past = []
+        if ledger.history:
+            h_rows, h_cols, year = ledger.history
+            past = [(f"{m} {year}", v * flip)
+                    for m, v in _merged(h_rows, h_cols, ranges)]
+        this = [(m, v * flip) for m, v in _merged(ledger.rows, ledger.columns, ranges)][:-1]
+        series = [(m, v / idx.get(_month_no(m) or 0, 1.0))
+                  for m, v in (past + this)[-LEVEL_MONTHS:]]
+    values = [v for _, v in series]
+    if not values:
+        # No account in the range at all is a real zero: a company without
+        # staff has no payroll. Accounts with only the open month behind
+        # them is not, and a zero rate that drops payroll out of the
+        # forecast must not pass for a quiet month — so that one is said.
+        if not full:
+            return 0.0
+        notes.append(f"{name} kunne ikke beregnes — det finnes ingen "
+                     f"avsluttede måneder å regne snittet på, så den er "
+                     f"satt til 0 i prognosen.")
+        return 0.0
+    mid = statistics.median(values)
+    if mid <= 0:
+        return sum(values) / len(values)
+    kept = [v for _, v in series if 0.5 * mid <= v <= 2 * mid]
+    # Computed once, and before it is quoted. Quoting it inside the note
+    # while `kept` was empty divided by zero and took the whole forecast
+    # down with it — reachable whenever credit notes put some months below
+    # half the median and others above double it.
+    average = (sum(kept) / len(kept)) if kept else mid
+    _say_outliers(series, mid, average, name, bool(idx), notes)
+    return average
+
+
+def _say_outliers(series: list, mid: float, average: float, name: str,
+                  seasonal: bool, notes: list[str]) -> None:
+    """One note per rate on the months held out, either way.
+
+    One note, not one per direction: a range with both a quiet month and a
+    loud one used to produce two notes opening on the same sentence, which
+    reads like the figure was stated twice."""
+    low_months = [m for m, v in series if v < 0.5 * mid]
+    high_months = [m for m, v in series if v > 2 * mid]
+    # Format the number on its own: the sentence has commas of its own.
+    said = (f"{name} er lagt inn med {_kr(average)} kr i måneden"
+            f"{' før sesong' if seasonal else ''}.")
+    why = []
+    if low_months:
+        why.append(
+            f"{', '.join(low_months)} er holdt utenfor — de ligger langt "
+            f"under de andre månedene, og det betyr nesten alltid at bilag "
+            f"ikke er bokført, ikke at kostnaden forsvant.")
+    if high_months:
+        # Said for the same reason the low ones are. A month at several
+        # times the median pulls the rate down when it is dropped, and a
+        # rate quietly lowered is the dangerous direction to be wrong in.
+        why.append(
+            f"{', '.join(high_months)} er holdt utenfor — de ligger langt "
+            f"over de andre månedene. Det er som regel etterslep som ble "
+            f"bokført på én gang, eller noe som bare skjedde denne ene "
+            f"gangen, men sjekk det før du stoler på snittet.")
+    if why:
+        notes.append(" ".join([said] + why))
+
+
+def _accrued_this_month(rows: list, columns: list, accounts: tuple[int, int],
+                        paid: float = 0.0) -> float:
+    """What this month has put on a liability range: its movement this month,
+    less any payment or settlement made in it (card 68), negated, since a
+    liability is a credit balance and an accrual a negative movement."""
+    series = _monthly(rows, columns, *accounts)
+    return max(0.0, -(series[-1][1] - paid)) if series else 0.0
 
 
 def _closing_range(rows: list, low: int, high: int) -> float:

@@ -150,3 +150,26 @@ def test_nothing_after_the_window_gives_no_line():
                        _flow(96, -30_000.0, "ap")], [])
     assert data["after"] is None and cashflow.after_text(None) == ""
     assert "Etter uke 13" not in cashflow.briefing(data)
+
+
+# ------------------------------------------- shared helpers (card 69)
+def test_iso_reads_a_date_and_nothing_else():
+    from cashflow.common import _iso
+    assert _iso("2026-11-13") == date(2026, 11, 13)
+    assert _iso(None) is None and _iso("") is None
+    assert _iso("13.11.2026") is None and _iso(20261113) is None
+
+
+def test_next_month_rolls_over_the_year():
+    from cashflow.common import _next_month
+    assert _next_month(date(2026, 12, 31)) == date(2027, 1, 1)
+    assert _next_month(date(2026, 1, 31)) == date(2026, 2, 1)
+
+
+def test_months_until_stops_before_the_horizon():
+    from cashflow.common import _months_until
+    assert list(_months_until(2026, 11, date(2027, 2, 1))) == [
+        (2026, 11), (2026, 12), (2027, 1)]
+    assert list(_months_until(2026, 11, date(2027, 2, 2))) == [
+        (2026, 11), (2026, 12), (2027, 1), (2027, 2)]
+    assert list(_months_until(2026, 11, date(2026, 11, 1))) == []

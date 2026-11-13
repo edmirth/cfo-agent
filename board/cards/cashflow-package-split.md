@@ -18,7 +18,7 @@ that changes on purpose is updated in its own commit with the reason.
       (step 1; `build` lives in `pipeline.py` and `briefing` in `narrative.py`, so the module names
       do not shadow the functions `cashflow.build` and `cashflow.briefing`)
 - [ ] `models.py` with `Flow` and `FlowKind`. `texts.py` holds every user sentence
-- [ ] Shared helpers replace the duplicates listed in §4.7
+- [x] Shared helpers replace the duplicates listed in §4.7 (step 3)
 - [ ] Tests moved off private functions and module patching (`cashflow.mcp`,
       `cashflow.commitments`) onto `sources` fakes and the public functions
 - [ ] `ruff` and `mypy` clean on the package. No function over about 60 lines
@@ -55,4 +55,18 @@ that changes on purpose is updated in its own commit with the reason.
   - 602 passed; the nine demo snapshots and Ullensaker unchanged.
   - Still over 60 lines, for step 3: `_assemble` 158, `_run_rates` 117,
     `_open_invoices` 111, `_invoice_runs` 105, `_fixed_bills` 96.
+- 2026-11-13 (claude): step 3 on `cashflow-package-split`.
+  - The five long functions split: `_assemble` (weeks, placing, the walk,
+    low points, assumptions), `_run_rates` (nested functions lifted out),
+    `_open_invoices` (month notes, one row), `_invoice_runs` (why aside,
+    placing, what is said), `_fixed_bills` (by supplier, cadence, placing).
+    Longest now: `build` 75, `_open_invoices` 66 (a 35-line docstring),
+    `_invoice_runs` 61.
+  - Helpers for the duplicates: `_iso` (six date parses), `_next_month`
+    (two), `_months_until` (two month loops), `_accrued_this_month` (AGA
+    and VAT), and `_fixed_bills` reads supplier rows through `_bill_rows`.
+    Tests for the three common helpers.
+  - 605 passed; demo snapshots and Ullensaker unchanged.
+  - Left: Flow/FlowKind and texts.py (step 4); tests onto the public
+    functions, ruff and mypy (step 5).
 

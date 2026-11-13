@@ -7,9 +7,10 @@ import company
 import workdays
 
 from .common import MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, WAGE_ACCOUNTS, _add_months
-from preflight import _monthly
 from .common import AGA_ACCRUED
 from .models import Pay, Sources
+from .common import _next_month
+from .ledger import _accrued_this_month
 
 
 # **The feriepenger month.** In the month holiday pay goes out, staff draw
@@ -61,8 +62,7 @@ def _pay_days(today: date, horizon: date,
             break
         if pay_day >= cutoff:
             out.append((month.year, month.month, pay_day))
-        month = (date(month.year + 1, 1, 1) if month.month == 12
-                 else date(month.year, month.month + 1, 1))
+        month = _next_month(month)
     return out
 
 
@@ -182,8 +182,7 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative,
     # and a term paid this month comes off the movement first (card 68).
-    aga_series = _monthly(src.rows, src.columns, *AGA_ACCRUED)
-    aga_booked = max(0.0, -(aga_series[-1][1] - aga_paid)) if aga_series else 0.0
+    aga_booked = _accrued_this_month(src.rows, src.columns, AGA_ACCRUED, aga_paid)
     # What a pay day really pays, where the payroll vouchers say so; the wage
     # accounts otherwise.
     wages_paid = src.wages_paid

@@ -1,4 +1,5 @@
 """Small helpers every part of the forecast uses: weeks, months, kroner."""
+from collections.abc import Iterator
 from datetime import date, timedelta
 
 
@@ -116,6 +117,27 @@ def _kr(v) -> str:
 def _add_months(year: int, month: int, n: int) -> tuple[int, int]:
     i = year * 12 + (month - 1) + n
     return i // 12, i % 12 + 1
+
+
+def _next_month(d: date) -> date:
+    """The first day of the month after the one `d` is in."""
+    return date(*_add_months(d.year, d.month, 1), 1)
+
+
+def _months_until(year: int, month: int, horizon: date) -> Iterator[tuple[int, int]]:
+    """(year, month) from the one given, every month that starts before `horizon`."""
+    while date(year, month, 1) < horizon:
+        yield year, month
+        year, month = _add_months(year, month, 1)
+
+
+def _iso(value) -> date | None:
+    """A date from an ISO string, None for anything that is not one: missing,
+    empty, or not a date. The registers and commitments leave dates out."""
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
 
 
 def _weighted_median(pairs: list[tuple[float, float]]) -> float:

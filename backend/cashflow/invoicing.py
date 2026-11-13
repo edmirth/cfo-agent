@@ -10,6 +10,7 @@ from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRIN
 from .costs import _profile
 from .models import Runs, Sources
 from .receivables import _days_overdue
+from .common import _iso, _months_until
 
 
 # The rest of the invoicing, to customers not billed every month, is one stream
@@ -35,10 +36,8 @@ def _sales_rows(history: list):
     for row in history:
         if row.get("isCredited"):
             continue
-        try:
-            issued = date.fromisoformat(row["invoiceDate"])
-            due = date.fromisoformat(row["dueDate"])
-        except (ValueError, TypeError, KeyError):
+        issued, due = _iso(row.get("invoiceDate")), _iso(row.get("dueDate"))
+        if issued is None or due is None:
             continue
         amount = float(row.get("amount") or row.get("amountCurrency") or 0)
         if amount > 0:
@@ -139,7 +138,6 @@ def _invoice_runs(history: list, today: date, horizon: date,
             continue
         timed = [k for k in closed if k in months][:RECURRING_MONTHS]
         parts = _run_parts([p for k in timed for p in months[k]["parts"]])
-        why = None
         behind = (overdue or {}).get(name, 0.0)
         if behind > BEHIND_MIN and behind >= usual:
             found.append({"name": name, "amount": 0.0, "usual": round(usual, 2),
@@ -149,57 +147,78 @@ def _invoice_runs(history: list, today: date, horizon: date,
                           "day": None, "terms": None, "term_steps": [], "late": None,
                           "next": None})
             continue
-        if not all(k in months for k in recent):
-            why = "en av de siste månedene uten faktura"
-        elif behind > BEHIND_MIN and behind >= BEHIND_SHARE * usual:
-            why = f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid"
-        else:
-            sent_now = months.get(this, {}).get("amount", 0.0)
-            last_day = max(d for d, _, _ in parts)
-            if today.day > last_day + STALL_DAYS and sent_now < 0.5 * usual:
-                why = f"ingen faktura ennå denne måneden, vanligvis den {last_day}."
+        why = _why_aside(months, recent, behind, usual, parts, today)
         low = min(months[k]["amount"] for k in recent) if why is None else 0.0
         late = payment_habits.lag(habits, name, PAY_LAG_DAYS)
-        upcoming = []
-        y, mo = this
-        while date(y, mo, 1) < horizon:
-            s = (season or {}).get(mo, 1.0)
-            sent = months.get((y, mo), {}).get("amount", 0.0)
-            left_low = max(0.0, low * min(1.0, s) - sent)
-            left_usual = max(left_low, usual * s - sent)
-            if left_usual >= 0.5:
-                m = by_month.setdefault((y, mo), {"low": 0.0, "usual": 0.0})
-                m["low"] += left_low
-                m["usual"] += left_usual
-                for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
-                    pay = workdays.forward(issued + timedelta(days=terms + late))
-                    # Sent inside the window and paid after it: kept for the
-                    # line after week 13 (`after` in `_assemble`), never on
-                    # the weeks.
-                    if issued >= horizon:
-                        continue
-                    label = (f"Fakturering {MONTH_NAMES[mo - 1]} (ikke sendt), "
-                             f"{_term_step(terms)} dager")
-                    if round(left_low * share) > 0:
-                        flows.append({"date": pay, "amount": left_low * share,
-                                      "kind": "recurring", "month": (y, mo),
-                                      "customer": name, "label": label})
-                        if pay < horizon:
-                            upcoming.append(pay)
-                    if round((left_usual - left_low) * share) > 0:
-                        flows.append({"date": pay, "amount": (left_usual - left_low) * share,
-                                      "kind": "recurring_usual", "month": (y, mo),
-                                      "customer": name, "label": label})
-            y, mo = _add_months(y, mo, 1)
-        terms = sorted({_term_step(t) for _, t, _ in parts})
-        found.append({"name": name, "amount": round(low, 2), "usual": round(usual, 2),
-                      "committed": why is None, "excluded": False, "why": why,
-                      "day": int(statistics.median([d for d, _, _ in parts])),
-                      "terms": int(statistics.median([t for _, t, _ in parts])),
-                      "term_steps": terms, "late": late,
-                      "next": min(upcoming).isoformat() if upcoming else None})
+        upcoming = _place_runs(name, months, parts, low, usual, late, season,
+                               today, horizon, by_month, flows)
+        found.append(_run_found(name, low, usual, why, parts, late, upcoming))
     found.sort(key=lambda f: -f["usual"])
     return flows, found, by_month
+
+
+def _why_aside(months: dict, recent: list, behind: float, usual: float,
+               parts: list, today: date) -> str | None:
+    """Why a regular customer is in the expected line only, or None."""
+    if not all(k in months for k in recent):
+        return "en av de siste månedene uten faktura"
+    if behind > BEHIND_MIN and behind >= BEHIND_SHARE * usual:
+        return f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid"
+    sent_now = months.get((today.year, today.month), {}).get("amount", 0.0)
+    last_day = max(d for d, _, _ in parts)
+    if today.day > last_day + STALL_DAYS and sent_now < 0.5 * usual:
+        return f"ingen faktura ennå denne måneden, vanligvis den {last_day}."
+    return None
+
+
+def _place_runs(name: str, months: dict, parts: list, low: float, usual: float,
+                late: int, season: dict | None, today: date, horizon: date,
+                by_month: dict, flows: list) -> list[date]:
+    """One customer's invoicing still to be sent, month by month: the lowest
+    recent month on the committed line, the rest of the usual one on the
+    expected. Returns the pay days inside the window."""
+    this = (today.year, today.month)
+    upcoming = []
+    for y, mo in _months_until(*this, horizon):
+        s = (season or {}).get(mo, 1.0)
+        sent = months.get((y, mo), {}).get("amount", 0.0)
+        left_low = max(0.0, low * min(1.0, s) - sent)
+        left_usual = max(left_low, usual * s - sent)
+        if left_usual >= 0.5:
+            m = by_month.setdefault((y, mo), {"low": 0.0, "usual": 0.0})
+            m["low"] += left_low
+            m["usual"] += left_usual
+            for issued, terms, share in _place_month(parts, y, mo, today, (y, mo) == this):
+                pay = workdays.forward(issued + timedelta(days=terms + late))
+                # Sent inside the window and paid after it: kept for the
+                # line after week 13 (`after` in `_assemble`), never on
+                # the weeks.
+                if issued >= horizon:
+                    continue
+                label = (f"Fakturering {MONTH_NAMES[mo - 1]} (ikke sendt), "
+                         f"{_term_step(terms)} dager")
+                if round(left_low * share) > 0:
+                    flows.append({"date": pay, "amount": left_low * share,
+                                  "kind": "recurring", "month": (y, mo),
+                                  "customer": name, "label": label})
+                    if pay < horizon:
+                        upcoming.append(pay)
+                if round((left_usual - left_low) * share) > 0:
+                    flows.append({"date": pay, "amount": (left_usual - left_low) * share,
+                                  "kind": "recurring_usual", "month": (y, mo),
+                                  "customer": name, "label": label})
+    return upcoming
+
+
+def _run_found(name: str, low: float, usual: float, why: str | None, parts: list,
+               late: int, upcoming: list[date]) -> dict:
+    """One regular customer as the forecast declares him."""
+    return {"name": name, "amount": round(low, 2), "usual": round(usual, 2),
+            "committed": why is None, "excluded": False, "why": why,
+            "day": int(statistics.median([d for d, _, _ in parts])),
+            "terms": int(statistics.median([t for _, t, _ in parts])),
+            "term_steps": sorted({_term_step(t) for _, t, _ in parts}), "late": late,
+            "next": min(upcoming).isoformat() if upcoming else None}
 
 
 def _other_invoicing(history: list, today: date, horizon: date, lag: int,
@@ -241,8 +260,7 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
     parts = [(int(statistics.median(days)), terms, share)
              for (_, terms), (share, days) in sorted(grouped.items())]
     flows, by_month = [], {}
-    y, mo = this
-    while level > 0 and parts and date(y, mo, 1) < horizon:
+    for y, mo in (_months_until(*this, horizon) if level > 0 and parts else ()):
         s = (season or {}).get(mo, 1.0)
         left = max(0.0, level * s - (sent if (y, mo) == this else 0.0))
         if left >= 0.5:
@@ -254,7 +272,6 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                                   "month": (y, mo),
                                   "label": f"Annen fakturering {MONTH_NAMES[mo - 1]} "
                                            f"(ikke sendt), {terms} dager"})
-        y, mo = _add_months(y, mo, 1)
     measured = {"nivaa_mnd": round(level, 2),
                 "maneder": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
                              "amount": round(months[k]["amount"], 2)} for k in reversed(closed)],
@@ -327,9 +344,8 @@ def _invoiced_this_month(src: Sources, today: date) -> float:
     stays the floor, for a month whose invoices could not be read."""
     total = 0.0
     for i in src.ar_open:
-        try:
-            issued_on = date.fromisoformat(i["invoiced"])
-        except (ValueError, TypeError, KeyError):
+        issued_on = _iso(i.get("invoiced"))
+        if issued_on is None:
             continue
         if (issued_on.year, issued_on.month) == (today.year, today.month):
             total += i["amount"]

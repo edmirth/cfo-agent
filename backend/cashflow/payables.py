@@ -1,5 +1,6 @@
 """Our own bills: when they leave the account."""
 from datetime import date
+from .common import _iso
 
 
 
@@ -7,11 +8,8 @@ def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
     """When one of our own bills leaves: on its due date, or this week if it
     is already overdue. As `_receipt_parts`, but without the lag or the spread
     — both would understate what leaves the account soon."""
-    try:
-        due = date.fromisoformat(bill["due"])
-    except (ValueError, TypeError, KeyError):
-        return None
-    return [(max(due, today), bill["amount"])]
+    due = _iso(bill.get("due"))
+    return None if due is None else [(max(due, today), bill["amount"])]
 
 
 def _schedule_payments(bills: list, today: date) -> list:
