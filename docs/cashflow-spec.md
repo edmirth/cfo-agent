@@ -41,8 +41,8 @@ is accrual minus last term's payment, usually positive, so `max(0, -x)` gives 0:
 - VAT, accounts path (`from_register` false): this month's VAT is charged a second time in
   settlement months.
 
-Fix: use the month's credits only, not the net movement. Add a regression test for a payment
-month.
+Fix (card 68, done): take this month's payment and settlement vouchers, found in its postings,
+off the month's movement. Plain credits would also drop input VAT and credit notes.
 
 **Check while refactoring (not confirmed):**
 - `issued["this_month"]` sums `amount`, while the open list is `amountOutstanding`. If `amount`
@@ -292,9 +292,13 @@ snapshot is updated in its own commit with the reason.
 - [x] How to run the tests is documented in `README.md`
 
 ### Phase 1: fix D1
-- [ ] AGA and VAT "already this month" read from credits only
-- [ ] Regression test for a payment month (e.g. November) after payroll is posted
-- [ ] Snapshot updated in a separate commit, with the changed weeks explained
+- [x] AGA and VAT "already this month" no longer count the month's payment or settlement: the
+      month's movement less the payment and settlement vouchers found in its postings
+      (`_settled`). Plain credits would also drop input VAT and credit notes, so not that
+- [x] Regression tests for a payment month: November with the run journalised before its pay
+      day, November with it not yet journalised, and October with a VAT settlement
+- [x] Snapshots: nothing moved, on the demo companies or Ullensaker. Neither books hits the
+      case (see the log), so no snapshot commit was needed
 
 ### Phase 2: split without changing behaviour
 - [ ] `backend/cashflow/` package as in §4.6. `import cashflow` and the public API unchanged

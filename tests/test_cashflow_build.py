@@ -35,8 +35,10 @@ FULL_YEAR = ["Inngående balanse"] + [c for c in COLUMNS[1:-1]] + ["Nov", "Des",
 
 
 class _Tripletex:
-    def __init__(self, rows, ar=(), ap=(), last=None, postings=None, cut_off=False):
+    def __init__(self, rows, ar=(), ap=(), last=None, postings=None, cut_off=False,
+                 today=TODAY, columns=COLUMNS):
         self.rows, self.ar, self.ap = rows, list(ar), list(ap)
+        self.today, self.columns = today, columns
         self.cut_off = cut_off    # the search ignores `from`: a list that stays short
         self.last = last          # last year's ledger, a whole year of columns
         self.postings = postings  # 1500 postings; an Exception to fail the read
@@ -48,16 +50,21 @@ class _Tripletex:
             if isinstance(self.postings, Exception):
                 raise self.postings
             a = args or {}
+            lo, hi = a.get("accountNumberFrom"), a.get("accountNumberTo")
+            # Postings that name their account are filtered on it, as the
+            # search does; the older ones without one answer every range.
             hits = [p for p in self.postings
-                    if a["dateFrom"] <= p["date"] < a["dateTo"]]
+                    if a["dateFrom"] <= p["date"] < a["dateTo"]
+                    and ("accountNumber" not in p or lo is None
+                         or lo <= int(p["accountNumber"]) <= hi)]
             return {"postings": hits if not a.get("from") else [], "hasMore": False}
         if (tool == "fetch_report" and self.last is not None
-                and str((args or {}).get("period_start", "")).startswith(str(TODAY.year - 1))):
+                and str((args or {}).get("period_start", "")).startswith(str(self.today.year - 1))):
             return {"table": {"rows": self.last,
                               "columns": [{"name": c} for c in FULL_YEAR]}}
         if tool == "fetch_report":
             return {"table": {"rows": self.rows,
-                              "columns": [{"name": c} for c in COLUMNS]}}
+                              "columns": [{"name": c} for c in self.columns]}}
         if tool == "search_invoices":
             if self.cut_off and (args or {}).get("from"):
                 return {"rows": self.ar}
@@ -68,13 +75,13 @@ class _Tripletex:
 
 
 def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
-              last=None, postings=None, cut_off=False):
+              last=None, postings=None, cut_off=False, today=TODAY, columns=COLUMNS):
     """Run `build` against a stubbed ledger. Returns the payload."""
     import payment_habits
     payment_habits._cache.clear()
     cashflow._payroll_cache.clear()
     cashflow.bankcat.CACHE.clear()
-    stub = _Tripletex(rows, ar, ap, last, postings, cut_off)
+    stub = _Tripletex(rows, ar, ap, last, postings, cut_off, today, columns)
     old_mcp, old_cached = cashflow.mcp, cashflow.commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
@@ -86,7 +93,7 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     cashflow.commitments.cached = cached
     company.setting = lambda k, d=None: conf.get(k, d)
     try:
-        return asyncio.run(cashflow.build(TODAY))
+        return asyncio.run(cashflow.build(today))
     finally:
         cashflow.mcp, cashflow.commitments.cached = old_mcp, old_cached
         company.setting = old_setting
@@ -1076,6 +1083,70 @@ def test_a_payroll_already_on_2770_owes_no_forecast_contribution():
     assert still, "a run not yet journalised still owes its contribution"
 
 
+# Card 68. In the month a term is paid, the month's net movement on 2770 is
+# this month's accrual less the payment, usually a debit. Read as "nothing
+# booked yet", a run journalised before its pay day was forecast again on top
+# of the balance commitments already dates.
+NOVEMBER = date(2026, 11, 18)
+TO_NOVEMBER = COLUMNS[:-1] + ["Nov", "Utgående saldo"]
+NOV_WAGES = _cum("5000 Lønn til ansatte", [800_000.0] * 11)
+NOV_AGA = _cum("5400 Arbeidsgiveravgift", [112_000.0] * 11)
+
+
+def _aga_payment(day="2026-11-16", amount=224_000.0, voucher=901):
+    """September and October's AGA paid on the term: 2770 debited."""
+    return [{"voucherId": voucher, "date": day, "accountNumber": 2770, "amount": amount},
+            {"voucherId": voucher, "date": day, "accountNumber": 1920,
+             "accountIsBank": True, "amount": -amount}]
+
+
+def _payroll_journal(day="2026-11-17", aga=112_000.0, voucher=902):
+    """November's run journalised ahead of its pay day: 2770 credited."""
+    return [{"voucherId": voucher, "date": day, "accountNumber": 5400, "amount": aga},
+            {"voucherId": voucher, "date": day, "accountNumber": 2770, "amount": -aga}]
+
+
+def _november_aga(data):
+    return [i for i in _kinds(data, "aga_future") if "november" in i["label"]]
+
+
+def test_a_run_journalised_in_a_payment_month_is_not_forecast_twice():
+    # Sept and Oct accrued, then in November: +224 000 paid, −112 000 accrued.
+    ledger = _cum("2770 Skyldig arbeidsgiveravgift",
+                  [0.0] * 8 + [-112_000.0, -112_000.0, 112_000.0])
+    data = _forecast([NOV_WAGES, NOV_AGA, ledger], today=NOVEMBER, columns=TO_NOVEMBER,
+                     settings={"lonn_utbetalingsdag": 20},
+                     postings=_aga_payment() + _payroll_journal())
+    assert not _november_aga(data), _november_aga(data)
+
+
+def test_a_payment_month_with_the_run_not_yet_journalised_still_owes_it():
+    # The term is paid, November's run is not on 2770 yet: its AGA is to come.
+    ledger = _cum("2770 Skyldig arbeidsgiveravgift",
+                  [0.0] * 8 + [-112_000.0, -112_000.0, 224_000.0])
+    data = _forecast([NOV_WAGES, NOV_AGA, ledger], today=NOVEMBER, columns=TO_NOVEMBER,
+                     settings={"lonn_utbetalingsdag": 20}, postings=_aga_payment())
+    assert _november_aga(data), "nothing of November is on 2770 yet"
+
+
+def test_vat_settled_this_month_does_not_hide_what_this_month_booked():
+    """The July-August term is settled on 2 October: 2700 debited 200 000
+    against 2740. October has booked 60 000 of its own. The month's net
+    movement is +140 000, read as nothing booked, and October's whole VAT
+    went out again on top of the 60 000 commitments already dates."""
+    ledger = _cum("2700 Utgående mva",
+                  [0.0] * 6 + [-100_000.0, -100_000.0, -100_000.0, 140_000.0])
+    postings = [
+        {"voucherId": 801, "date": "2026-10-02", "accountNumber": 2700, "amount": 200_000.0},
+        {"voucherId": 801, "date": "2026-10-02", "accountNumber": 2740, "amount": -200_000.0},
+        {"voucherId": 802, "date": "2026-10-03", "accountNumber": 1500, "amount": 300_000.0},
+        {"voucherId": 802, "date": "2026-10-03", "accountNumber": 3000, "amount": -240_000.0},
+        {"voucherId": 802, "date": "2026-10-03", "accountNumber": 2700, "amount": -60_000.0},
+    ]
+    left = _october_vat(_forecast([REVENUE, ledger], postings=postings))
+    assert left and round(left[0]["amount"]) == -40_000, left
+
+
 def test_the_withholding_is_not_paid_on_pay_day_and_again_at_the_term():
     """From 2026 the trekk leaves with the salary, and `_payroll_runs` pays
     the gross. Scheduling the 2600-2619 balance as well paid it twice. 2600
@@ -1178,3 +1249,29 @@ def test_too_much_unknown_in_the_bank_keeps_the_accounts():
     assert data["assumptions"]["kostnader_kilde"] == "regnskapet"
     assert not any("fra banken" in i["label"] for i in _kinds(data, "opex"))
     assert any("20 %" in w and "regnskapet" in w for w in data["warnings"])
+
+
+def test_a_settlement_without_2740_is_still_a_settlement():
+    # Output against input VAT cleared in one voucher, paid straight from it.
+    vat, _ = cashflow._settled([
+        {"voucherId": 1, "accountNumber": 2700, "amount": 250_000.0},
+        {"voucherId": 1, "accountNumber": 2710, "amount": -50_000.0},
+        {"voucherId": 1, "accountNumber": 1920, "amount": -200_000.0}])
+    assert vat == 200_000.0
+
+
+def test_a_credit_note_is_not_a_settlement():
+    # A credit note debits output VAT too, but is part of the month's own VAT.
+    vat, aga = cashflow._settled([
+        {"voucherId": 2, "accountNumber": 2700, "amount": 5_000.0},
+        {"voucherId": 2, "accountNumber": 3000, "amount": 20_000.0},
+        {"voucherId": 2, "accountNumber": 1500, "amount": -25_000.0}])
+    assert (vat, aga) == (0.0, 0.0)
+
+
+def test_a_reversed_payroll_journal_is_not_an_aga_payment():
+    # Booked and reversed inside one voucher: nets to nothing on 2770.
+    _, aga = cashflow._settled([
+        {"voucherId": 3, "accountNumber": 2770, "amount": -112_000.0},
+        {"voucherId": 3, "accountNumber": 2770, "amount": 112_000.0}])
+    assert aga == 0.0
