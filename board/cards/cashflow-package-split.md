@@ -76,7 +76,7 @@ that changes on purpose is updated in its own commit with the reason.
     runtime. The stages add to one list; build splits it by kind, which
     gives the same two sequences. Week items carry the kind as a string.
     A test checks every item of a whole forecast is on its kind's line.
-  - `texts.py`: every sentence from the calculation modules, 46 functions,
+  - `texts.py`: every sentence from the calculation modules, 44 functions,
     lifted by a script with the expression copied exactly, then given
     parameters that say what they quote. A scan finds none left behind.
   - On the way: ast columns are UTF-8 bytes, which cut the first attempt
