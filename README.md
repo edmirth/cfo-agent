@@ -161,7 +161,8 @@ is code, and every figure it states is traced back to a source afterwards.
 | `docs/hosting.md` | Where it all runs and how to put it there: Render, and DNS at domene.no |
 | `scripts/oauth_login.py` | One-time browser login |
 | `scripts/check_tokens.py` | Verifies the Tripletex connection on its own |
-| `tests/` | `./.venv/bin/python -m tests.run` — plain asserts, no framework, temporary state |
+| `scripts/real_snapshot.py` | `record` freezes the connected company's books and forecast under `state/snapshots/` (never in git); `check` replays them to show whether a change moved the real forecast |
+| `tests/` | `./.venv/bin/python -m tests.run` (plain asserts, no framework) or `./.venv/bin/python -m pytest` after `pip install -r requirements-dev.txt`; temporary state either way. `tests/snapshots/cashflow/` freezes the whole forecast for the three demo companies: rewrite with `CFO_SNAPSHOT_UPDATE=1`, in a commit of its own that says why |
 
 ## Endpoints
 

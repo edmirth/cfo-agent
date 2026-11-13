@@ -4,30 +4,17 @@
 
 Each test_*.py module exposes functions named test_*; each is run in turn,
 against temporary state so nothing here touches the live company's files.
-Plain asserts, no framework: the venv has none, and adding a dependency so
-that the tests can exist would be the wrong trade.
+Plain asserts, no framework needed: this runner works on a bare install.
+The same tests also run under pytest (requirements-dev.txt), which adds
+selection (`-k`), stopping on the first failure (`-x`) and better reports.
 """
 import importlib
-import os
 import pkgutil
-import sys
-import tempfile
 import traceback
-from pathlib import Path
 
-# Before any backend module is imported: the whole run writes to a throwaway
-# database, so no test can reach state/cfo.db or import the real JSON files.
-os.environ["CFO_DB"] = str(Path(tempfile.mkdtemp()) / "cfo.db")
-# Login switched on, against a project that does not exist: the routes the
-# tests call directly are not behind it, and the auth tests set their own keys.
-os.environ["CFO_AUTH"] = "supabase"
-os.environ["SUPABASE_URL"] = "https://test-project.supabase.co"
-os.environ["SUPABASE_ANON_KEY"] = "test-anon-key"
-os.environ["CFO_OWNER_EMAIL"] = "ceo@example.no"
-
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "backend"))
-sys.path.insert(0, str(HERE.parent))
+# Before any backend module is imported: environment and import paths.
+from tests import _setup  # noqa: F401
+from tests._setup import HERE
 
 
 def main() -> int:

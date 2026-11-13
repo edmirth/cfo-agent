@@ -1,0 +1,9 @@
+# For working on the code, not for running it: Render and the Dockerfile
+# install requirements.txt only. Exact versions, as there.
+#   ./.venv/bin/pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.1.1
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+Pygments==2.21.0

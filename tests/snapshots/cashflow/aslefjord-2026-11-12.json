@@ -1,0 +1,1740 @@
+{
+ "briefing": "## De neste 13 ukene\n\nBuilt 2026-11-12 from open invoices, the tax calendar and this company's own run-rates. No model was involved in the arithmetic, but the second line is a forecast and must always be presented as one.\n\n- Starter på **8 698 666 kr**\n  — banken og bøkene er like, 8 698 666 kr. Ingen banklinjer venter på å bli bokført.\n- **Bundet linje** — det som allerede er fakturert inn og ut, de faste kundene som faktureres hver måned, de faste regningene, lønn og skattedatoer: lavest **8 163 285 kr** i Uke 51 (2026-12-14).\n- **Forventet linje** — med resten av den vanlige faktureringen og driften: lavest **8 206 824 kr** i Uke 51 (2026-12-14).\n- **Gulvet** er **2 000 000 kr** — satt av selskapet i Selskapet. Den bundne linjen holder seg over gulvet alle 13 ukene. Weigh the low point against this floor, not against zero alone: under it is tight even while the balance is still positive.\n\nIngen av de to linjene går i minus i perioden. Say that plainly when asked; do not manufacture alarm from a low point that is still comfortably positive.\n\n| Uke | Fra | Inn | Ut | Bundet saldo | Forventet saldo |\n|---|---|---:|---:|---:|---:|\n| Uke 46 | 2026-11-09 | 0 | -482 088 | 8 216 578 | 8 216 578 |\n| Uke 47 | 2026-11-16 | 1 946 709 | -1 398 447 | 8 700 131 | 8 764 840 |\n| Uke 48 | 2026-11-23 | 668 750 | -222 990 | 9 145 891 | 9 210 600 |\n| Uke 49 | 2026-11-30 | 198 836 | -9 650 | 9 326 116 | 9 399 786 |\n| Uke 50 | 2026-12-07 | 177 176 | -912 507 | 8 600 297 | 8 664 455 |\n| Uke 51 | 2026-12-14 | 0 | -457 631 | 8 163 285 | 8 206 824 |\n| Uke 52 | 2026-12-21 | 2 516 735 | -1 068 465 | 9 410 829 | 9 655 094 |\n| Uke 53 | 2026-12-28 | 0 | -9 650 | 9 401 179 | 9 645 444 |\n| Uke 1 | 2027-01-04 | 348 690 | -281 556 | 9 477 485 | 9 712 578 |\n| Uke 2 | 2027-01-11 | 0 | -603 586 | 8 901 914 | 9 108 992 |\n| Uke 3 | 2027-01-18 | 2 369 832 | -735 863 | 10 404 818 | 10 742 961 |\n| Uke 4 | 2027-01-25 | 0 | -205 477 | 10 199 341 | 10 537 483 |\n| Uke 5 | 2027-02-01 | 344 734 | -9 650 | 10 524 265 | 10 872 567 |\n\nEtter uke 13 kommer 1 649 088 kr inn i uke 7–8 fra fakturaer som er sendt eller sendes før da, 1 769 560 kr med resten av den vanlige faktureringen. Only the money in is counted after the window, not what goes out then, so never add it to a balance. Say it when the last weeks look low: the invoicing that pays for them lands after week 13.\n\n**Forutsetningene** — these are his to change, and saying them out loud is what separates a forecast from a guess: fakturering 2 210 614 kr i måneden, lønn 214 798 kr, driftskostnader 1 648 900 kr, hvorav 1 146 050 kr alt er bokført denne måneden og bare resten lagt inn, kredittid 30 dager pluss 7 dagers forsinkelse, forfalte fakturaer fordelt over 3 uker.\n\n**Når kundene betaler** — målt på et år med innbetalinger: kundene betaler vanligvis 1 dager etter forfall, og hver kunde med minst 3 betalte fakturaer er lagt inn med sin egen vane. De tregeste: Vardehaug Entreprenør AS 2 dager, Grytdal Anlegg AS 2 dager, Brennvik Bygg & Tak AS 1 dager. Fakturaer som ikke er forfalt, er lagt på forfall pluss kundens vane.\n\n**Ny fakturering** — lagt på måneden slik selskapet pleier å fakturere, målt på 110 fakturaer: 100 % fakturert 15.–21. med 30 dagers frist, betalt 1 dager etter forfall. Det som betales etter de 13 ukene, er ikke med.\n\n**Sesong** — omsetningen følger fjorårets mønster, tatt med halv styrke fordi ett år er et tynt grunnlag: november +1 %, desember -7 %, januar -8 %, februar -8 %, mars +1 %, april +8 % mot en vanlig måned. Nivået er de siste 6 avsluttede månedene med sesongen trukket ut, så vekst eller nedgang siden i fjor er med. Lagt inn: november 2 226 973 kr, desember 2 065 156 kr, januar 2 041 723 kr, februar 2 044 597 kr, mars 2 238 026 kr, april 2 379 063 kr. Driftskostnadene har sitt eget mønster fra fjorårets kostnader.\n\n**Når driftskostnadene går ut** — fordelt på måneden etter når selskapets egne leverandørfakturaer pleier å komme og betales, målt på 46 fakturaer det siste året: 49 % fakturert 1.–7. og betalt etter 45 dager, 21 % fakturert 8.–14. og betalt etter 30 dager, 30 % fakturert 15.–21. og betalt etter 30 dager. Det som betales etter de 13 ukene, er ikke med.\n\n**Faste regninger i den bundne linjen** — funnet på at leverandøren fakturerer det samme hver måned eller hvert kvartal, lagt på vanlig forfallsdag: Aslefjord Næringseiendom AS 122 438 kr månedlig, Truckservice Midt AS 26 838 kr månedlig, Skiltlaget Tverrdal AS 21 750 kr månedlig, Tallmester Regnskap AS 17 512 kr månedlig, Skyline Systemer AS 15 000 kr månedlig, Trygg Forsikring Vest AS 9 650 kr månedlig. Til sammen 213 188 kr i måneden. De er trukket fra driftskostnadene i den forventede linjen, så de telles ikke to ganger. Husleie eller leasing som trekkes direkte fra banken uten leverandørfaktura, og regninger som kommer én gang i året, er ikke med — de finnes ikke som gjentatte fakturaer.\n\n**Fast fakturering i den bundne linjen** — kunder som er fakturert i minst 5 av de siste 6 månedene og hver av de siste 3, lagt inn med den laveste av de tre siste, på kundens egne fakturadager og betalingsfrister og betalt så sent som kunden pleier: Kontantsalg butikk 567 875 kr, Hageli Tømrer AS 362 375 kr, Vardehaug Entreprenør AS 300 250 kr, Brennvik Bygg & Tak AS 296 125 kr, Grytdal Anlegg AS 276 500 kr, Sørlund Snekkeri AS 247 000 kr, Kroktjern Hytteservice AS 189 875 kr, Lomsdal Maler & Bygg 172 375 kr og 2 til. Til sammen 2 715 625 kr i måneden; en vanlig måned (medianen) er 2 917 125 kr, og forskjellen ligger i den forventede linjen. Momsen og den samme andelen av driftskostnadene ligger i den bundne linjen sammen med dem, og alt er trukket fra den forventede linjen, så ingenting telles to ganger. Say this whenever he asks how safe the bundne line is: it assumes these customers stay, and a contract that ends must come out of it.\n\n**Annen fakturering, i den forventede linjen** — kunder som ikke faktureres hver måned, lagt inn med en vanlig måned (medianen av de siste 6): 0 kr. Pengene som kommer inn er lest fra fakturaene, kunde for kunde, ikke fra inntektene i regnskapet.\n\n**Ny fakturering tar med seg sin egen regning.** Momsen på det som faktureres framover er lagt ut på terminforfallet sitt, ikke på den dagen kunden betaler — og de to er sjelden samme uke. Satsen er 25 %, med ingen fradrag for inngående moms, fordi forholdet ikke lot seg måle — det er for strengt, ikke for snilt. Arbeidsgiveravgift på lønn som ennå ikke er kjørt ligger på samme måte på sitt eget terminforfall, 30 287 kr i måneden. Begge deler er anslag som følger av omsetnings- og lønnsraten over: endrer han den ene, endrer han disse.\n\n**Halv skatt i desember.** De ansatte får mer netto i desember, men trekket betales til Skatteetaten samme dag som lønnen, så beløpet ut av bedriftens konto er den samme bruttolønnen som i en vanlig måned. Si det hvis han venter en tyngre desember av den grunn — desember er tung av andre grunner, ikke denne.\n\n**Det som svekker prognosen** — say these in the owner's words whenever you quote a figure that rests on them:\n\n- Forholdet mellom utgående og inngående merverdiavgift lot seg ikke måle — konto 2700 er tom eller nettopp gjort opp. Prognosen legger derfor ut hele den utgående momsen på ny fakturering, uten fradrag for moms på det dere selv kjøper. Det er for strengt, ikke for snilt, men det er verdt å vite.\n\nHow to use it. The low point and its week are the answer to \"will I make it\" — give the week by name and date, not a reassurance. Any question about spending, hiring or buying is answered against the low point, not against today's balance. Always say which of the two lines you are quoting.",
+ "build": {
+  "after": {
+   "expected_in": 120472.08,
+   "first": "2027-02-19",
+   "first_week": 7,
+   "in": 1649087.8,
+   "items": [
+    {
+     "amount": 334689.55,
+     "date": "2027-02-19",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 228129.2,
+     "date": "2027-02-19",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 15123.95,
+     "date": "2027-02-19",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    },
+    {
+     "amount": 692.7,
+     "date": "2027-02-19",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    },
+    {
+     "amount": 277310.9,
+     "date": "2027-02-22",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 273501.05,
+     "date": "2027-02-22",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 255375.4,
+     "date": "2027-02-22",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 148584.15,
+     "date": "2027-02-22",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 131497.55,
+     "date": "2027-02-22",
+     "kind": "recurring",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "committed"
+    },
+    {
+     "amount": 58937.23,
+     "date": "2027-02-22",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    },
+    {
+     "amount": 27246.2,
+     "date": "2027-02-22",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    },
+    {
+     "amount": 10332.77,
+     "date": "2027-02-22",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    },
+    {
+     "amount": 8139.23,
+     "date": "2027-02-22",
+     "kind": "recurring_usual",
+     "label": "Fakturering januar (ikke sendt), 30 dager",
+     "scenario": "expected"
+    }
+   ],
+   "last": "2027-02-22",
+   "last_week": 8,
+   "start": "2027-02-08",
+   "text": "Etter uke 13 kommer 1 649 088 kr inn i uke 7–8 fra fakturaer som er sendt eller sendes før da, 1 769 560 kr med resten av den vanlige faktureringen."
+  },
+  "ar_at_risk": [],
+  "ar_complete": true,
+  "ar_doubtful": [],
+  "ar_open": [
+   {
+    "amount": 405500.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 211,
+    "invoiced": "2026-10-20",
+    "name": "Hageli Tømrer AS",
+    "number": 24211,
+    "url": ""
+   },
+   {
+    "amount": 343375.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 212,
+    "invoiced": "2026-10-20",
+    "name": "Brennvik Bygg & Tak AS",
+    "number": 24212,
+    "url": ""
+   },
+   {
+    "amount": 248500.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 213,
+    "invoiced": "2026-10-20",
+    "name": "Sørlund Snekkeri AS",
+    "number": 24213,
+    "url": ""
+   },
+   {
+    "amount": 371375.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 214,
+    "invoiced": "2026-10-20",
+    "name": "Vardehaug Entreprenør AS",
+    "number": 24214,
+    "url": ""
+   },
+   {
+    "amount": 142375.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 217,
+    "invoiced": "2026-10-20",
+    "name": "Bøen Rørlegger AS",
+    "number": 24217,
+    "url": ""
+   },
+   {
+    "amount": 297375.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 218,
+    "invoiced": "2026-10-20",
+    "name": "Grytdal Anlegg AS",
+    "number": 24218,
+    "url": ""
+   },
+   {
+    "amount": 174375.0,
+    "due": "2026-11-19",
+    "email": "",
+    "id": 220,
+    "invoiced": "2026-10-20",
+    "name": "Tjernhaug Hytteeiendom AS",
+    "number": 24220,
+    "url": ""
+   }
+  ],
+  "as_of": "2026-11-12",
+  "assumptions": {
+   "annen_fakturering": {
+    "maneder": [
+     {
+      "amount": 0.0,
+      "month": "mai 2026"
+     },
+     {
+      "amount": 0.0,
+      "month": "juni 2026"
+     },
+     {
+      "amount": 0.0,
+      "month": "juli 2026"
+     },
+     {
+      "amount": 0.0,
+      "month": "august 2026"
+     },
+     {
+      "amount": 0.0,
+      "month": "september 2026"
+     },
+     {
+      "amount": 0.0,
+      "month": "oktober 2026"
+     }
+    ],
+    "nivaa_mnd": 0.0,
+    "uvanlige": []
+   },
+   "credit_days": 30,
+   "credit_days_source": "målt på fakturaene",
+   "fakturaprofil": {
+    "bills": 110,
+    "forsinkelse_dager": 1,
+    "measured": true,
+    "periods": [
+     {
+      "day": 20,
+      "from": 15,
+      "share": 1.0,
+      "terms": 30,
+      "to": 21
+     }
+    ]
+   },
+   "fakturering_fra": "fakturaregisteret",
+   "fakturering_per_maned": [
+    {
+     "annen": 0.0,
+     "fast_lavest": 2715625.0,
+     "fast_vanlig": 2938711.73,
+     "month": "november",
+     "regnskapet": 2783715.88
+    },
+    {
+     "annen": 0.0,
+     "fast_lavest": 2536936.88,
+     "fast_vanlig": 2725178.18,
+     "month": "desember",
+     "regnskapet": 2581444.68
+    },
+    {
+     "annen": 0.0,
+     "fast_lavest": 2508151.25,
+     "fast_vanlig": 2694256.65,
+     "month": "januar",
+     "regnskapet": 2552154.04
+    },
+    {
+     "annen": 0.0,
+     "fast_lavest": 2511681.56,
+     "fast_vanlig": 2698048.91,
+     "month": "februar",
+     "regnskapet": 2555746.29
+    },
+    {
+     "annen": 0.0,
+     "fast_lavest": 0.0,
+     "fast_vanlig": 0.0,
+     "month": "mars",
+     "regnskapet": 2797532.22
+    },
+    {
+     "annen": 0.0,
+     "fast_lavest": 0.0,
+     "fast_vanlig": 0.0,
+     "month": "april",
+     "regnskapet": 2973828.69
+    }
+   ],
+   "fakturert_denne_maneden": 0.0,
+   "fast_fakturering_mnd": 2715625.0,
+   "fast_fakturering_vanlig_mnd": 2917125.0,
+   "faste_regninger_mnd": 213187.5,
+   "ferie_lonn_holdt_igjen": 1.0,
+   "ferie_lonn_utbetalt": 0.0,
+   "ferie_uker": 5,
+   "ferie_uker_oppgitt": false,
+   "feriepenger_i_lonnsraten": false,
+   "feriepenger_maned": "juni",
+   "feriepenger_maned_oppgitt": true,
+   "forfalte_grupper": {
+    "31_90": 0.0,
+    "i_rute": 1982875.0,
+    "inntil_30": 0.0,
+    "over_90": 0.0
+   },
+   "halv_skatt_i_desember": "nettolønnen i desember er høyere, men trekket går ut samme dag, så beløpet ut av kontoen er det samme bruttoet som en vanlig måned",
+   "kostnader_bokfort_denne_maneden": 1146050.0,
+   "kostnader_fra_banken": null,
+   "kostnader_kilde": "regnskapet",
+   "kostnader_per_maned": [
+    {
+     "amount": 1627958.47,
+     "month": "november"
+    },
+    {
+     "amount": 1570082.1,
+     "month": "desember"
+    },
+    {
+     "amount": 1536114.77,
+     "month": "januar"
+    },
+    {
+     "amount": 1537269.0,
+     "month": "februar"
+    },
+    {
+     "amount": 1648899.5,
+     "month": "mars"
+    },
+    {
+     "amount": 1737280.51,
+     "month": "april"
+    }
+   ],
+   "kostnadsprofil": {
+    "bills": 46,
+    "measured": true,
+    "periods": [
+     {
+      "day": 7,
+      "from": 1,
+      "share": 0.4936,
+      "terms": 45,
+      "to": 7
+     },
+     {
+      "day": 11,
+      "from": 8,
+      "share": 0.2075,
+      "terms": 30,
+      "to": 14
+     },
+     {
+      "day": 16,
+      "from": 15,
+      "share": 0.2989,
+      "terms": 30,
+      "to": 21
+     }
+    ]
+   },
+   "late_spread_weeks": 3,
+   "lonn_per_lonningsdag": {
+    "belop": 205477.17,
+    "kilde": "lønnsbilagene",
+    "maneder": [
+     {
+      "extra": 0.0,
+      "month": "mai 2026",
+      "run": 218291.87
+     },
+     {
+      "extra": 0.0,
+      "month": "juli 2026",
+      "run": 150065.33
+     },
+     {
+      "extra": 0.0,
+      "month": "august 2026",
+      "run": 202536.26
+     },
+     {
+      "extra": 0.0,
+      "month": "september 2026",
+      "run": 208323.2
+     },
+     {
+      "extra": 0.0,
+      "month": "oktober 2026",
+      "run": 205477.17
+     }
+    ]
+   },
+   "lonnskjoringer": [
+    11,
+    12,
+    1
+   ],
+   "monthly_aga": 30286.57,
+   "monthly_opex": 1648899.5,
+   "monthly_opex_cash": 1648899.5,
+   "monthly_revenue": 2210614.16,
+   "monthly_wages": 214798.37,
+   "monthly_wages_cash": 191784.26,
+   "mva_bokfort_denne_maneden": 0.0,
+   "mva_fradrag_andel": 0.0,
+   "mva_fradrag_malt": false,
+   "mva_paa_kostnader": 0.0,
+   "mva_sats": 0.25,
+   "omsetning_per_maned": [
+    {
+     "amount": 2226972.7,
+     "month": "november"
+    },
+    {
+     "amount": 2065155.75,
+     "month": "desember"
+    },
+    {
+     "amount": 2041723.24,
+     "month": "januar"
+    },
+    {
+     "amount": 2044597.03,
+     "month": "februar"
+    },
+    {
+     "amount": 2238025.77,
+     "month": "mars"
+    },
+    {
+     "amount": 2379062.96,
+     "month": "april"
+    }
+   ],
+   "pay_day": "fra company.md",
+   "pay_lag_days": 7,
+   "sesong": {
+    "opex": {
+     "april": 1.0536,
+     "august": 1.0291,
+     "desember": 0.9522,
+     "februar": 0.9323,
+     "januar": 0.9316,
+     "juli": 0.9028,
+     "juni": 1.0318,
+     "mai": 1.0917,
+     "mars": 1.0,
+     "november": 0.9873,
+     "oktober": 1.0462,
+     "september": 1.0413
+    },
+    "revenue": {
+     "april": 1.0762,
+     "august": 1.0148,
+     "desember": 0.9342,
+     "februar": 0.9249,
+     "januar": 0.9236,
+     "juli": 0.896,
+     "juni": 1.042,
+     "mai": 1.0738,
+     "mars": 1.0124,
+     "november": 1.0074,
+     "oktober": 1.0294,
+     "september": 1.0651
+    }
+   },
+   "sesong_vekt": 0.5,
+   "skattetrekk": "betales til Skatteetaten samme dag som lønnen, så hele bruttolønnen går ut på lønningsdagen",
+   "ukjente_fordringer": {
+    "behandlet": null,
+    "belop": 0.0
+   },
+   "working_day_shift": "statutory dues roll forward to the next working day, wages back to the last"
+  },
+  "bank": {
+   "accounts": [
+    {
+     "account": "1920",
+     "adjustment": 0.0,
+     "in": 0.0,
+     "lines": 0,
+     "name": "Bedriftskonto",
+     "out": 0.0,
+     "postings": 0,
+     "postings_sum": 0.0,
+     "url": ""
+    }
+   ],
+   "adjustment": 0.0,
+   "approximate": false,
+   "booked": 8698665.54,
+   "booked_latest": "2026-11-11",
+   "booked_undated": 0,
+   "in": 0.0,
+   "known": true,
+   "latest": "2026-11-11",
+   "lines": 0,
+   "out": 0.0,
+   "postings": 0,
+   "postings_sum": 0.0,
+   "settled_ap": 0,
+   "settled_ap_count": 0,
+   "settled_ar": 0,
+   "settled_ar_count": 0,
+   "stale": false,
+   "unknown": []
+  },
+  "bank_categories": null,
+  "betalingsvaner": {
+   "company": 1,
+   "complete": true,
+   "customers": {
+    "Brennvik Bygg & Tak AS": {
+     "days": 1,
+     "invoices": 10
+    },
+    "Bøen Rørlegger AS": {
+     "days": 1,
+     "invoices": 10
+    },
+    "Grytdal Anlegg AS": {
+     "days": 2,
+     "invoices": 10
+    },
+    "Hageli Tømrer AS": {
+     "days": 0,
+     "invoices": 10
+    },
+    "Kontantsalg butikk": {
+     "days": 0,
+     "invoices": 11
+    },
+    "Kroktjern Hytteservice AS": {
+     "days": 0,
+     "invoices": 11
+    },
+    "Lomsdal Maler & Bygg": {
+     "days": 1,
+     "invoices": 11
+    },
+    "Sørlund Snekkeri AS": {
+     "days": 0,
+     "invoices": 10
+    },
+    "Tjernhaug Hytteeiendom AS": {
+     "days": 1,
+     "invoices": 10
+    },
+    "Vardehaug Entreprenør AS": {
+     "days": 2,
+     "invoices": 10
+    }
+   },
+   "measured": true
+  },
+  "fixed_costs": [
+   {
+    "amount": 122437.5,
+    "cadence": "månedlig",
+    "day": 1,
+    "name": "Aslefjord Næringseiendom AS",
+    "next": "2026-12-15",
+    "terms": 14
+   },
+   {
+    "amount": 26837.5,
+    "cadence": "månedlig",
+    "day": 4,
+    "name": "Truckservice Midt AS",
+    "next": "2026-12-18",
+    "terms": 14
+   },
+   {
+    "amount": 21750.0,
+    "cadence": "månedlig",
+    "day": 20,
+    "name": "Skiltlaget Tverrdal AS",
+    "next": "2026-12-20",
+    "terms": 30
+   },
+   {
+    "amount": 17512.5,
+    "cadence": "månedlig",
+    "day": 10,
+    "name": "Tallmester Regnskap AS",
+    "next": "2026-12-24",
+    "terms": 14
+   },
+   {
+    "amount": 15000.0,
+    "cadence": "månedlig",
+    "day": 1,
+    "name": "Skyline Systemer AS",
+    "next": "2026-12-15",
+    "terms": 14
+   },
+   {
+    "amount": 9650.0,
+    "cadence": "månedlig",
+    "day": 2,
+    "name": "Trygg Forsikring Vest AS",
+    "next": "2027-01-01",
+    "terms": 30
+   }
+  ],
+  "goes_negative": null,
+  "goes_negative_committed": null,
+  "items": {
+   "ap": [
+    {
+     "amount": 845475.0,
+     "name": "Skogheim Trelast AS",
+     "number": "833207",
+     "parts": [
+      [
+       "2026-12-22",
+       845475.0
+      ]
+     ]
+    },
+    {
+     "amount": 393237.5,
+     "name": "Nordisk Isolasjon AS",
+     "number": "494095",
+     "parts": [
+      [
+       "2026-12-11",
+       393237.5
+      ]
+     ]
+    },
+    {
+     "amount": 122437.5,
+     "name": "Aslefjord Næringseiendom AS",
+     "number": "403455",
+     "parts": [
+      [
+       "2026-11-15",
+       122437.5
+      ]
+     ]
+    },
+    {
+     "amount": 26837.5,
+     "name": "Truckservice Midt AS",
+     "number": "262247",
+     "parts": [
+      [
+       "2026-11-18",
+       26837.5
+      ]
+     ]
+    },
+    {
+     "amount": 9650.0,
+     "name": "Trygg Forsikring Vest AS",
+     "number": "227315",
+     "parts": [
+      [
+       "2026-12-02",
+       9650.0
+      ]
+     ]
+    },
+    {
+     "amount": 17512.5,
+     "name": "Tallmester Regnskap AS",
+     "number": "583288",
+     "parts": [
+      [
+       "2026-11-24",
+       17512.5
+      ]
+     ]
+    },
+    {
+     "amount": 15000.0,
+     "name": "Skyline Systemer AS",
+     "number": "650250",
+     "parts": [
+      [
+       "2026-11-15",
+       15000.0
+      ]
+     ]
+    },
+    {
+     "amount": 990400.0,
+     "name": "Skogheim Trelast AS",
+     "number": "649493",
+     "parts": [
+      [
+       "2026-11-21",
+       990400.0
+      ]
+     ]
+    },
+    {
+     "amount": 344650.0,
+     "name": "Festeteknikk Norge AS",
+     "number": "387733",
+     "parts": [
+      [
+       "2026-11-15",
+       344650.0
+      ]
+     ]
+    },
+    {
+     "amount": 294112.5,
+     "name": "Vestlandsplater AS",
+     "number": "306672",
+     "parts": [
+      [
+       "2026-11-20",
+       294112.5
+      ]
+     ]
+    },
+    {
+     "amount": 21750.0,
+     "name": "Skiltlaget Tverrdal AS",
+     "number": "412650",
+     "parts": [
+      [
+       "2026-11-19",
+       21750.0
+      ]
+     ]
+    }
+   ],
+   "ar": [
+    {
+     "amount": 405500.0,
+     "name": "Hageli Tømrer AS",
+     "number": 24211,
+     "parts": [
+      [
+       "2026-11-19",
+       405500.0
+      ]
+     ]
+    },
+    {
+     "amount": 343375.0,
+     "name": "Brennvik Bygg & Tak AS",
+     "number": 24212,
+     "parts": [
+      [
+       "2026-11-20",
+       343375.0
+      ]
+     ]
+    },
+    {
+     "amount": 248500.0,
+     "name": "Sørlund Snekkeri AS",
+     "number": 24213,
+     "parts": [
+      [
+       "2026-11-19",
+       248500.0
+      ]
+     ]
+    },
+    {
+     "amount": 371375.0,
+     "name": "Vardehaug Entreprenør AS",
+     "number": 24214,
+     "parts": [
+      [
+       "2026-11-23",
+       371375.0
+      ]
+     ]
+    },
+    {
+     "amount": 142375.0,
+     "name": "Bøen Rørlegger AS",
+     "number": 24217,
+     "parts": [
+      [
+       "2026-11-20",
+       142375.0
+      ]
+     ]
+    },
+    {
+     "amount": 297375.0,
+     "name": "Grytdal Anlegg AS",
+     "number": 24218,
+     "parts": [
+      [
+       "2026-11-23",
+       297375.0
+      ]
+     ]
+    },
+    {
+     "amount": 174375.0,
+     "name": "Tjernhaug Hytteeiendom AS",
+     "number": 24220,
+     "parts": [
+      [
+       "2026-11-20",
+       174375.0
+      ]
+     ]
+    }
+   ]
+  },
+  "low_committed": {
+   "amount": 8163284.6,
+   "label": "Uke 51",
+   "start": "2026-12-14"
+  },
+  "low_expected": {
+   "amount": 8206823.83,
+   "label": "Uke 51",
+   "start": "2026-12-14"
+  },
+  "open_invoices": {
+   "payable": 11,
+   "payable_total": 3081062.5,
+   "receivable": 7,
+   "receivable_total": 1982875.0
+  },
+  "opening": 8698665.54,
+  "partial": false,
+  "recurring_sales": [
+   {
+    "amount": 567875.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 0,
+    "name": "Kontantsalg butikk",
+    "next": "2026-11-20",
+    "term_steps": [
+     7
+    ],
+    "terms": 0,
+    "usual": 627937.5,
+    "why": null
+   },
+   {
+    "amount": 362375.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 0,
+    "name": "Hageli Tømrer AS",
+    "next": "2026-12-21",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 378750.0,
+    "why": null
+   },
+   {
+    "amount": 300250.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 2,
+    "name": "Vardehaug Entreprenør AS",
+    "next": "2026-12-22",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 364062.5,
+    "why": null
+   },
+   {
+    "amount": 296125.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 1,
+    "name": "Brennvik Bygg & Tak AS",
+    "next": "2026-12-21",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 325625.0,
+    "why": null
+   },
+   {
+    "amount": 276500.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 2,
+    "name": "Grytdal Anlegg AS",
+    "next": "2026-12-22",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 285312.5,
+    "why": null
+   },
+   {
+    "amount": 247000.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 0,
+    "name": "Sørlund Snekkeri AS",
+    "next": "2026-12-21",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 247750.0,
+    "why": null
+   },
+   {
+    "amount": 189875.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 0,
+    "name": "Kroktjern Hytteservice AS",
+    "next": "2026-12-04",
+    "term_steps": [
+     14
+    ],
+    "terms": 14,
+    "usual": 197375.0,
+    "why": null
+   },
+   {
+    "amount": 172375.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 1,
+    "name": "Lomsdal Maler & Bygg",
+    "next": "2026-12-07",
+    "term_steps": [
+     14
+    ],
+    "terms": 14,
+    "usual": 175875.0,
+    "why": null
+   },
+   {
+    "amount": 160875.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 1,
+    "name": "Tjernhaug Hytteeiendom AS",
+    "next": "2026-12-21",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 172062.5,
+    "why": null
+   },
+   {
+    "amount": 142375.0,
+    "committed": true,
+    "day": 20,
+    "excluded": false,
+    "late": 1,
+    "name": "Bøen Rørlegger AS",
+    "next": "2026-12-21",
+    "term_steps": [
+     30
+    ],
+    "terms": 30,
+    "usual": 142375.0,
+    "why": null
+   }
+  ],
+  "register": {
+   "no_org": [],
+   "unclear": []
+  },
+  "warnings": [
+   "Forholdet mellom utgående og inngående merverdiavgift lot seg ikke måle — konto 2700 er tom eller nettopp gjort opp. Prognosen legger derfor ut hele den utgående momsen på ny fakturering, uten fradrag for moms på det dere selv kjøper. Det er for strengt, ikke for snilt, men det er verdt å vite."
+  ],
+  "weeks": [
+   {
+    "committed_close": 8216578.04,
+    "committed_open": 8698665.54,
+    "end": "2026-11-15",
+    "expected_close": 8216578.04,
+    "expected_in": 0.0,
+    "expected_open": 8698665.54,
+    "expected_out": 0.0,
+    "in": 0.0,
+    "index": 0,
+    "items": [
+     {
+      "amount": -122437.5,
+      "kind": "ap",
+      "label": "Regning fra Aslefjord Næringseiendom AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -15000.0,
+      "kind": "ap",
+      "label": "Regning fra Skyline Systemer AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -344650.0,
+      "kind": "ap",
+      "label": "Regning fra Festeteknikk Norge AS",
+      "scenario": "committed"
+     }
+    ],
+    "label": "Uke 46",
+    "out": 482087.5,
+    "start": "2026-11-09"
+   },
+   {
+    "committed_close": 8700130.69,
+    "committed_open": 8216578.04,
+    "end": "2026-11-22",
+    "expected_close": 8764839.93,
+    "expected_in": 64709.24,
+    "expected_open": 8216578.04,
+    "expected_out": 0.0,
+    "in": 1882000.0,
+    "index": 1,
+    "items": [
+     {
+      "amount": 405500.0,
+      "kind": "ar",
+      "label": "Faktura til Hageli Tømrer AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 343375.0,
+      "kind": "ar",
+      "label": "Faktura til Brennvik Bygg & Tak AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 248500.0,
+      "kind": "ar",
+      "label": "Faktura til Sørlund Snekkeri AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 142375.0,
+      "kind": "ar",
+      "label": "Faktura til Bøen Rørlegger AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 174375.0,
+      "kind": "ar",
+      "label": "Faktura til Tjernhaug Hytteeiendom AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -26837.5,
+      "kind": "ap",
+      "label": "Regning fra Truckservice Midt AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -990400.0,
+      "kind": "ap",
+      "label": "Regning fra Skogheim Trelast AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -294112.5,
+      "kind": "ap",
+      "label": "Regning fra Vestlandsplater AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -21750.0,
+      "kind": "ap",
+      "label": "Regning fra Skiltlaget Tverrdal AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 567875.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 7 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": -65347.35,
+      "kind": "statutory",
+      "label": "Arbeidsgiveravgift",
+      "scenario": "committed"
+     },
+     {
+      "amount": 64709.24,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 7 dager",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 47",
+    "out": 1398447.35,
+    "start": "2026-11-16"
+   },
+   {
+    "committed_close": 9145891.02,
+    "committed_open": 8700130.69,
+    "end": "2026-11-29",
+    "expected_close": 9210600.26,
+    "expected_in": 0.0,
+    "expected_open": 8764839.93,
+    "expected_out": 0.0,
+    "in": 668750.0,
+    "index": 2,
+    "items": [
+     {
+      "amount": 371375.0,
+      "kind": "ar",
+      "label": "Faktura til Vardehaug Entreprenør AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 297375.0,
+      "kind": "ar",
+      "label": "Faktura til Grytdal Anlegg AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -17512.5,
+      "kind": "ap",
+      "label": "Regning fra Tallmester Regnskap AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -205477.17,
+      "kind": "wages",
+      "label": "Lønn og skattetrekk",
+      "scenario": "committed"
+     }
+    ],
+    "label": "Uke 48",
+    "out": 222989.67,
+    "start": "2026-11-23"
+   },
+   {
+    "committed_close": 9326116.02,
+    "committed_open": 9145891.02,
+    "end": "2026-12-06",
+    "expected_close": 9399785.83,
+    "expected_in": 8960.58,
+    "expected_open": 9210600.26,
+    "expected_out": 0.0,
+    "in": 189875.0,
+    "index": 3,
+    "items": [
+     {
+      "amount": -9650.0,
+      "kind": "ap",
+      "label": "Regning fra Trygg Forsikring Vest AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 189875.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 8960.58,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 14 dager",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 49",
+    "out": 9650.0,
+    "start": "2026-11-30"
+   },
+   {
+    "committed_close": 8600297.31,
+    "committed_open": 9326116.02,
+    "end": "2026-12-13",
+    "expected_close": 8664455.01,
+    "expected_in": 4801.48,
+    "expected_open": 9399785.83,
+    "expected_out": 14313.59,
+    "in": 172375.0,
+    "index": 4,
+    "items": [
+     {
+      "amount": -393237.5,
+      "kind": "ap",
+      "label": "Regning fra Nordisk Isolasjon AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 172375.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": -330717.5,
+      "kind": "statutory",
+      "label": "Merverdiavgift, avsluttet termin",
+      "scenario": "committed"
+     },
+     {
+      "amount": -174238.71,
+      "kind": "opex_recurring",
+      "label": "Driftskostnader november, resten, fakturert 8.–14. utenom faste regninger, til den faste faktureringen",
+      "scenario": "committed"
+     },
+     {
+      "amount": 4801.48,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 14 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": -14313.59,
+      "kind": "opex",
+      "label": "Driftskostnader november, resten, fakturert 8.–14. utenom faste regninger",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 50",
+    "out": 898193.71,
+    "start": "2026-12-07"
+   },
+   {
+    "committed_close": 8163284.6,
+    "committed_open": 8600297.31,
+    "end": "2026-12-20",
+    "expected_close": 8206823.83,
+    "expected_in": 0.0,
+    "expected_open": 8664455.01,
+    "expected_out": 20618.47,
+    "in": 0.0,
+    "index": 5,
+    "items": [
+     {
+      "amount": -122437.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Aslefjord Næringseiendom AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -26837.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Truckservice Midt AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -15000.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Skyline Systemer AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -21750.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Skiltlaget Tverrdal AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -250987.71,
+      "kind": "opex_recurring",
+      "label": "Driftskostnader november, resten, fakturert 15.–21. utenom faste regninger, til den faste faktureringen",
+      "scenario": "committed"
+     },
+     {
+      "amount": -20618.47,
+      "kind": "opex",
+      "label": "Driftskostnader november, resten, fakturert 15.–21. utenom faste regninger",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 51",
+    "out": 437012.71,
+    "start": "2026-12-14"
+   },
+   {
+    "committed_close": 9410828.76,
+    "committed_open": 8163284.6,
+    "end": "2026-12-27",
+    "expected_close": 9655093.81,
+    "expected_in": 200725.82,
+    "expected_open": 8206823.83,
+    "expected_out": 0.0,
+    "in": 2316008.83,
+    "index": 6,
+    "items": [
+     {
+      "amount": -845475.0,
+      "kind": "ap",
+      "label": "Regning fra Skogheim Trelast AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -17512.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Tallmester Regnskap AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 362375.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 296125.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 247000.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 300250.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 142375.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 276500.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 530508.83,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 7 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 160875.0,
+      "kind": "recurring",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": -205477.17,
+      "kind": "wages",
+      "label": "Lønn og skattetrekk",
+      "scenario": "committed"
+     },
+     {
+      "amount": 19177.75,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 31909.62,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 2583.35,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 66506.56,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 1053.58,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 10923.81,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 56110.39,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 7 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 12460.76,
+      "kind": "recurring_usual",
+      "label": "Fakturering november (ikke sendt), 30 dager",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 52",
+    "out": 1068464.67,
+    "start": "2026-12-21"
+   },
+   {
+    "committed_close": 9401178.76,
+    "committed_open": 9410828.76,
+    "end": "2027-01-03",
+    "expected_close": 9645443.81,
+    "expected_in": 0.0,
+    "expected_open": 9655093.81,
+    "expected_out": 0.0,
+    "in": 0.0,
+    "index": 7,
+    "items": [
+     {
+      "amount": -9650.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Trygg Forsikring Vest AS",
+      "scenario": "committed"
+     }
+    ],
+    "label": "Uke 53",
+    "out": 9650.0,
+    "start": "2026-12-28"
+   },
+   {
+    "committed_close": 9477485.49,
+    "committed_open": 9401178.76,
+    "end": "2027-01-10",
+    "expected_close": 9712578.33,
+    "expected_in": 10276.2,
+    "expected_open": 9645443.81,
+    "expected_out": 19448.42,
+    "in": 338413.95,
+    "index": 8,
+    "items": [
+     {
+      "amount": 161032.73,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 177381.23,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": -262107.21,
+      "kind": "opex_recurring",
+      "label": "Driftskostnader desember, fakturert 8.–14. utenom faste regninger, til den faste faktureringen",
+      "scenario": "committed"
+     },
+     {
+      "amount": 3269.7,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 14 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 7006.5,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 14 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": -19448.42,
+      "kind": "opex",
+      "label": "Driftskostnader desember, fakturert 8.–14. utenom faste regninger",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 1",
+    "out": 262107.21,
+    "start": "2027-01-04"
+   },
+   {
+    "committed_close": 8901914.15,
+    "committed_open": 9477485.49,
+    "end": "2027-01-17",
+    "expected_close": 9108991.9,
+    "expected_in": 0.0,
+    "expected_open": 9712578.33,
+    "expected_out": 28015.09,
+    "in": 0.0,
+    "index": 9,
+    "items": [
+     {
+      "amount": -122437.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Aslefjord Næringseiendom AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -15000.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Skyline Systemer AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -30286.57,
+      "kind": "aga_future",
+      "label": "Arbeidsgiveravgift på lønn november",
+      "scenario": "committed"
+     },
+     {
+      "amount": -30286.57,
+      "kind": "aga_future",
+      "label": "Arbeidsgiveravgift på lønn desember",
+      "scenario": "committed"
+     },
+     {
+      "amount": -377560.71,
+      "kind": "opex_recurring",
+      "label": "Driftskostnader desember, fakturert 15.–21. utenom faste regninger, til den faste faktureringen",
+      "scenario": "committed"
+     },
+     {
+      "amount": -28015.09,
+      "kind": "opex",
+      "label": "Driftskostnader desember, fakturert 15.–21. utenom faste regninger",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 2",
+    "out": 575571.35,
+    "start": "2027-01-11"
+   },
+   {
+    "committed_close": 10404818.22,
+    "committed_open": 8901914.15,
+    "end": "2027-01-24",
+    "expected_close": 10742960.61,
+    "expected_in": 177328.44,
+    "expected_open": 9108991.9,
+    "expected_out": 46263.8,
+    "in": 2192503.45,
+    "index": 10,
+    "items": [
+     {
+      "amount": -26837.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Truckservice Midt AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -17512.5,
+      "kind": "fixed",
+      "label": "Fast regning fra Tallmester Regnskap AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": -21750.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Skiltlaget Tverrdal AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 338530.73,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 276639.98,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 230747.4,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 280493.55,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 133006.73,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 258306.3,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 524489.35,
+      "kind": "recurring",
+      "label": "Fakturering januar (ikke sendt), 7 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 150289.43,
+      "kind": "recurring",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": -623499.38,
+      "kind": "opex_recurring",
+      "label": "Driftskostnader desember, fakturert 1.–7. utenom faste regninger, til den faste faktureringen",
+      "scenario": "committed"
+     },
+     {
+      "amount": 15297.52,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 27558.9,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 700.65,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 59613.64,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 8232.64,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 55473.72,
+      "kind": "recurring_usual",
+      "label": "Fakturering januar (ikke sendt), 7 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 10451.36,
+      "kind": "recurring_usual",
+      "label": "Fakturering desember (ikke sendt), 30 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": -46263.8,
+      "kind": "opex",
+      "label": "Driftskostnader desember, fakturert 1.–7. utenom faste regninger",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 3",
+    "out": 689599.38,
+    "start": "2027-01-18"
+   },
+   {
+    "committed_close": 10199341.05,
+    "committed_open": 10404818.22,
+    "end": "2027-01-31",
+    "expected_close": 10537483.44,
+    "expected_in": 0.0,
+    "expected_open": 10742960.61,
+    "expected_out": 0.0,
+    "in": 0.0,
+    "index": 11,
+    "items": [
+     {
+      "amount": -205477.17,
+      "kind": "wages",
+      "label": "Lønn og skattetrekk",
+      "scenario": "committed"
+     }
+    ],
+    "label": "Uke 4",
+    "out": 205477.17,
+    "start": "2027-01-25"
+   },
+   {
+    "committed_close": 10524265.15,
+    "committed_open": 10199341.05,
+    "end": "2027-02-07",
+    "expected_close": 10872567.14,
+    "expected_in": 10159.6,
+    "expected_open": 10537483.44,
+    "expected_out": 0.0,
+    "in": 334574.1,
+    "index": 12,
+    "items": [
+     {
+      "amount": -9650.0,
+      "kind": "fixed",
+      "label": "Fast regning fra Trygg Forsikring Vest AS",
+      "scenario": "committed"
+     },
+     {
+      "amount": 159205.55,
+      "kind": "recurring",
+      "label": "Fakturering januar (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 175368.55,
+      "kind": "recurring",
+      "label": "Fakturering januar (ikke sendt), 14 dager",
+      "scenario": "committed"
+     },
+     {
+      "amount": 3232.6,
+      "kind": "recurring_usual",
+      "label": "Fakturering januar (ikke sendt), 14 dager",
+      "scenario": "expected"
+     },
+     {
+      "amount": 6927.0,
+      "kind": "recurring_usual",
+      "label": "Fakturering januar (ikke sendt), 14 dager",
+      "scenario": "expected"
+     }
+    ],
+    "label": "Uke 5",
+    "out": 9650.0,
+    "start": "2027-02-01"
+   }
+  ]
+ }
+}
