@@ -8,9 +8,10 @@ import commitments
 import workdays
 
 from . import texts
-from .common import MONTH_NAMES, MVA_RATE, _next_month
+from .common import MONTH_NAMES, _next_month
 from .costs import _cost_parts
 from .models import FlowKind, Runs
+from .profile import DEFAULT, Profile
 
 
 def _revenue_in(rates: dict, season: dict, month_no: int) -> float:
@@ -59,7 +60,7 @@ class _Month:
         return MONTH_NAMES[self.start.month - 1]
 
 
-def _trading(t: _Trading, flows: list) -> dict:
+def _trading(t: _Trading, flows: list, p: Profile = DEFAULT) -> dict:
     """Six months of trading that has not happened yet: the sales still to
     be invoiced, the VAT on them, and the running costs. Returns what each
     month rests on, for the assumptions."""
@@ -72,16 +73,16 @@ def _trading(t: _Trading, flows: list) -> dict:
         sales.append({"month": m.name, "amount": round(m.revenue, 2)})
         costs.append({"month": m.name, "amount": round(
             t.bank_costs["level"] if t.bank_costs else m.opex, 2)})
-        row = _month_sales(t, m, flows)
+        row = _month_sales(t, m, flows, p=p)
         if row:
             invoicing.append(row)
-        _month_vat(t, m, flows)
-        _month_costs(t, m, flows)
+        _month_vat(t, m, flows, p=p)
+        _month_costs(t, m, flows, p=p)
         month = _next_month(month)
     return {"sales": sales, "costs": costs, "invoicing": invoicing}
 
 
-def _month_sales(t: _Trading, m: _Month, flows: list) -> dict | None:
+def _month_sales(t: _Trading, m: _Month, flows: list, p: Profile = DEFAULT) -> dict | None:
     """The month's invoicing still to be won, on the expected line. Sets the
     month's gross, its contract part and the share tied to the contracts.
     Returns the register's reading of the month, when it is the source.
@@ -93,7 +94,7 @@ def _month_sales(t: _Trading, m: _Month, flows: list) -> dict | None:
     would stand higher than it is."""
     key = (m.start.year, m.start.month)
     run = t.runs.by_month.get(key, {"low": 0.0, "usual": 0.0})
-    gross = m.revenue * (1 + MVA_RATE)
+    gross = m.revenue * (1 + p.vat_rate)
     if m.current:
         gross = max(0.0, gross - t.invoiced_this_month)
     m.contract = run["low"]
@@ -106,7 +107,7 @@ def _month_sales(t: _Trading, m: _Month, flows: list) -> dict | None:
         gross = run["usual"] + other
         row = {"month": m.name,
                "fast_lavest": round(run["low"], 2), "fast_vanlig": round(run["usual"], 2),
-               "annen": round(other, 2), "regnskapet": round(m.revenue * (1 + MVA_RATE), 2)}
+               "annen": round(other, 2), "regnskapet": round(m.revenue * (1 + p.vat_rate), 2)}
     m.tied = min(1.0, m.contract / gross) if gross > 0 else (1.0 if m.contract else 0.0)
     m.gross = max(0.0, gross - m.contract)
     for landing, share, days in _sales_landing(t, m):
@@ -134,20 +135,20 @@ def _sales_landing(t: _Trading, m: _Month) -> list:
     return [(month_end + timedelta(days=t.credit_days + t.sales_lag), 1.0, "")]
 
 
-def _month_vat(t: _Trading, m: _Month, flows: list) -> None:
+def _month_vat(t: _Trading, m: _Month, flows: list, p: Profile = DEFAULT) -> None:
     """The VAT on the month's invoicing, whether or not the customer has paid
     by then — the deadline does not wait for the money. Scheduled even when
     the receipt itself falls outside the window, because that is the case that
     hurts: the liability inside, the cash outside."""
     keep = 1 - t.vat_share
-    net_vat = m.revenue * MVA_RATE * keep
+    net_vat = m.revenue * p.vat_rate * keep
     if t.runs.from_register:
         # On what is still to be invoiced. What has gone out this month is
         # booked on 2700 already, and dated by commitments.
-        net_vat = (m.gross + m.contract) / (1 + MVA_RATE) * MVA_RATE * keep
+        net_vat = (m.gross + m.contract) / (1 + p.vat_rate) * p.vat_rate * keep
     elif m.current:
         net_vat = max(0.0, net_vat - t.booked_vat)
-    contract_vat = m.contract / (1 + MVA_RATE) * MVA_RATE * keep
+    contract_vat = m.contract / (1 + p.vat_rate) * p.vat_rate * keep
     net_vat = max(0.0, net_vat - contract_vat)
     vat_due = workdays.forward(
         commitments.term_due(m.start.year, m.start.month, commitments.MVA_TERMS))
@@ -161,12 +162,12 @@ def _month_vat(t: _Trading, m: _Month, flows: list) -> None:
                          "label": texts.vat_label(m.name)})
 
 
-def _month_costs(t: _Trading, m: _Month, flows: list) -> None:
+def _month_costs(t: _Trading, m: _Month, flows: list, p: Profile = DEFAULT) -> None:
     """The month's running costs, by when the bills are paid. A part paid
     after the window leaves it, as sales collected after it do. The share
     tied to the contracts (from the bank: also what comes whatever is sold)
     is on the committed line."""
-    month_vat = m.revenue * MVA_RATE * t.vat_share
+    month_vat = m.revenue * p.vat_rate * t.vat_share
     if t.bank_costs:
         # From the bank (card 64): the usual month of what left the account,
         # gross, by the day it left. What is dated already in the same month —

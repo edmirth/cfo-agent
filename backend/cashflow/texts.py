@@ -7,27 +7,22 @@ is narrative.py, which is all text."""
 import bankcat
 
 from .common import (
-    BANK_UNKNOWN_MAX,
-    DOUBTFUL_DAYS,
-    LATE_DAYS,
-    LATE_SPREAD_WEEKS,
     MONTH_NAMES,
-    PAY_LAG_DAYS,
-    SLOW_WEEKS,
     _kr,
     _term_step,
 )
+from .profile import DEFAULT, Profile
 
 
 def week_label(start) -> str:
     return (f"Uke {start.isocalendar().week}")
 
 
-def costs_from_accounts(bank_categories) -> str:
+def costs_from_accounts(bank_categories, p: Profile = DEFAULT) -> str:
     return ("Driftskostnadene er regnet fra regnskapet, ikke fra banken: "
             + ("for mange utbetalinger i banken har ingen kategori ennå "
                f"({round(bank_categories.get('unknown_share_out', 0) * 100)} %)."
-               if bank_categories.get("unknown_share_out", 0) > BANK_UNKNOWN_MAX
+               if bank_categories.get("unknown_share_out", 0) > p.bank_unknown_max
                else f"færre enn {bankcat.COST_MIN_MONTHS} hele måneder å lese."))
 
 
@@ -47,8 +42,8 @@ def aside_month_without_invoice() -> str:
     return ("en av de siste månedene uten faktura")
 
 
-def aside_behind(behind) -> str:
-    return (f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid")
+def aside_behind(behind, p: Profile = DEFAULT) -> str:
+    return (f"{_kr(behind)} kr over {p.late_days} dager på overtid")
 
 
 def aside_stalled(last_day) -> str:
@@ -109,13 +104,13 @@ def invoice_label(customer: str) -> str:
     return f"Faktura til {customer}"
 
 
-def overdue_label(count: int) -> str:
+def overdue_label(count: int, p: Profile = DEFAULT) -> str:
     return (f"Forfalte fakturaer ({count} stk), "
-            f"fordelt over {LATE_SPREAD_WEEKS} uker")
+            f"fordelt over {p.late_spread_weeks} uker")
 
 
-def slow_label(first: int, last: int, count: int) -> str:
-    return (f"Fakturaer {LATE_DAYS + 1}–{DOUBTFUL_DAYS} "
+def slow_label(first: int, last: int, count: int, p: Profile = DEFAULT) -> str:
+    return (f"Fakturaer {p.late_days + 1}–{p.doubtful_days} "
             f"dager på overtid ({count} stk), "
             f"fordelt over uke {first}–{last}")
 
@@ -125,13 +120,14 @@ def ar_unmatched_label() -> str:
             "trolig fra en avkortet fakturaliste")
 
 
-def ar_residual(gl_ar: float, ar_total: float, residual: float, counted: bool) -> str:
+def ar_residual(gl_ar: float, ar_total: float, residual: float, counted: bool,
+                p: Profile = DEFAULT) -> str:
     head = (f"Konto 1500 viser {_kr(gl_ar)} kr i kundefordringer, men de "
             f"åpne fakturaene summerer bare til {_kr(ar_total)} kr. ")
     return (head + (f"Fakturalista er ikke lest helt, så de resterende "
                     f"{_kr(residual)} kr er trolig vanlige fakturaer som ikke "
                     f"ble lest. De ligger bare i den forventede linjen, fordelt "
-                    f"over uke {SLOW_WEEKS[0]}–{SLOW_WEEKS[1]}."
+                    f"over uke {p.slow_weeks[0]}–{p.slow_weeks[1]}."
                     if counted else
                     f"De resterende {_kr(residual)} kr er ikke regnet med i "
                     f"prognosen før noen har funnet ut hva de består av — "
@@ -196,10 +192,10 @@ def foreign_currency(name: str | None, currency: str, amount) -> str:
             f"på denne posten med hele valutakursen.")
 
 
-def payments_unread() -> str:
+def payments_unread(p: Profile = DEFAULT) -> str:
     return ("Innbetalingene på konto 1500 kunne ikke leses helt, så "
             "betalingsvanene er ufullstendige; kunder uten nok historikk er "
-            f"regnet med {PAY_LAG_DAYS} dager etter forfall.")
+            f"regnet med {p.pay_lag_days} dager etter forfall.")
 
 
 def register_unread(what: str) -> str:
@@ -247,8 +243,8 @@ def wages_label() -> str:
     return "Lønn og skattetrekk"
 
 
-def aside_far_behind(behind: float) -> str:
-    return (f"{_kr(behind)} kr over {LATE_DAYS} dager på overtid, "
+def aside_far_behind(behind: float, p: Profile = DEFAULT) -> str:
+    return (f"{_kr(behind)} kr over {p.late_days} dager på overtid, "
             f"mer enn en vanlig måned")
 
 

@@ -106,7 +106,7 @@ def test_other_postings_are_not_payroll():
 def test_the_forecast_pays_the_measured_pay_day():
     original = cashflow.sources._payroll_measured
 
-    async def measured(today):
+    async def measured(today, p=None):
         return {"per_run": 850_000.0, "months": []}
 
     cashflow.sources._payroll_measured = measured
@@ -174,7 +174,7 @@ def test_an_unread_ledger_is_said_and_asked_again():
     assert ledger.calls > calls, "a failure is not kept"
     original = cashflow.sources._payroll_measured
 
-    async def unread(today):
+    async def unread(today, p=None):
         return {"unread": "Tripletex svarte ikke"}
 
     cashflow.sources._payroll_measured = unread

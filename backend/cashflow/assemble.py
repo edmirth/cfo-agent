@@ -5,10 +5,11 @@ from typing import Any
 import commitments
 
 from . import texts
-from .common import LATE_SPREAD_WEEKS, MONTH_NAMES, MVA_RATE, PAY_LAG_DAYS, WEEKS
+from .common import MONTH_NAMES, WEEKS
 from .models import FlowKind
 from .narrative import after_text
 from .payroll import _ferie_withheld
+from .profile import DEFAULT, Profile, resolve
 
 
 def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
@@ -54,7 +55,7 @@ def _after_payload(after: dict, week0: date) -> dict | None:
 def _assemble(today, week0, opening, committed, expected, rates, credit_days,
               warnings, ar_open, ap_open, vat_share=0.0,
               vat_measured=False, booked_vat=0.0, invoiced=0.0,
-              payroll_months=()) -> dict:
+              payroll_months=(), p: Profile = DEFAULT) -> dict:
     """Bucket the flows into weeks and walk the balance down both lines."""
     weeks = _empty_weeks(week0)
     # Money coming in after the window from invoices sent, or to be sent,
@@ -77,7 +78,7 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
                           "receivable_total": round(sum(i["amount"] for i in ar_open), 2),
                           "payable_total": round(sum(i["amount"] for i in ap_open), 2)},
         "assumptions": _assumptions(rates, credit_days, vat_share, vat_measured,
-                                    booked_vat, invoiced, payroll_months),
+                                    booked_vat, invoiced, payroll_months, p=p),
         "warnings": warnings,
     }
 
@@ -162,13 +163,15 @@ def _low_points(weeks: list) -> dict:
 
 
 def _assumptions(rates: dict, credit_days: int, vat_share: float, vat_measured: bool,
-                 booked_vat: float, invoiced: float, payroll_months) -> dict:
+                 booked_vat: float, invoiced: float, payroll_months,
+                 p: Profile | None = None) -> dict:
     """What the weeks rest on, as values: the briefing builds the prose."""
-    ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld()
+    p = p or resolve()
+    ferie_withheld, ferie_weeks, ferie_weeks_stated = _ferie_withheld(p=p)
     return {
         "credit_days": credit_days,
-        "pay_lag_days": PAY_LAG_DAYS,
-        "late_spread_weeks": LATE_SPREAD_WEEKS,
+        "pay_lag_days": p.pay_lag_days,
+        "late_spread_weeks": p.late_spread_weeks,
         "skattetrekk": ("betales til Skatteetaten samme dag som lønnen, "
                         "så hele bruttolønnen går ut på lønningsdagen"),
         "feriepenger_i_lonnsraten": False,
@@ -203,7 +206,7 @@ def _assumptions(rates: dict, credit_days: int, vat_share: float, vat_measured: 
         "monthly_opex": round(rates["opex"], 2),
         "monthly_aga": round(rates.get("aga", 0.0), 2),
         # The liability side of trading that has not happened yet.
-        "mva_sats": MVA_RATE,
+        "mva_sats": p.vat_rate,
         "mva_fradrag_andel": round(vat_share, 3),
         "mva_fradrag_malt": vat_measured,
         # Netted off this month's figure rather than charged on top of it:

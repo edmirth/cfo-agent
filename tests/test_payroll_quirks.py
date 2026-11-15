@@ -105,7 +105,7 @@ def test_june_is_the_assumption_when_nothing_is_stated():
     try:
         assert commitments.ferie_month() == 6
         assert not commitments.ferie_month_is_stated()
-        assert cashflow.payroll._ferie_withheld() == (1.0, cashflow.payroll.FERIE_WEEKS, False)
+        assert cashflow.payroll._ferie_withheld() == (1.0, cashflow.profile.DEFAULT.ferie_weeks, False)
     finally:
         company.setting = original
 

@@ -6,9 +6,8 @@ import saldobalanse
 from preflight import _account, _monthly
 
 from . import texts
-from .common import LEVEL_MONTHS, OPEX_RANGES, SEASON_WEIGHT
-
-SEASON_LIMITS = (0.5, 1.5)
+from .common import OPEX_RANGES
+from .profile import DEFAULT, Profile
 
 
 def _merged(rows: list, columns: list, ranges) -> list:
@@ -36,11 +35,11 @@ def _month_no(label: str) -> int | None:
     return saldobalanse.MONTHS.index(name) + 1 if name in saldobalanse.MONTHS else None
 
 
-def _seasons(history: tuple | None) -> dict:
+def _seasons(history: tuple | None, p: Profile = DEFAULT) -> dict:
     """Each month's season for sales and for running costs, from last year.
 
     `history` is last year's (rows, columns). A season is that month against
-    last year's average, held within SEASON_LIMITS and pulled half way to 1:
+    last year's average, held within p.season_limits and pulled half way to 1:
     December at 0.82 last year becomes 0.91. None for a series without twelve
     months of something in them — a new company, or a month never posted —
     and the forecast then stays flat, and says so.
@@ -57,15 +56,15 @@ def _seasons(history: tuple | None) -> dict:
             out[key] = None
             continue
         mean = sum(by.values()) / 12
-        lo, hi = SEASON_LIMITS
-        out[key] = {m: round(1 + SEASON_WEIGHT * (min(max(v / mean, lo), hi) - 1), 4)
+        lo, hi = p.season_limits
+        out[key] = {m: round(1 + p.season_weight * (min(max(v / mean, lo), hi) - 1), 4)
                     for m, v in by.items()}
     return out
 
 
 def _run_rates(rows: list, columns: list,
                prior: tuple | None = None, season: dict | None = None,
-               history: tuple | None = None) -> tuple[dict, list[str]]:
+               history: tuple | None = None, p: Profile = DEFAULT) -> tuple[dict, list[str]]:
     """Monthly run-rates that a posting backlog cannot poison.
 
     Costs in this ledger read 122k, 223k, 114k, then 48k, 14k, 13k. Nothing got
@@ -86,7 +85,7 @@ def _run_rates(rows: list, columns: list,
 
     `season`, from `_seasons`, and `history`, last year's `(rows, columns,
     year)`: for sales and running costs with a measured season, the rate is
-    the level instead — the last LEVEL_MONTHS closed months, last year's
+    the level instead — the last p.level_months closed months, last year's
     included where this year has too few, each divided by its own season. A
     year of growth then shows in the level, and the forecast multiplies each
     month's season back on. Without a season, the median of the closed months
@@ -94,19 +93,19 @@ def _run_rates(rows: list, columns: list,
     """
     ledger = _Ledger(rows, columns, prior, season, history)
     notes: list[str] = []
-    rates = {"revenue": _rate(ledger, [(3000, 3999)], -1, "Omsetning", notes, "revenue"),
+    rates = {"revenue": _rate(ledger, [(3000, 3999)], -1, "Omsetning", notes, "revenue", p=p),
              # The full wage cost, accrual and all — what the P&L carries.
-             "wages": _rate(ledger, [(5000, 5099)], 1, "Lønn", notes),
+             "wages": _rate(ledger, [(5000, 5099)], 1, "Lønn", notes, p=p),
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
              "wages_cash": _rate(ledger, [(5000, 5019), (5030, 5099)], 1,
-                                 "Lønn som går ut på lønningsdagen", notes),
+                                 "Lønn som går ut på lønningsdagen", notes, p=p),
              # Not part of opex, and not double counted: commitments dates the
              # 2770 balance for payrolls already reported, this rates the ones
              # still to come. 5401 stays out, being the feriepenger's own.
-             "aga": _rate(ledger, [(5400, 5400)], 1, "Arbeidsgiveravgift", notes),
-             "opex": _rate(ledger, OPEX_RANGES, 1, "Driftskostnader", notes, "opex")}
+             "aga": _rate(ledger, [(5400, 5400)], 1, "Arbeidsgiveravgift", notes, p=p),
+             "opex": _rate(ledger, OPEX_RANGES, 1, "Driftskostnader", notes, "opex", p=p)}
     return rates, notes
 
 
@@ -132,9 +131,9 @@ def _series(ledger: _Ledger, ranges) -> list:
 
 
 def _rate(ledger: _Ledger, ranges, flip: int, name: str, notes: list[str],
-          key: str | None = None) -> float:
+          key: str | None = None, p: Profile = DEFAULT) -> float:
     """One run rate: the closed months, or with a season the level of the
-    last LEVEL_MONTHS with the season taken out; outliers kept out and named."""
+    last p.level_months with the season taken out; outliers kept out and named."""
     idx = (ledger.season or {}).get(key) if key else None
     full = _series(ledger, ranges)
     series = [(m, v * flip) for m, v in full][:-1]
@@ -146,7 +145,7 @@ def _rate(ledger: _Ledger, ranges, flip: int, name: str, notes: list[str],
                     for m, v in _merged(h_rows, h_cols, ranges)]
         this = [(m, v * flip) for m, v in _merged(ledger.rows, ledger.columns, ranges)][:-1]
         series = [(m, v / idx.get(_month_no(m) or 0, 1.0))
-                  for m, v in (past + this)[-LEVEL_MONTHS:]]
+                  for m, v in (past + this)[-p.level_months:]]
     values = [v for _, v in series]
     if not values:
         # No account in the range at all is a real zero: a company without

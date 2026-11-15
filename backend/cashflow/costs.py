@@ -7,22 +7,13 @@ from itertools import pairwise
 from preflight import _monthly
 
 from . import texts
-from .common import BANK_UNKNOWN_MAX, COST_PERIODS, OPEX_RANGES, _add_months, _iso, _weighted_median
+from .common import OPEX_RANGES, _add_months, _iso, _weighted_median
 from .models import Flow, FlowKind, Sources
-
-# What makes a supplier's bill a fixed one, for the committed line: billed in
-# FIXED_MIN of the last FIXED_LOOKBACK closed months (or FIXED_MIN quarters in
-# a row), every amount within FIXED_TOLERANCE of the median. See _fixed_bills.
-FIXED_LOOKBACK = 4
-FIXED_MIN = 3
-FIXED_TOLERANCE = 0.15
-PROFILE_MIN_BILLS = 10
-PROFILE_WEIGHT_CAP = 3
-PROFILE_MIN_PERIOD_BILLS = 3
+from .profile import DEFAULT, Profile
 
 
 def _fixed_bills(history: list, today: date,
-                 horizon: date) -> tuple[list, list, dict]:
+                 horizon: date, p: Profile = DEFAULT) -> tuple[list, list, dict]:
     """The bills that come whether anyone sells anything: rent, leasing,
     insurance, software. Returns the flows, what was found, and the fixed
     amount of each month still to be billed — paid inside the window or not,
@@ -35,9 +26,9 @@ def _fixed_bills(history: list, today: date,
     Found by how the bills arrive, not by which account they are booked on:
     6400, 6700 and 7700 hold fixed and variable alike, while a supplier who
     bills the same amount every month is plain to see. Monthly: a bill in at
-    least FIXED_MIN of the last FIXED_LOOKBACK closed months. Quarterly: at
-    least FIXED_MIN bills three months apart. Every amount within
-    FIXED_TOLERANCE of the supplier's median, so materials that follow sales
+    least p.fixed_min of the last p.fixed_lookback closed months. Quarterly: at
+    least p.fixed_min bills three months apart. Every amount within
+    p.fixed_tolerance of the supplier's median, so materials that follow sales
     stay out — they are not certain, which is what this line is for. Credit
     notes and foreign currency stay out of the reading.
 
@@ -51,7 +42,7 @@ def _fixed_bills(history: list, today: date,
     found: list[dict] = []
     by_month: dict[tuple[int, int], float] = {}
     for s in _by_supplier(history).values():
-        cadence = _cadence(s["months"], this)
+        cadence = _cadence(s["months"], this, p=p)
         if cadence is None:
             continue
         step, name, basis = cadence
@@ -87,10 +78,10 @@ def _by_supplier(history: list) -> dict:
 
 
 def _cadence(months: dict[tuple[int, int], dict],
-             this: tuple[int, int]) -> tuple[int, str, list] | None:
+             this: tuple[int, int], p: Profile = DEFAULT) -> tuple[int, str, list] | None:
     """(step in months, name, the months it rests on) for a supplier who bills
     the same every month or every quarter, or None."""
-    closed = [_add_months(*this, -n) for n in range(1, FIXED_LOOKBACK + 1)]
+    closed = [_add_months(*this, -n) for n in range(1, p.fixed_lookback + 1)]
     past = sorted(k for k in months if k < this)
     if not past:
         return None
@@ -98,13 +89,13 @@ def _cadence(months: dict[tuple[int, int], dict],
     def stable(keys) -> bool:
         values = [months[k]["amount"] for k in keys]
         mid = statistics.median(values)
-        return mid > 0 and all(abs(v - mid) <= FIXED_TOLERANCE * mid for v in values)
+        return mid > 0 and all(abs(v - mid) <= p.fixed_tolerance * mid for v in values)
 
     recent = [k for k in closed if k in months]
     gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in pairwise(past)]
-    if len(recent) >= FIXED_MIN and stable(recent):
+    if len(recent) >= p.fixed_min and stable(recent):
         return 1, "månedlig", recent
-    if len(past) >= FIXED_MIN and gaps and all(g == 3 for g in gaps) \
+    if len(past) >= p.fixed_min and gaps and all(g == 3 for g in gaps) \
             and stable(past) and _add_months(*past[-1], 3) >= this:
         return 3, "kvartalsvis", past
     return None
@@ -152,7 +143,7 @@ def _bill_rows(history: list):
             yield issued, due, amount, name, row.get("supplierId") or name
 
 
-def _cost_profile(history: list, fixed_names: set[str]) -> dict:
+def _cost_profile(history: list, fixed_names: set[str], p: Profile = DEFAULT) -> dict:
     """When in the month the variable bills are dated, and how long after they
     are paid — measured on this company's own supplier history.
 
@@ -160,11 +151,11 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     Materials dated the 6th on fourteen days' terms are paid on the 20th, and
     a bill dated the 25th on thirty days is paid next month; the lump was
     wrong both ways, and the week it put the low point in is the week the
-    brief names. Split into COST_PERIODS: each period's share of the amount,
+    brief names. Split into p.cost_periods: each period's share of the amount,
     and the amount-weighted median of its terms. The fixed suppliers are
     left out: their bills are placed on their own dates already.
 
-    Each bill weighs by its amount, but no more than PROFILE_WEIGHT_CAP times
+    Each bill weighs by its amount, but no more than p.profile_weight_cap times
     the median bill: one machine bought on 65 days' terms otherwise set the
     pattern for every month's cleaning supplies.
 
@@ -172,29 +163,29 @@ def _cost_profile(history: list, fixed_names: set[str]) -> dict:
     said to be kept.
     """
     return _profile([(i, d, a) for i, d, a, who, _ in _bill_rows(history)
-                     if who not in fixed_names])
+                     if who not in fixed_names], p=p)
 
 
-def _profile(bills: list[tuple[date, date, float]]) -> dict:
-    """Shares and terms by COST_PERIODS from (issued, due, amount) rows."""
-    sums = [0.0] * len(COST_PERIODS)
-    terms: list[list] = [[] for _ in COST_PERIODS]
+def _profile(bills: list[tuple[date, date, float]], p: Profile = DEFAULT) -> dict:
+    """Shares and terms by p.cost_periods from (issued, due, amount) rows."""
+    sums = [0.0] * len(p.cost_periods)
+    terms: list[list] = [[] for _ in p.cost_periods]
     # The day within the period the money is usually dated, not its middle:
     # a company invoicing on the last workday was placed on the 26th, five
     # days early, and five days decide which week the money lands in.
-    days: list[list] = [[] for _ in COST_PERIODS]
-    cap = (PROFILE_WEIGHT_CAP * statistics.median([b[2] for b in bills])
+    days: list[list] = [[] for _ in p.cost_periods]
+    cap = (p.profile_weight_cap * statistics.median([b[2] for b in bills])
            if bills else 0.0)
     count = 0
     for issued, due, gross in bills:
         amount = min(gross, cap)
-        i = next(n for n, (_, last) in enumerate(COST_PERIODS) if issued.day <= last)
+        i = next(n for n, (_, last) in enumerate(p.cost_periods) if issued.day <= last)
         sums[i] += amount
         terms[i].append((max(0, (due - issued).days), amount))
         days[i].append((issued.day, amount))
         count += 1
     total = sum(sums)
-    if count < PROFILE_MIN_BILLS or total <= 0:
+    if count < p.profile_min_bills or total <= 0:
         return {"measured": False, "bills": count, "periods": []}
     # A period with a bill or two says little about its terms, and a lone
     # one-off set them on its own: it takes the terms of all the bills.
@@ -203,18 +194,18 @@ def _profile(bills: list[tuple[date, date, float]]) -> dict:
         {"from": first, "to": last, "share": round(sums[i] / total, 4),
          "day": int(_weighted_median(days[i])),
          "terms": (int(_weighted_median(terms[i]))
-                   if len(terms[i]) >= PROFILE_MIN_PERIOD_BILLS else overall)}
-        for i, (first, last) in enumerate(COST_PERIODS) if sums[i] > 0]}
+                   if len(terms[i]) >= p.profile_min_period_bills else overall)}
+        for i, (first, last) in enumerate(p.cost_periods) if sums[i] > 0]}
 
 
-def _bank_costs(cats: dict | None) -> dict | None:
+def _bank_costs(cats: dict | None, p: Profile = DEFAULT) -> dict | None:
     """The bank's running costs, when they can carry the forecast: read,
     at least `bankcat.COST_MIN_MONTHS` closed months, and no more than
-    BANK_UNKNOWN_MAX of the money out without a category."""
+    p.bank_unknown_max of the money out without a category."""
     costs = (cats or {}).get("costs")
     if not costs or costs["level"] <= 0:
         return None
-    if (cats or {}).get("unknown_share_out", 1.0) > BANK_UNKNOWN_MAX:
+    if (cats or {}).get("unknown_share_out", 1.0) > p.bank_unknown_max:
         return None
     return costs
 
@@ -246,16 +237,16 @@ def _cost_parts(profile: dict, month: date, today: date,
     return out
 
 
-def _fixed(src: Sources, today: date, horizon: date, flows: list):
+def _fixed(src: Sources, today: date, horizon: date, flows: list, p: Profile = DEFAULT):
     """The fixed bills on the committed line, and when in the month the
     other bills are dated and paid. Returns (found, by_month, profile).
 
     Rent, leasing, insurance: certain whether anyone sells anything, so the
     floor carries them. The expected line's running costs already contain
     them, and are netted month by month."""
-    fixed, found, by_month = _fixed_bills(src.supplier_history, today, horizon)
+    fixed, found, by_month = _fixed_bills(src.supplier_history, today, horizon, p=p)
     flows += fixed
-    profile = _cost_profile(src.supplier_history, {f["name"] for f in found})
+    profile = _cost_profile(src.supplier_history, {f["name"] for f in found}, p=p)
     return found, by_month, profile
 
 
@@ -274,13 +265,14 @@ def _booked_opex(rows: list, columns: list) -> float:
     return max(0.0, booked)
 
 
-def _bank_costs_or_say(bank_categories: dict | None, warnings: list[str]) -> dict | None:
+def _bank_costs_or_say(bank_categories: dict | None, warnings: list[str],
+                       p: Profile = DEFAULT) -> dict | None:
     """The running costs from the bank (card 64), or why the accounts carry
     them instead. The accounts are only as current as the bookkeeping."""
-    bank_costs = _bank_costs(bank_categories)
+    bank_costs = _bank_costs(bank_categories, p=p)
     if bank_categories and not bank_costs:
         warnings.append(
-            texts.costs_from_accounts(bank_categories))
+            texts.costs_from_accounts(bank_categories, p=p))
     return bank_costs
 
 

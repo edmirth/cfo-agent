@@ -11,23 +11,22 @@ from .common import (
     AGA_ACCRUED,
     MONTH_NAMES,
     PAID_FROM,
-    PAYROLL_MONTHS,
     WAGE_ACCOUNTS,
     _add_months,
     _next_month,
 )
 from .ledger import _accrued_this_month
 from .models import FlowKind, Pay, Sources
+from .profile import DEFAULT, Profile, resolve
 
 # **The feriepenger month.** In the month holiday pay goes out, staff draw
 # feriepenger instead of ordinary salary and that month's salary is withheld in
 # the same run. commitments.py already dates the accrued feriepenger to it; if
 # the ordinary salary is also charged there, that month pays the staff twice.
-FERIE_WEEKS = 5              # ferieloven gives 4 + 1, most agreements give 5
 VIRKEDAGER = 26              # the six-day week holiday and feriepenger run on
 
 
-def _ferie_withheld() -> tuple[float, int, bool]:
+def _ferie_withheld(p: Profile | None = None) -> tuple[float, int, bool]:
     """How much of one month's ordinary salary the holiday month withholds.
 
     Holiday is counted in virkedager, six to the week, twenty-six to the month
@@ -37,9 +36,10 @@ def _ferie_withheld() -> tuple[float, int, bool]:
     withholds twenty-four twenty-sixths and a fraction of the salary still
     goes out. Capped at one: nobody pays negative wages.
     """
+    p = p or resolve()
     stated = company.setting("ferie_uker")
     ok = stated is not None and 0 <= int(stated) <= 10
-    weeks = int(stated) if ok else FERIE_WEEKS
+    weeks = int(stated) if ok else p.ferie_weeks
     return min(1.0, weeks * 6 / VIRKEDAGER), weeks, bool(ok)
 
 
@@ -74,7 +74,7 @@ def _pay_days(today: date, horizon: date,
 
 def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                   aga_monthly: float = 0.0, aga_booked: float = 0.0,
-                  paid_before: date | None = None) -> list[dict]:
+                  paid_before: date | None = None, p: Profile | None = None) -> list[dict]:
     """Every pay day between now and the horizon, and what leaves on it.
 
     Gross, not net: from 2026 the trekk goes to Skatteetaten the same day as
@@ -82,8 +82,9 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
     no exception — see HALF_TAX_MONTH above. The feriepenger month is, and it
     is the one month that can produce no flow at all.
     """
+    p = p or resolve()
     ferie_month = commitments.ferie_month()
-    withheld, _, _ = _ferie_withheld()
+    withheld, _, _ = _ferie_withheld(p=p)
     flows = []
     for year, month_no, pay_day in _pay_days(today, horizon, paid_before):
         month = date(year, month_no, 1)
@@ -122,11 +123,9 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                     "date": due, "amount": -aga, "kind": FlowKind.AGA_FUTURE,
                     "label": texts.aga_label(month)})
     return flows
-PAYROLL_MIN = 3              # months measured before the vouchers are trusted
-PAYDAY_WINDOW = 3            # days either side of the pay day that are its run
 
 
-def payroll_paid(postings: list[dict], today: date) -> dict | None:
+def payroll_paid(postings: list[dict], today: date, p: Profile = DEFAULT) -> dict | None:
     """What each month's pay day paid out, from the payroll vouchers.
 
     A payroll voucher is one that touches the wage accounts. What it pays is
@@ -137,42 +136,42 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
     its original, and an accrual booked to the wage accounts touches none of
     them.
 
-    The pay day's own run is the vouchers within PAYDAY_WINDOW days of it.
+    The pay day's own run is the vouchers within p.payday_window days of it.
     Everything else that month is an extra run, kept apart: September's at the
     first customer followed a one-off job in August. The holiday-pay month is
     left out. Returns the median pay day over the months measured, or None
-    with fewer than PAYROLL_MIN of them."""
-    def acct(p):
+    with fewer than p.payroll_min of them."""
+    def acct(post):
         try:
-            return int(str(p.get("accountNumber"))[:4])
+            return int(str(post.get("accountNumber"))[:4])
         except (TypeError, ValueError):
             return None
-    wage_vouchers = {p.get("voucherId") for p in postings
-                     if p.get("voucherId") is not None and acct(p) is not None
-                     and WAGE_ACCOUNTS[0] <= acct(p) <= WAGE_ACCOUNTS[1]}
+    wage_vouchers = {post.get("voucherId") for post in postings
+                     if post.get("voucherId") is not None and acct(post) is not None
+                     and WAGE_ACCOUNTS[0] <= acct(post) <= WAGE_ACCOUNTS[1]}
     paid: dict = {}
-    for p in postings:
-        n = acct(p)
-        if p.get("voucherId") not in wage_vouchers or n is None:
+    for post in postings:
+        n = acct(post)
+        if post.get("voucherId") not in wage_vouchers or n is None:
             continue
         if not any(lo <= n <= hi for lo, hi in PAID_FROM):
             continue
         try:
-            when = date.fromisoformat(str(p.get("date"))[:10])
+            when = date.fromisoformat(str(post.get("date"))[:10])
         except ValueError:
             continue
-        paid[when] = paid.get(when, 0.0) - float(p.get("amount") or 0)
+        paid[when] = paid.get(when, 0.0) - float(post.get("amount") or 0)
     ferie = commitments.ferie_month()
     months: dict = {}
     for when, amount in paid.items():
         m = months.setdefault((when.year, when.month), {"run": 0.0, "extra": 0.0})
         day = workdays.backward(commitments.payday(when.year, when.month))
-        m["run" if abs((when - day).days) <= PAYDAY_WINDOW else "extra"] += amount
+        m["run" if abs((when - day).days) <= p.payday_window else "extra"] += amount
     this = (today.year, today.month)
-    closed = [_add_months(*this, -n) for n in range(1, PAYROLL_MONTHS + 1)]
+    closed = [_add_months(*this, -n) for n in range(1, p.payroll_months + 1)]
     runs = [(k, months[k]) for k in closed
             if k in months and k[1] != ferie and months[k]["run"] > 0.5]
-    if len(runs) < PAYROLL_MIN:
+    if len(runs) < p.payroll_min:
         return None
     return {"per_run": round(statistics.median(m["run"] for _, m in runs), 2),
             "months": [{"month": f"{MONTH_NAMES[k[1] - 1]} {k[0]}",
@@ -181,7 +180,7 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
 
 
 def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: float,
-             flows: list, warnings: list[str]) -> Pay:
+             flows: list, warnings: list[str], p: Profile = DEFAULT) -> Pay:
     """Every pay day in the window, and its employer's contribution."""
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative,
@@ -202,6 +201,6 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
     except ValueError:
         paid_before = today
     flows += _payroll_runs(today, horizon, per_day,
-                               rates["aga"], aga_booked, paid_before)
+                               rates["aga"], aga_booked, paid_before, p=p)
     months = [m for _, m, _ in _pay_days(today, horizon, paid_before)]
     return Pay(per_day, measured, months)
