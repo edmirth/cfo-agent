@@ -6,13 +6,18 @@ import commitments
 import company
 import workdays
 
-from .common import MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, WAGE_ACCOUNTS, _add_months
-from .common import AGA_ACCRUED
-from .models import FlowKind, Pay, Sources
-from .common import _next_month
-from .ledger import _accrued_this_month
 from . import texts
-
+from .common import (
+    AGA_ACCRUED,
+    MONTH_NAMES,
+    PAID_FROM,
+    PAYROLL_MONTHS,
+    WAGE_ACCOUNTS,
+    _add_months,
+    _next_month,
+)
+from .ledger import _accrued_this_month
+from .models import FlowKind, Pay, Sources
 
 # **The feriepenger month.** In the month holiday pay goes out, staff draw
 # feriepenger instead of ordinary salary and that month's salary is withheld in

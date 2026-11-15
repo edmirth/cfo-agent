@@ -33,7 +33,7 @@ def _paid(postings, payday=10):
     original = company.setting
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": payday}.get(k, d)
     try:
-        return cashflow.payroll_paid(postings, TODAY)
+        return cashflow.payroll.payroll_paid(postings, TODAY)
     finally:
         company.setting = original
 
@@ -155,18 +155,18 @@ def _measure(ledger):
 
 
 def test_the_pay_day_is_read_once_a_day_not_on_every_rebuild():
-    cashflow._payroll_cache.clear()
+    cashflow.sources._payroll_cache.clear()
     ledger = _Ledger(_run("2026-08-10", 1, 200_000, 600_000) + _run("2026-09-10", 1, 200_000, 600_000)
                      + _run("2026-10-09", 1, 200_000, 600_000))
     first = _measure(ledger)
     calls = ledger.calls
     assert first["per_run"] == 800_000.0 and calls == 4
     assert _measure(ledger) == first and ledger.calls == calls
-    cashflow._payroll_cache.clear()
+    cashflow.sources._payroll_cache.clear()
 
 
 def test_an_unread_ledger_is_said_and_asked_again():
-    cashflow._payroll_cache.clear()
+    cashflow.sources._payroll_cache.clear()
     ledger = _Ledger([], fail=True)
     assert "unread" in _measure(ledger)
     calls = ledger.calls
@@ -184,4 +184,4 @@ def test_an_unread_ledger_is_said_and_asked_again():
         cashflow.sources._payroll_measured = original
     assert any("Lønnsbilagene kunne ikke leses" in w for w in data["warnings"])
     assert data["assumptions"]["lonn_per_lonningsdag"]["kilde"] == "lønnskontoene"
-    cashflow._payroll_cache.clear()
+    cashflow.sources._payroll_cache.clear()

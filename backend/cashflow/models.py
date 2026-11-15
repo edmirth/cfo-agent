@@ -77,9 +77,9 @@ class Sources:
     ar_complete: bool
     ap_open: list
     ap_complete: bool
-    prior: object
-    paid: object
-    wages_paid: object
+    prior: dict | BaseException          # last year's trial balance, or why not
+    paid: dict | BaseException | None    # a year of payments on 1500
+    wages_paid: dict | BaseException | None   # payroll measured from the vouchers
     tax_posts: list
     issued: dict
     supplier_history: list

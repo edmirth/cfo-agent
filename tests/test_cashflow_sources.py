@@ -79,7 +79,7 @@ def _read(rows, id_key="voucherId", stub=None):
     original = cashflow.sources.mcp
     cashflow.sources.mcp = stub
     try:
-        out, warnings, _ = asyncio.run(cashflow._open_invoices(
+        out, warnings, _ = asyncio.run(cashflow.sources._open_invoices(
             date(2026, 10, 2), "search_supplier_invoices", "Leverandørfakturaer",
             id_key, "outstandingAmount", "supplierName"))
         return out, warnings
@@ -106,7 +106,7 @@ def test_a_credit_note_comes_back_as_money_in():
                                 "dueDate": "2026-09-04",
                                 "invoiceDate": "2026-08-21"}]
     bills, _ = _read(rows)
-    flows = cashflow._schedule_payments(bills, date(2026, 10, 2))
+    flows = cashflow.payables._schedule_payments(bills, date(2026, 10, 2))
     credit = next(f for f in flows if "Bimo" in f["label"])
     assert credit["amount"] > 0, "a credit note cannot take money out"
 
@@ -146,7 +146,7 @@ def test_an_offset_the_search_ignores_is_still_reported():
     bills, warnings = _read(stub.rows, stub=stub)
     assert len(bills) == 100
     assert warnings and "avkortet" in warnings[0]
-    assert len(stub.asked) == cashflow.AR_MONTHS_BACK + 1, "stopped at the repeated page"
+    assert len(stub.asked) == cashflow.sources.AR_MONTHS_BACK + 1, "stopped at the repeated page"
 
 
 def test_the_warning_says_which_register_was_short():
@@ -173,7 +173,7 @@ def test_a_month_outside_the_window_does_not_crash_the_forecast():
     leave nothing in the keep window. The note quoted the average before it was
     computed, divided by zero, and took the whole forecast down with it."""
     rows = [_row("6300 Leie lokale", [-10.0, -5.0, 30.0, 40.0, 0.0])]
-    rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
+    rates, notes = cashflow.ledger._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 12.5, "falls back to the median, and survives"
     assert notes, "and says which months it set aside"
 
@@ -182,7 +182,7 @@ def test_a_month_far_above_the_median_is_named_too():
     """Only the low months were named. A high month was dropped in silence,
     pulling the cost rate down — the dangerous direction."""
     rows = [_row("6300 Leie lokale", [100.0, 100.0, 100.0, 900.0, 0.0])]
-    rates, notes = cashflow._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
+    rates, notes = cashflow.ledger._run_rates(rows, COLUMNS[:6] + COLUMNS[-1:])
     assert rates["opex"] == 100.0
     assert any("over de andre" in n for n in notes), notes
 
@@ -197,7 +197,7 @@ def test_cost_of_goods_and_pension_are_in_the_forecast():
             _flat("5945 Pensjonsforsikring for ansatte", 27000.0),
             _flat("5990 Annen personalkostnad", 4000.0),
             _flat("6300 Leie lokale", 23000.0)]
-    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    rates, _ = cashflow.ledger._run_rates(rows, COLUMNS)
     assert rates["opex"] == 144000.0, (
         f"only {rates['opex']} of 144 000 kr of monthly cost reached the model")
 
@@ -208,7 +208,7 @@ def test_arbeidsgiveravgift_is_not_charged_twice():
     rows = [_flat("5400 Arbeidsgiveravgift", 140000.0),
             _flat("5401 Arbeidsgiveravgift av opptjente feriepenger", 14000.0),
             _flat("6300 Leie lokale", 23000.0)]
-    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    rates, _ = cashflow.ledger._run_rates(rows, COLUMNS)
     assert rates["opex"] == 23000.0, "AGA leaked into the operating costs"
 
 
@@ -217,7 +217,7 @@ def test_feriepenger_still_stays_out_of_the_pay_day_run():
     rows = [_flat("5000 Lønn til ansatte", 900000.0),
             _flat("5020 Feriepenger", 100000.0),
             _flat("5030 Sykepenger", 4000.0)]
-    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    rates, _ = cashflow.ledger._run_rates(rows, COLUMNS)
     assert rates["wages"] - rates["wages_cash"] == 100000.0
     assert rates["wages_cash"] == 904000.0
 
@@ -227,10 +227,10 @@ def test_annen_gjeld_is_scheduled_by_someone():
     """2990/2991 is never invoiced, so the payables list cannot see it, and it
     was leaving the forecast entirely. Money owed to the owner stays out: that
     due date is an assumption, not a fact."""
-    assert "annen_gjeld" in cashflow.STATUTORY_FROM_COMMITMENTS
-    assert "ansatte_eiere" not in cashflow.STATUTORY_FROM_COMMITMENTS
-    assert "leverandorgjeld" not in cashflow.STATUTORY_FROM_COMMITMENTS
-    assert "skyldig_lonn" not in cashflow.STATUTORY_FROM_COMMITMENTS
+    assert "annen_gjeld" in cashflow.tax.STATUTORY_FROM_COMMITMENTS
+    assert "ansatte_eiere" not in cashflow.tax.STATUTORY_FROM_COMMITMENTS
+    assert "leverandorgjeld" not in cashflow.tax.STATUTORY_FROM_COMMITMENTS
+    assert "skyldig_lonn" not in cashflow.tax.STATUTORY_FROM_COMMITMENTS
 
 
 # ------------------------------------------ what future trading owes back
@@ -256,7 +256,7 @@ def test_the_vat_deduction_is_read_from_the_books():
     inside a term needs no differencing and does not drift across the boundary."""
     rows = [{"path": "2700 Utgående mva", "cells": [0, -1191110.90]},
             {"path": "2710 Inngående mva", "cells": [0, 145027.23]}]
-    share, measured = cashflow._vat_input_share(rows)
+    share, measured = cashflow.tax._vat_input_share(rows)
     assert measured
     assert abs(share - 0.1218) < 0.001, share
 
@@ -267,7 +267,7 @@ def test_an_unreadable_vat_ratio_pays_the_whole_output_vat():
     which is the safe direction."""
     rows = [{"path": "2700 Utgående mva", "cells": [0, -100.0]},
             {"path": "2710 Inngående mva", "cells": [0, 0.0]}]
-    share, measured = cashflow._vat_input_share(rows)
+    share, measured = cashflow.tax._vat_input_share(rows)
     assert (share, measured) == (0.0, False)
 
 
@@ -276,7 +276,7 @@ def test_a_wild_deduction_is_capped():
     believing it would quietly halve the payment."""
     rows = [{"path": "2700 Utgående mva", "cells": [0, -1000000.0]},
             {"path": "2710 Inngående mva", "cells": [0, 950000.0]}]
-    share, _ = cashflow._vat_input_share(rows)
+    share, _ = cashflow.tax._vat_input_share(rows)
     assert share == 0.5
 
 
@@ -288,7 +288,7 @@ def test_aga_rides_along_with_the_payroll_run():
     original = company.setting
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
-        flows = cashflow._payroll_runs(date(2026, 10, 1), date(2026, 12, 28),
+        flows = cashflow.payroll._payroll_runs(date(2026, 10, 1), date(2026, 12, 28),
                                        904000.0, 139549.0)
         aga = [f for f in flows if f["kind"] == "aga_future"]
         assert len(aga) == 1, [f["label"] for f in aga]
@@ -309,7 +309,7 @@ def test_a_withheld_holiday_month_owes_no_employer_contribution():
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10,
                                          "ferie_uker": 5}.get(k, d)
     try:
-        flows = cashflow._payroll_runs(date(2026, 5, 15), date(2026, 8, 15),
+        flows = cashflow.payroll._payroll_runs(date(2026, 5, 15), date(2026, 8, 15),
                                        904000.0, 139549.0)
         june = [f for f in flows if f["date"].month == 6 or "juni" in f["label"]]
         assert not june, f"June drew feriepenger, so it owes neither: {june}"
@@ -334,11 +334,11 @@ def test_january_has_payroll_costs_and_revenue():
     # without last year every rate was 0 and the forecast had no payroll in it.
     rows = [_row("3000 Salgsinntekt", [-30000]), _row("5000 Lønn", [0])]
     cols = ["Inngående balanse", "Jan", "Utgående saldo"]
-    alone, notes = cashflow._run_rates(rows, cols)
+    alone, notes = cashflow.ledger._run_rates(rows, cols)
     assert alone["wages"] == 0 and any("kunne ikke beregnes" in n for n in notes)
 
     p_rows, p_cols = _last_year()
-    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 3))
+    rates, _ = cashflow.ledger._run_rates(rows, cols, (p_rows, p_cols, 2025, 3))
     assert rates["revenue"] == 200000
     assert rates["wages"] == 80000
     assert rates["opex"] == 20000
@@ -350,7 +350,7 @@ def test_february_does_not_rest_on_january_alone():
     rows = [_row("5000 Lønn", [60000, 10000])]
     cols = ["Inngående balanse", "Jan", "Feb", "Utgående saldo"]
     p_rows, p_cols = _last_year()
-    rates, _ = cashflow._run_rates(rows, cols, (p_rows, p_cols, 2025, 2))
+    rates, _ = cashflow.ledger._run_rates(rows, cols, (p_rows, p_cols, 2025, 2))
     assert rates["wages"] == (80000 + 80000 + 60000) / 3
 
 
@@ -359,7 +359,7 @@ def test_last_years_months_are_named_with_their_year():
     rows = [_row("6300 Leie", [20000])]
     cols = ["Inngående balanse", "Jan", "Utgående saldo"]
     p_rows = [_row("6300 Leie", [20000] * 11 + [1000])]
-    _, notes = cashflow._run_rates(rows, cols, (p_rows, YEAR, 2025, 3))
+    _, notes = cashflow.ledger._run_rates(rows, cols, (p_rows, YEAR, 2025, 3))
     assert any("Des 2025" in n for n in notes), notes
 
 
@@ -373,5 +373,5 @@ def test_costs_that_move_no_money_stay_out_of_the_forecast():
             _flat("5330 Godtgjørelse til styre", 2500.0),
             _flat("6300 Leie lokale", 23000.0),
             _flat("7770 Bank- og kortgebyrer", 300.0)]
-    rates, _ = cashflow._run_rates(rows, COLUMNS)
+    rates, _ = cashflow.ledger._run_rates(rows, COLUMNS)
     assert rates["opex"] == 23000.0 + 2500.0 + 300.0

@@ -1,15 +1,14 @@
 """Bucket the flows into weeks and walk both lines down."""
 from datetime import date, timedelta
+from typing import Any
 
 import commitments
 
-from .common import LATE_SPREAD_WEEKS, MONTH_NAMES, MVA_RATE, PAY_LAG_DAYS, WEEKS
-from .payroll import _ferie_withheld
-from .narrative import after_text
-from .models import FlowKind
 from . import texts
-
-
+from .common import LATE_SPREAD_WEEKS, MONTH_NAMES, MVA_RATE, PAY_LAG_DAYS, WEEKS
+from .models import FlowKind
+from .narrative import after_text
+from .payroll import _ferie_withheld
 
 
 def _bank_payload(booked: float, gap: dict | None, ar_paid: list,
@@ -63,7 +62,8 @@ def _assemble(today, week0, opening, committed, expected, rates, credit_days,
     # VAT the invoicing pays for, but not the invoicing, and read as a fall.
     # Only money in: what goes out after the window is not calculated, so
     # this is never netted against the weeks. Next week's window has it.
-    after = {"in": 0.0, "expected_in": 0.0, "first": None, "last": None, "items": []}
+    after: dict[str, Any] = {"in": 0.0, "expected_in": 0.0, "first": None, "last": None,
+                             "items": []}
     _place(committed, "committed", weeks, week0, after)
     _place(expected, "expected", weeks, week0, after)
     _walk(weeks, opening)

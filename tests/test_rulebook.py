@@ -163,7 +163,7 @@ RATES = {"revenue": 0.0, "wages": 400_000.0, "wages_cash": 400_000.0,
 
 def _assembled(opening: float) -> dict:
     today = date(2026, 10, 5)
-    return cashflow._assemble(today, cashflow._monday(today), opening,
+    return cashflow.assemble._assemble(today, cashflow.common._monday(today), opening,
                               [], [], RATES, 30, [], [], [])
 
 

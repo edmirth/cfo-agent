@@ -1,11 +1,9 @@
 """VAT and employer's contribution read off the ledger."""
-from .common import AGA_ACCRUED, VAT_ACCRUED
-from .ledger import _closing_range
 from datetime import date
-from .common import _iso
-from .ledger import _accrued_this_month
-from .models import FlowKind
 
+from .common import AGA_ACCRUED, VAT_ACCRUED, _iso
+from .ledger import _accrued_this_month, _closing_range
+from .models import Flow, FlowKind
 
 # Below this the output-VAT balance is too small to read a ratio off, which
 # happens for a few days after every settlement clears both accounts.
@@ -99,9 +97,9 @@ STATUTORY_FROM_COMMITMENTS = {
 # it cannot come back the day someone posts to 2600 again.
 
 
-def _statutory(com: dict, today: date) -> list[dict]:
+def _statutory(com: dict, today: date) -> list[Flow]:
     """The taxes and debts commitments already dates (STATUTORY_FROM_COMMITMENTS)."""
-    flows = []
+    flows: list[Flow] = []
     for item in com["items"]:
         if item["id"] not in STATUTORY_FROM_COMMITMENTS:
             continue

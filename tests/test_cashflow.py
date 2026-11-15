@@ -7,7 +7,7 @@ def test_payables_are_not_lagged_or_spread():
     today = date(2026, 9, 27)
     bills = [{"name": "Leverandør", "due": "2026-10-10", "amount": 100.0},
              {"name": "Gammel", "due": "2026-08-01", "amount": 50.0}]
-    flows = cashflow._schedule_payments(bills, today)
+    flows = cashflow.payables._schedule_payments(bills, today)
     assert flows[0]["date"] == date(2026, 10, 10) and flows[0]["amount"] == -100.0
     assert flows[1]["date"] == today and flows[1]["amount"] == -50.0
     assert flows[0]["label"].startswith("Regning fra")
@@ -15,9 +15,9 @@ def test_payables_are_not_lagged_or_spread():
 
 def test_receipts_get_the_customer_lag():
     today = date(2026, 9, 27)
-    flows = cashflow._schedule_receipts(
+    flows = cashflow.receivables._schedule_receipts(
         [{"name": "Kunde", "due": "2026-10-01", "amount": 10.0, "number": 1, "email": "", "url": ""}], today)
-    assert flows[0]["date"] == date(2026, 10, 1) + timedelta(days=cashflow.PAY_LAG_DAYS)
+    assert flows[0]["date"] == date(2026, 10, 1) + timedelta(days=cashflow.common.PAY_LAG_DAYS)
 
 
 def test_month_window_ends_exclusive():
@@ -27,7 +27,7 @@ def test_month_window_ends_exclusive():
     company invoices monthly at month end, so that hid more than half its
     receivables — 1 215 575 kr visible against 2 539 600 kr on account 1500.
     """
-    start, end = cashflow._month_bounds(date(2026, 9, 30), 0)
+    start, end = cashflow.common._month_bounds(date(2026, 9, 30), 0)
     assert start == date(2026, 9, 1)
     assert end == date(2026, 10, 1), "end must be the first of the next month"
     # An invoice dated the last day of the month falls inside the window.
@@ -35,7 +35,7 @@ def test_month_window_ends_exclusive():
 
 
 def test_month_window_rolls_over_the_year():
-    start, end = cashflow._month_bounds(date(2026, 3, 15), 3)
+    start, end = cashflow.common._month_bounds(date(2026, 3, 15), 3)
     assert (start, end) == (date(2025, 12, 1), date(2026, 1, 1))
     assert start <= date(2025, 12, 31) < end
 
@@ -43,8 +43,8 @@ def test_month_window_rolls_over_the_year():
 def test_every_month_in_the_lookback_is_covered_without_gaps():
     """Consecutive windows must meet exactly: no day in, or out, twice."""
     today = date(2026, 9, 30)
-    windows = [cashflow._month_bounds(today, b)
-               for b in range(cashflow.AR_MONTHS_BACK)]
+    windows = [cashflow.common._month_bounds(today, b)
+               for b in range(cashflow.sources.AR_MONTHS_BACK)]
     for newer, older in zip(windows, windows[1:]):
         assert older[1] == newer[0], f"{older} does not meet {newer}"
 
@@ -57,7 +57,7 @@ RATES = {"revenue": 0.0, "wages": 0.0, "wages_cash": 0.0, "opex": 0.0,
 
 def _assembled(committed, expected, opening=100_000.0):
     today = date(2026, 10, 5)
-    return cashflow._assemble(today, cashflow._monday(today), opening,
+    return cashflow.assemble._assemble(today, cashflow.common._monday(today), opening,
                               committed, expected, RATES, 30, [], [], [])
 
 
@@ -108,7 +108,7 @@ def test_a_rate_with_outliers_both_ways_is_stated_once():
                                             200_000, 220_000, 240_000]}]
     cols = ["Inngående balanse", "Jan", "Feb", "Mars", "April", "Mai",
             "Utgående saldo"]
-    _, notes = cashflow._run_rates(rows, cols)
+    _, notes = cashflow.ledger._run_rates(rows, cols)
     stated = [n for n in notes if "er lagt inn med" in n]
     assert len(stated) == 1, notes
     assert "holdt utenfor" in stated[0]
@@ -122,7 +122,7 @@ def test_the_two_wage_rates_are_not_both_called_lonn():
             {"path": "5020 Feriepenger", "cells": [0, 12_000, 24_000, 36_000,
                                                    48_000]}]
     cols = ["Inngående balanse", "Jan", "Feb", "Mars", "Utgående saldo"]
-    _, notes = cashflow._run_rates(rows, cols)
+    _, notes = cashflow.ledger._run_rates(rows, cols)
     named = [n for n in notes if n.startswith("Lønn er lagt inn")]
     assert len(named) <= 1, named
 

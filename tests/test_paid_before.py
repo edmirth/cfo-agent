@@ -95,8 +95,8 @@ def test_a_pay_day_the_feed_has_not_shown_is_still_paid():
     try:
         today = date(2026, 12, 11)
         horizon = today + timedelta(weeks=13)
-        late = [d for _, _, d in cashflow._pay_days(today, horizon, date(2026, 12, 10))]
-        current = [d for _, _, d in cashflow._pay_days(today, horizon, today)]
+        late = [d for _, _, d in cashflow.payroll._pay_days(today, horizon, date(2026, 12, 10))]
+        current = [d for _, _, d in cashflow.payroll._pay_days(today, horizon, today)]
     finally:
         company.setting = original
     assert late[0] == date(2026, 12, 10) and current[0] == date(2027, 1, 8)
@@ -112,17 +112,17 @@ def test_the_forecast_pays_the_pay_day_the_feed_has_not_shown():
         return {"bank": 1_000_000.0, "items": [], "paid_before": "2026-10-09"}
 
     stub = b._Tripletex([REVENUE, _cum("5000 Lønn til ansatte", [100_000.0] * 9)])
-    old = cashflow.sources.mcp, cashflow.commitments.cached, company.setting
+    old = cashflow.sources.mcp, commitments.cached, company.setting
     cashflow.sources.mcp = b.balance_sheet(stub)
-    cashflow.commitments.cached = cached
+    commitments.cached = cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     payment_habits._cache.clear()
-    cashflow._payroll_cache.clear()
+    cashflow.sources._payroll_cache.clear()
     try:
         data = asyncio.run(cashflow.build(date(2026, 10, 12)))
     finally:
-        cashflow.sources.mcp, cashflow.commitments.cached, company.setting = old
-        cashflow._payroll_cache.clear()
+        cashflow.sources.mcp, commitments.cached, company.setting = old
+        cashflow.sources._payroll_cache.clear()
     wages = [w["start"] for w in data["weeks"] for i in w["items"] if i["kind"] == "wages"]
     assert wages[0] == "2026-10-12", "the 9th's pay day, in this week"
 
@@ -142,7 +142,7 @@ def test_a_credited_invoice_and_its_credit_note_count_once():
     original = cashflow.sources.mcp
     cashflow.sources.mcp = _Register()
     try:
-        out, _, _ = asyncio.run(cashflow._open_invoices(
+        out, _, _ = asyncio.run(cashflow.sources._open_invoices(
             date(2026, 11, 8), "search_invoices", "Kundefakturaer", "id",
             "amountOutstanding", "customerName", in_kroner=True))
     finally:

@@ -1,0 +1,22 @@
+# Tooling only: the app installs from requirements.txt and runs from backend/.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["backend"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, import order, bugbear.
+select = ["E", "F", "W", "I", "B"]
+
+[tool.ruff.lint.isort]
+known-local-folder = ["cashflow"]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "backend"
+files = ["backend/cashflow"]
+# The rest of the backend is read for its types but not reported on yet.
+follow_imports = "silent"
+check_untyped_defs = true
+warn_unused_ignores = true

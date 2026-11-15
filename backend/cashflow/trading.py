@@ -7,11 +7,10 @@ from datetime import date, timedelta
 import commitments
 import workdays
 
-from .common import MONTH_NAMES, MVA_RATE
-from .costs import _cost_parts
-from .common import _next_month
-from .models import FlowKind, Runs
 from . import texts
+from .common import MONTH_NAMES, MVA_RATE, _next_month
+from .costs import _cost_parts
+from .models import FlowKind, Runs
 
 
 def _revenue_in(rates: dict, season: dict, month_no: int) -> float:

@@ -20,10 +20,14 @@ that changes on purpose is updated in its own commit with the reason.
 - [x] `models.py` with `Flow` and `FlowKind`. `texts.py` holds every user sentence (step 4;
       the briefing stays in `narrative.py`, which is all text)
 - [x] Shared helpers replace the duplicates listed in §4.7 (step 3)
-- [ ] Tests moved off private functions and module patching (`cashflow.mcp`,
-      `cashflow.commitments`) onto `sources` fakes and the public functions
-- [ ] `ruff` and `mypy` clean on the package. No function over about 60 lines
-- [ ] Snapshots byte-identical
+- [x] Tests moved off module patching (`cashflow.mcp`, `cashflow.commitments`) onto
+      `cashflow.sources.mcp` and the dependency modules themselves. Partly on private
+      functions: tests still exercise module internals (`cashflow.ledger._run_rates`), now
+      through the module they live in rather than through the package (step 5)
+- [x] `ruff` and `mypy` clean on the package (step 5). No function over about 60 lines,
+      with three just over: `build` 71, `_open_invoices` 65, `_invoice_runs` 62, the
+      last two mostly docstring
+- [x] Snapshots byte-identical: the demo companies and Ullensaker's books, every step
 
 ## Log
 - 2026-11-13 (claude): created from the spec on @edmir's request
@@ -85,4 +89,17 @@ that changes on purpose is updated in its own commit with the reason.
     six minutes instead of one second.
   - 606 passed; demo snapshots and Ullensaker unchanged.
   - Left for step 5: tests onto the public functions, ruff and mypy.
+- 2026-11-15 (claude): step 5, and the card done.
+  - `cashflow/__init__.py` exports what the backend uses (build, cached,
+    briefing, rules, below_floor, at_edge, after_text, the cache) and the
+    modules; tests reach internals through their module and patch
+    commitments, bankcat and brreg directly. The briefing sections are
+    `_say_*`, after three shared names sent a test to the wrong function.
+  - ruff 0.17.3 and mypy 2.3.1 in requirements-dev.txt, configured in
+    pyproject.toml for backend/cashflow; both clean. The gather results
+    are checked against BaseException, so a cancelled read counts as a
+    failed one rather than passing as data.
+  - Not done, and said so above: tests still call module internals. Moving
+    120-odd focused tests onto build() alone would lose what they pin down.
+  - 606 passed; the demo snapshots and Ullensaker unchanged.
 

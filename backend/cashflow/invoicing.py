@@ -1,18 +1,30 @@
 """Invoicing not sent yet: the regular customers' runs and the rest."""
 import statistics
 from calendar import monthrange
+from collections.abc import Set as AbstractSet
 from datetime import date, timedelta
+from typing import Any
 
 import payment_habits
 import workdays
 
-from .common import COST_PERIODS, LATE_DAYS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, _add_months, _term_step
-from .costs import _profile
-from .models import FlowKind, Runs, Sources
-from .receivables import _days_overdue
-from .common import _iso, _months_until
 from . import texts
-
+from .common import (
+    COST_PERIODS,
+    LATE_DAYS,
+    MONTH_NAMES,
+    PAY_LAG_DAYS,
+    RECURRING_MONTHS,
+    RUN_ACTIVE,
+    RUN_MONTHS,
+    _add_months,
+    _iso,
+    _months_until,
+    _term_step,
+)
+from .costs import _profile
+from .models import Flow, FlowKind, Runs, Sources
+from .receivables import _days_overdue
 
 # The rest of the invoicing, to customers not billed every month, is one stream
 # whose level is the median month. A month above UNUSUAL × that median is a
@@ -57,7 +69,7 @@ def _sales_profile(history: list) -> dict:
     return _profile([(i, d, a) for i, d, a, _ in _sales_rows(history)])
 
 
-def _invoice_months(history: list, skip: set[str] = frozenset()) -> dict:
+def _invoice_months(history: list, skip: AbstractSet[str] = frozenset()) -> dict:
     """{customer: {(year, month): {"amount", "parts": [(day, terms, amount)]}}}
     for every standing invoice in the history."""
     by_customer: dict = {}
@@ -97,7 +109,7 @@ def _place_month(parts, y: int, mo: int, today: date, current: bool):
 
 def _invoice_runs(history: list, today: date, horizon: date,
                   habits: dict | None = None, season: dict | None = None,
-                  skip: set[str] = frozenset(),
+                  skip: AbstractSet[str] = frozenset(),
                   overdue: dict[str, float] | None = None) -> tuple[list, list, dict]:
     """The regular customers' invoicing still to be sent, from the register.
 
@@ -128,7 +140,9 @@ def _invoice_runs(history: list, today: date, horizon: date,
     """
     this = (today.year, today.month)
     closed = [_add_months(*this, -n) for n in range(1, RUN_MONTHS + 1)]
-    flows, found, by_month = [], [], {}
+    flows: list[Flow] = []
+    found: list[dict] = []
+    by_month: dict[tuple[int, int], dict[str, float]] = {}
     for name, months in _invoice_months(history, skip).items():
         recent = closed[:RECURRING_MONTHS]
         active = [months[k]["amount"] for k in closed if k in months]
@@ -222,7 +236,7 @@ def _run_found(name: str, low: float, usual: float, why: str | None, parts: list
 
 def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                      season: dict | None, regular: set[str],
-                     skip: set[str] = frozenset()) -> tuple[list, dict, dict]:
+                     skip: AbstractSet[str] = frozenset()) -> tuple[list, dict, dict]:
     """Invoicing to the customers not billed every month: the expected line
     only, at the median month, on the days and terms that invoicing has had.
 
@@ -234,9 +248,10 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
     to that) nor when the rest is invoiced and on what terms."""
     this = (today.year, today.month)
     closed = [_add_months(*this, -n) for n in range(1, RUN_MONTHS + 1)]
-    months = {k: {"amount": 0.0, "parts": []} for k in closed}
+    months: dict[tuple[int, int], dict[str, Any]] = {
+        k: {"amount": 0.0, "parts": []} for k in closed}
     sent = 0.0
-    for name, by in _invoice_months(history, skip | regular).items():
+    for by in _invoice_months(history, skip | regular).values():
         for k, m in by.items():
             if k in months:
                 months[k]["amount"] += m["amount"]
@@ -323,7 +338,8 @@ def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: d
     # coming in, and the revenue in the accounts only a check on it. A book
     # younger than that keeps the accounts.
     from_register = _register_months(src.customer_history, today) >= RUN_MIN_MONTHS
-    other_by_month, other_measured = {}, None
+    other_by_month: dict[tuple[int, int], float] = {}
+    other_measured = None
     if from_register:
         flows += [f for f in run_flows if f["kind"] == FlowKind.RECURRING_USUAL]
         other_flows, other_by_month, other_measured = _other_invoicing(

@@ -2,8 +2,6 @@
 from collections.abc import Iterator
 from datetime import date, timedelta
 
-
-
 WEEKS = 13
 LATE_SPREAD_WEEKS = 3        # already-overdue invoices land across this many
 # How late an overdue invoice is decides how far it is counted on. Up to

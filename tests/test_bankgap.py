@@ -239,18 +239,18 @@ def test_the_reconciliation_keeps_the_booked_postings():
 def _build(rows, ar, bank, gap):
     """The forecast with commitments stubbed as having measured `gap`."""
     stub = _Tripletex(rows, ar)
-    old_mcp, old_cached, old_setting = cashflow.sources.mcp, cashflow.commitments.cached, company.setting
+    old_mcp, old_cached, old_setting = cashflow.sources.mcp, commitments.cached, company.setting
 
     async def cached():
         return {"bank": bank + (gap["adjustment"] if gap else 0.0),
                 "bank_booked": bank, "bank_gap": gap, "items": []}
 
-    cashflow.sources.mcp, cashflow.commitments.cached = balance_sheet(stub), cached
+    cashflow.sources.mcp, commitments.cached = balance_sheet(stub), cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
         return asyncio.run(cashflow.build(TODAY))
     finally:
-        cashflow.sources.mcp, cashflow.commitments.cached, company.setting = old_mcp, old_cached, old_setting
+        cashflow.sources.mcp, commitments.cached, company.setting = old_mcp, old_cached, old_setting
 
 
 OCTOBER_RECEIPT = bankgap.measure(
@@ -279,7 +279,7 @@ def test_the_forecast_opens_on_the_bank_and_does_not_collect_a_paid_invoice_twic
     # settling it in the forecast must not read as a gap between the two.
     assert not _kinds(data, "ar_unmatched")
     assert data["ar_open"] == []
-    note = cashflow._opening_note(data["bank"])
+    note = cashflow.narrative._opening_note(data["bank"])
     assert "1 transaksjoner" in note and "2026-10-01" in note and "1 000 000" in note
 
 
@@ -289,7 +289,7 @@ def test_an_unreadable_reconciliation_opens_on_the_books_and_says_so():
     assert data["opening"] == 500_000.0
     assert data["bank"]["adjustment"] is None
     assert any("Bankavstemmingen" in w for w in data["warnings"])
-    assert "ukjent" in cashflow._opening_note(data["bank"])
+    assert "ukjent" in cashflow.narrative._opening_note(data["bank"])
 
 
 # ------------------------------------------------------- the free-money figure
@@ -363,7 +363,7 @@ def test_the_opening_note_names_the_day_the_feed_stops():
     bank = {"booked": 2625898.93, "adjustment": 376904.04, "known": True,
             "lines": 129, "in": 746662.72, "out": -328279.68, "postings": 0,
             "postings_sum": 0.0, "latest": "2026-10-01", "stale": True}
-    assert "stopper 2026-10-01" in cashflow._opening_note(bank)
+    assert "stopper 2026-10-01" in cashflow.narrative._opening_note(bank)
 
 
 # ------------------------------------------------ how far the feed reaches

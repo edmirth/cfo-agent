@@ -6,7 +6,17 @@ word as it was written beside the calculation. The briefing for the agent
 is narrative.py, which is all text."""
 import bankcat
 
-from .common import BANK_UNKNOWN_MAX, DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, MONTH_NAMES, PAY_LAG_DAYS, SLOW_WEEKS, _kr, _term_step
+from .common import (
+    BANK_UNKNOWN_MAX,
+    DOUBTFUL_DAYS,
+    LATE_DAYS,
+    LATE_SPREAD_WEEKS,
+    MONTH_NAMES,
+    PAY_LAG_DAYS,
+    SLOW_WEEKS,
+    _kr,
+    _term_step,
+)
 
 
 def week_label(start) -> str:

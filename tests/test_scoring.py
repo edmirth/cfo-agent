@@ -146,8 +146,8 @@ def test_the_invoice_list_kept_matches_what_the_forecast_scheduled():
     late = {"name": "Seby AS", "due": "2026-09-30", "amount": 30000.0, "number": 7}
     due = {"name": "Skanska Norge AS", "due": "2026-10-20", "amount": 50000.0, "number": 8}
     bill = {"name": "Tingstad", "due": "2026-10-01", "amount": 20000.0, "number": None}
-    items = cashflow._expected_items([late, due], [bill], today)
-    flows = cashflow._schedule_receipts([late, due], today)
+    items = cashflow.receivables._expected_items([late, due], [bill], today)
+    flows = cashflow.receivables._schedule_receipts([late, due], today)
     assert sum(p[1] for i in items["ar"] for p in i["parts"]) == \
         sum(f["amount"] for f in flows)
     assert [p[0] for p in items["ar"][0]["parts"]] == \

@@ -7,3 +7,11 @@ iniconfig==2.3.1
 packaging==26.3
 pluggy==1.7.0
 Pygments==2.21.0
+# Lint and types for backend/cashflow (pyproject.toml):
+#   ./.venv/bin/ruff check backend/cashflow && ./.venv/bin/mypy
+ruff==0.17.3
+mypy==2.3.1
+mypy_extensions==1.2.0
+pathspec==1.1.1
+ast_serialize==0.13.1
+librt==0.16.0

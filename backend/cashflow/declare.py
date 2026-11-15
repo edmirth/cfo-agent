@@ -8,9 +8,9 @@ import brreg
 import forecasts
 import scoring
 
+from . import texts
 from .common import MONTH_NAMES, SEASON_WEIGHT
 from .models import Pay, Runs, Sources
-from . import texts
 
 log = logging.getLogger("cfo.cashflow")
 
