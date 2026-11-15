@@ -55,12 +55,22 @@ Not in this card: the AI (71), the onboarding screen and test companies (72), ot
 Risks: touching `commitments.py` widens the card; step 4 moves numbers on purpose, Ullensaker's
 too (expected VAT out goes down once the input share is read properly); about card 69's size.
 
-## Open decisions (@edmir), needed before step 2
-1. The owner's answers in `company.md` (suggested) or a separate `profile_answers.json`?
-2. Must a person approve a new data map before it replaces the old one?
-3. One company per deployment for good, or several? Several means a company key in the
-   profile and the caches from the start.
-4. May card 70 extend into `commitments.py`, so VAT terms and account roles live in one place?
+## Decisions (@edmir, 2026-11-15)
+1. **The owner's answers go into the company's own `company.md`.** Read from it and written
+   back to it, as today.
+2. **Approving a data map: proposed, waiting for @edmir's yes.** The AI applies it by itself
+   within limits: an entry the books confirm is applied; one they contradict, or that cannot be
+   checked, keeps the measured value and becomes a question for the owner; a map that would
+   move the forecast a lot (the low point by more than 10 %, or its week) waits for the owner.
+   Every version is kept and can be rolled back. Built in card 71; card 70's format carries a
+   version, a status (applied / waiting) and the check result per entry.
+3. **One deployment serves many companies, each logging in to its own.** That switch is
+   card 32 (tenant isolation): per-company login, Tripletex login, `company.md`, caches. Card 70
+   keys everything new by company from the start (the profile resolved for a company, the data
+   map stored per company, no new global cache), so card 32 only supplies which company a
+   request is for.
+4. **Card 70 may extend into `commitments.py`:** step 2 puts the VAT and AGA terms and the
+   account roles in one place both read.
 
 ## Done when
 - [x] `Resolved` and `profile.py`. Every former constant resolves through it (step 1; the
