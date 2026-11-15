@@ -7,7 +7,7 @@ from itertools import pairwise
 from preflight import _monthly
 
 from . import texts
-from .common import OPEX_RANGES, _add_months, _iso, _weighted_median
+from .common import _add_months, _iso, _weighted_median
 from .models import Flow, FlowKind, Sources
 from .profile import DEFAULT, Profile
 
@@ -250,7 +250,7 @@ def _fixed(src: Sources, today: date, horizon: date, flows: list, p: Profile = D
     return found, by_month, profile
 
 
-def _booked_opex(rows: list, columns: list) -> float:
+def _booked_opex(rows: list, columns: list, p: Profile = DEFAULT) -> float:
     """What this month has already booked on the running-cost accounts.
 
     A bill booked this month is in the payables or already paid out of the
@@ -258,7 +258,7 @@ def _booked_opex(rows: list, columns: list) -> float:
     remainder of the month is forecast. Net against net; the VAT goes on
     after."""
     booked = 0.0
-    for low, high in OPEX_RANGES:
+    for low, high in p.chart.opex:
         series = _monthly(rows, columns, low, high)
         if series:
             booked += series[-1][1]

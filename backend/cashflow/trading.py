@@ -151,7 +151,7 @@ def _month_vat(t: _Trading, m: _Month, flows: list, p: Profile = DEFAULT) -> Non
     contract_vat = m.contract / (1 + p.vat_rate) * p.vat_rate * keep
     net_vat = max(0.0, net_vat - contract_vat)
     vat_due = workdays.forward(
-        commitments.term_due(m.start.year, m.start.month, commitments.MVA_TERMS))
+        commitments.term_due(m.start.year, m.start.month, p.chart.vat_terms))
     if t.today <= vat_due < t.horizon and round(contract_vat) > 0:
         flows.append({"date": vat_due, "amount": -contract_vat,
                           "kind": FlowKind.VAT_RECURRING,

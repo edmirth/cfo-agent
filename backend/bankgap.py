@@ -36,13 +36,14 @@ import logging
 import re
 from datetime import date, timedelta
 
+import chart
 import workdays
 from mcp_client import mcp
-from preflight import _account, MONTHS
+from preflight import MONTHS, _account
 
 log = logging.getLogger("cfo.bankgap")
 
-BANK = (1900, 1949)          # the same range commitments calls bank_free
+BANK = chart.DEFAULT.bank[0]   # the same range commitments calls bank_free
 WINDOW_MONTHS = 12           # reconciliation periods read back from this month
 NAME_MIN = 3                 # a normalised name shorter than this matches nothing
 AMOUNT_TOLERANCE = 1.0       # kroner; an exact match is exact to the krone

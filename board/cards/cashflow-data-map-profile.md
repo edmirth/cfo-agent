@@ -55,18 +55,31 @@ Not in this card: the AI (71), the onboarding screen and test companies (72), ot
 Risks: touching `commitments.py` widens the card; step 4 moves numbers on purpose, Ullensaker's
 too (expected VAT out goes down once the input share is read properly); about card 69's size.
 
-## Open decisions (@edmir), needed before step 2
-1. The owner's answers in `company.md` (suggested) or a separate `profile_answers.json`?
-2. Must a person approve a new data map before it replaces the old one?
-3. One company per deployment for good, or several? Several means a company key in the
-   profile and the caches from the start.
-4. May card 70 extend into `commitments.py`, so VAT terms and account roles live in one place?
+## Decisions (@edmir, 2026-11-15)
+1. **The owner's answers go into the company's own `company.md`.** Read from it and written
+   back to it, as today.
+2. **The system runs the data map, not the user.** No approval step. The guardrails are
+   automatic: only entries the books confirm are applied; one they contradict, or that cannot
+   be checked, is not applied and the measured or default value stays. Every version is kept
+   with what changed and why, so it can be rolled back and every number traced, and the
+   briefing says when the map changed something. Built in card 71; card 70's format carries a
+   version and the check result per entry. Card 72's owner questions become optional
+   information, not a step the owner must take.
+3. **One deployment serves many companies, each logging in to its own.** That switch is
+   card 32 (tenant isolation): per-company login, Tripletex login, `company.md`, caches. Card 70
+   keys everything new by company from the start (the profile resolved for a company, the data
+   map stored per company, no new global cache), so card 32 only supplies which company a
+   request is for.
+4. **Card 70 may extend into `commitments.py`:** step 2 puts the VAT and AGA terms and the
+   account roles in one place both read.
 
 ## Done when
 - [x] `Resolved` and `profile.py`. Every former constant resolves through it (step 1; the
       account ranges become roles in step 2)
-- [ ] Data map schema defined. `sources.py` fetches by the map, and a missing map gives the NS 4102
-      defaults with snapshots unchanged
+- [x] Data map schema defined. `sources.py` fetches by the map, and a missing map gives the NS 4102
+      defaults with snapshots unchanged (step 2: `datamap.py`, `chart.py`; the tax and payroll
+      postings are fetched by role; the bank range stays locked until bankgap and bankcat take
+      the company's chart)
 - [ ] A hand-written data map for the demo company drives the forecast end to end, before any AI
       is involved
 - [ ] Measured: effective output VAT rate, uncapped input share, VAT term, pay frequency and day,
@@ -99,4 +112,26 @@ too (expected VAT out goes down once the input share is read properly); about ca
     the forecast's own values.
   - 610 passed (4 new for the profile); ruff and mypy clean; the demo
     snapshots and Ullensaker byte-identical.
+
+
+- 2026-11-15 (claude): step 2 on `cashflow-data-map-profile` (2a, 2b).
+  - `backend/chart.py`: the account roles and the VAT and AGA terms, the
+    standard chart as default; `for_company()` lays the data map's verified
+    roles over it. `backend/datamap.py`: schema 1, validation with a reason
+    per entry left out, loading per company from
+    `state/data_maps/<company id>.json`; only `verified` entries count.
+  - The forecast reads every range and term from `p.chart`; the commitments
+    build their groups and term deadlines from the company's chart and pass
+    it down. Old names (GROUPS, TERM_DUE, MVA_TERMS, SKATT_TERMS) remain as
+    the default chart's. bankgap's bank range comes from the chart default.
+  - Locked for now: the bank role, because bankgap and bankcat read it and
+    do not take the company's chart. For a later step or card 32.
+  - Fixed on the way: `term_due` read a term as its two named months, so a
+    yearly VAT term covered only January and December. Now a range; every
+    existing two-month term gives the same dates. Step 4c needs it.
+  - `_settled` used `p` for each posting (as `payroll_paid` did); renamed.
+  - Not per company yet, left for card 32: `sources._payroll_cache` is
+    keyed by day only.
+  - 618 passed (8 new); ruff and mypy clean; the demo snapshots and
+    Ullensaker unchanged.
 

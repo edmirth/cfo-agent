@@ -9,30 +9,6 @@ TERM_STEPS = (7, 10, 14, 20, 30, 45, 60, 90)
 MONTH_NAMES = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
                "august", "september", "oktober", "november", "desember"]
 
-# Every krone that leaves the account has to be in exactly one of these.
-# 4000-4999 and 5100-5999 were in none of them: varekjøp, underentreprise,
-# pensjon and yrkesskade simply did not exist in the forecast, about
-# 116 000 kr a month against a modelled opex of 156 000.
-#
-# And no krone that never leaves it. A cost booked against a balance sheet
-# account rather than the bank is a P&L figure, not a payment: counting it
-# took the depreciation on three cars — about 19 000 kr a month in Q1 —
-# out of the account every month as if it were a bill.
-OPEX_RANGES = [(4000, 4999),      # varekjøp og underentreprise
-               (5100, 5199),
-               (5300, 5399),      # annen opplysningspliktig godtgjørelse
-               (5402, 5999),      # pensjon, yrkesskade, personalkostnad
-               (6100, 7799),      # ordinære driftskostnader
-               (7900, 7999)]
-# The gaps in that list, each on purpose:
-# - 5200-5299 fordel i arbeidsforhold: a benefit in kind, taxed through
-#   payroll and booked against its own contra account. No money moves.
-# - 5400/5401 arbeidsgiveravgift: dated by commitments from its own
-#   balance; taking it here as well would pay it twice.
-# - 6000-6099 avskrivning og nedskrivning: the cost of an asset already
-#   paid for, spread over its life.
-# - 7800-7899 tap på fordringer og ved avgang: money that did not come in,
-#   or an asset written off. Neither is a payment.
 
 
 def _monday(d: date) -> date:
@@ -110,8 +86,6 @@ def _term_step(days: int) -> int:
 # earned; the bank sees net pay and the withheld tax, on the day. At the first
 # customer the accounts said about a fifth more per pay day than ever left the
 # bank, and a periodisation booked to 5000 one August month said more still.
-WAGE_ACCOUNTS = (5000, 5099)
-PAID_FROM = ((1900, 1949), (2600, 2609), (2910, 2939))   # bank, trekk, net pay
 
 
 # The month's net movement on 2770 and 2700-2739 is what this month booked
@@ -120,5 +94,3 @@ PAID_FROM = ((1900, 1949), (2600, 2609), (2910, 2939))   # bank, trekk, net pay
 # booked: a run journalised before its pay day was forecast again on top of
 # the balance commitments dates, and so was the VAT already invoiced. The
 # month's postings find those vouchers; the movement less them is the accrual.
-VAT_ACCRUED = (2700, 2739)
-AGA_ACCRUED = (2770, 2779)

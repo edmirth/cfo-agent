@@ -13,17 +13,13 @@ from preflight import _rows
 
 from . import texts
 from .common import (
-    AGA_ACCRUED,
     MONTH_NAMES,
-    PAID_FROM,
-    VAT_ACCRUED,
-    WAGE_ACCOUNTS,
     _add_months,
     _month_bounds,
 )
 from .ledger import _seasons
 from .models import Sources
-from .payroll import payroll_paid
+from .payroll import _paid_from, payroll_paid
 from .profile import DEFAULT, Profile
 
 log = logging.getLogger("cfo.cashflow")
@@ -221,10 +217,13 @@ async def _postings_in(low: int, high: int, start: date, end: date) -> list[dict
     raise RuntimeError(f"mer enn {PAYROLL_PAGES * 100} posteringer på {low}–{high}")
 
 
-async def _tax_postings(today: date) -> list[dict]:
-    """This month's postings on the VAT and AGA accounts, settlement included."""
+async def _tax_postings(today: date, p: Profile = DEFAULT) -> list[dict]:
+    """This month's postings on the VAT and AGA accounts, settlement included:
+    one search across them, from the lowest of those accounts to the highest."""
+    c = p.chart
+    spans = c.vat_running + c.vat_settlement + c.output_vat + c.input_vat + c.aga
     start = date(today.year, today.month, 1)
-    return await _postings_in(VAT_ACCRUED[0], AGA_ACCRUED[1], start,
+    return await _postings_in(min(lo for lo, _ in spans), max(hi for _, hi in spans), start,
                               date(*_add_months(today.year, today.month, 1), 1))
 
 
@@ -242,7 +241,7 @@ async def _payroll_measured(today: date, p: Profile = DEFAULT) -> dict | None:
         return _payroll_cache[key]
     start = date(*_add_months(today.year, today.month, -p.payroll_months), 1)
     end = date(today.year, today.month, 1)
-    ranges = [WAGE_ACCOUNTS, *PAID_FROM]
+    ranges = [*p.chart.wages, *_paid_from(p.chart)]
     try:
         parts = await asyncio.gather(*(_postings_in(lo, hi, start, end) for lo, hi in ranges))
     except Exception as exc:  # noqa: BLE001 — the accounts are the fallback
@@ -281,7 +280,7 @@ async def _read(today: date, p: Profile = DEFAULT) -> Sources:
         _prior(),
         payment_habits.payments(mcp, today),
         _payroll_measured(today, p=p),
-        _tax_postings(today),
+        _tax_postings(today, p=p),
         return_exceptions=True,
     )
     if isinstance(balance, BaseException):

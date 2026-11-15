@@ -64,15 +64,15 @@ async def build(today: date | None = None) -> dict:
                       flows, p=p)
     _ap_residual(src, today, flows, warnings, p=p)
     flows += _statutory(src.com, today)
-    vat_settled, aga_paid = _settled(src.tax_posts)
+    vat_settled, aga_paid = _settled(src.tax_posts, p=p)
     pay = _payroll(src, rates, today, horizon, aga_paid, flows, warnings, p=p)
 
     credit_days, credit_source = _credit_days(src.ar_open)
     vat_share, vat_measured = _vat_input_share(rows, p=p)
-    booked_vat = _booked_vat(rows, columns, vat_settled)
+    booked_vat = _booked_vat(rows, columns, vat_settled, p=p)
     invoiced_this_month = _invoiced_this_month(src, today)
     opex_vat = rates["revenue"] * p.vat_rate * vat_share
-    booked_opex = _booked_opex(rows, columns)
+    booked_opex = _booked_opex(rows, columns, p=p)
     bank_costs = _bank_costs_or_say(bank_categories, warnings, p=p)
     trade = _Trading(
         today=today, horizon=horizon, rates=rates, season=season,

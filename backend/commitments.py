@@ -28,15 +28,17 @@ Two things it is careful about:
 import asyncio
 import calendar
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 import bankgap
+import chart
 import company
 import freshness
+import saldobalanse
 import workdays
 from mcp_client import mcp
-import saldobalanse
 
 log = logging.getLogger("cfo.commitments")
 
@@ -51,13 +53,14 @@ SOON_DAYS = 90
 # Norwegian settlement calendar. Both are two-month terms, on different days:
 # VAT on the 10th of the month after the term, withholding tax and employer's
 # contribution on the 15th. The third VAT term is the summer exception.
-MVA_TERMS = [((1, 2), (4, 10)), ((3, 4), (6, 10)), ((5, 6), (8, 31)),
-             ((7, 8), (10, 10)), ((9, 10), (12, 10)), ((11, 12), (2, 10))]
-SKATT_TERMS = [((1, 2), (3, 15)), ((3, 4), (5, 15)), ((5, 6), (7, 15)),
-               ((7, 8), (9, 15)), ((9, 10), (11, 15)), ((11, 12), (1, 15))]
+# The terms and the account roles are the chart's (chart.py), which the
+# forecast reads too, so the two cannot disagree. The company's own chart
+# replaces these defaults in card 70, step 2b.
+MVA_TERMS = chart.DEFAULT.vat_terms
+SKATT_TERMS = chart.DEFAULT.aga_terms
 
 
-def term_due(year: int, month: int, terms: list) -> date:
+def term_due(year: int, month: int, terms: Sequence) -> date:
     """When the term containing `month` falls due.
 
     `_next_due` answers "what is the next deadline from here", which is the
@@ -66,16 +69,17 @@ def term_due(year: int, month: int, terms: list) -> date:
     not due at the next deadline, it is due at November's own. Public because
     the forecast needs it to date liabilities it is creating itself.
     """
-    for months, (due_month, due_day) in terms:
-        if month in months:
-            # A term settled in a lower month number than it covers settles in
-            # the new year — November/December VAT falls due in February.
-            roll = due_month < months[0]
+    for (first, last), (due_month, due_day) in terms:
+        if first <= month <= last:
+            # A term settled in a month no later than its own last month
+            # settles in the new year: November/December VAT falls due in
+            # February, and a yearly term (January-December) the March after.
+            roll = due_month <= last
             return date(year + 1 if roll else year, due_month, due_day)
     raise ValueError(f"no term covers month {month}")
 
 
-def _next_due(today: date, terms: list) -> date:
+def _next_due(today: date, terms: Sequence) -> date:
     """The first settlement on or after today, by the day it is actually due.
 
     A deadline on a weekend or holiday is due the next working day, so it is
@@ -178,7 +182,7 @@ def _next_payroll(today: date) -> date:
     return run
 
 
-def _running_due(today: date, terms: list) -> date:
+def _running_due(today: date, terms: Sequence) -> date:
     """The deadline of the term today falls in — where a term is still accumulating.
 
     Not "the settlement after next". That is the same date only while the
@@ -222,39 +226,44 @@ class Group:
     due: object           # callable(today) -> date
 
 
-GROUPS = [
-    Group("mva_oppgjor", "Merverdiavgift, avsluttet termin", "moms fra en "
-          "avsluttet periode som skal betales ved neste forfall",
-          ((2740, 2749),), "holding", lambda d: _next_due(d, MVA_TERMS)),
-    Group("mva_lopende", "Merverdiavgift, inneværende termin", "moms du har "
-          "krevd inn så langt i denne perioden og betaler ved neste forfall "
-          "etter det", ((2700, 2739),), "holding",
-          lambda d: _running_due(d, MVA_TERMS)),
-    Group("forskuddstrekk", "Forskudds- og utleggstrekk", "skatt og trekk du "
-          "har holdt tilbake fra lønnen til de ansatte og skal betale videre",
-          ((2600, 2619),), "holding", lambda d: _next_due(d, SKATT_TERMS)),
-    Group("aga", "Arbeidsgiveravgift", "avgiften du betaler staten på toppen "
-          "av lønnen", ((2770, 2779),), "holding",
-          lambda d: _next_due(d, SKATT_TERMS)),
-    Group("aga_ferie", "Arbeidsgiveravgift på feriepenger", "avgiften på "
-          "feriepengene, som forfaller sammen med dem", ((2780, 2789),),
-          "holding", _next_ferie),
-    Group("feriepenger", "Skyldig feriepenger", "feriepenger de ansatte har "
-          "tjent opp og får utbetalt til sommeren", ((2940, 2944),), "holding",
-          _next_ferie),
-    Group("skyldig_lonn", "Skyldig og periodisert lønn", "lønn for arbeid som "
-          "allerede er utført, men ikke utbetalt", ((2945, 2949),), "bill",
-          _next_payroll),
-    Group("betalbar_skatt", "Betalbar skatt", "selskapsskatt som er fastsatt "
-          "og skal betales", ((2500, 2540),), "holding", _tax_due),
-    Group("leverandorgjeld", "Leverandørgjeld", "regninger fra leverandører "
-          "som ikke er betalt", ((2400, 2409),), "bill", lambda d: d),
-    Group("ansatte_eiere", "Gjeld til ansatte og eiere", "penger selskapet "
-          "skylder deg eller de ansatte", ((2250, 2259), (2910, 2919)), "bill",
-          lambda d: d),
-    Group("annen_gjeld", "Annen kortsiktig gjeld", "andre regninger som "
-          "forfaller snart", ((2990, 2999),), "bill", lambda d: d),
-]
+def _groups(c: chart.Chart) -> list[Group]:
+    """The obligations on the company's chart: its accounts, its terms."""
+    return [
+        Group("mva_oppgjor", "Merverdiavgift, avsluttet termin", "moms fra en "
+              "avsluttet periode som skal betales ved neste forfall",
+              c.vat_settlement, "holding", lambda d: _next_due(d, c.vat_terms)),
+        Group("mva_lopende", "Merverdiavgift, inneværende termin", "moms du har "
+              "krevd inn så langt i denne perioden og betaler ved neste forfall "
+              "etter det", c.vat_running, "holding",
+              lambda d: _running_due(d, c.vat_terms)),
+        Group("forskuddstrekk", "Forskudds- og utleggstrekk", "skatt og trekk du "
+              "har holdt tilbake fra lønnen til de ansatte og skal betale videre",
+              c.withholding, "holding", lambda d: _next_due(d, c.aga_terms)),
+        Group("aga", "Arbeidsgiveravgift", "avgiften du betaler staten på toppen "
+              "av lønnen", c.aga, "holding",
+              lambda d: _next_due(d, c.aga_terms)),
+        Group("aga_ferie", "Arbeidsgiveravgift på feriepenger", "avgiften på "
+              "feriepengene, som forfaller sammen med dem", c.aga_holiday,
+              "holding", _next_ferie),
+        Group("feriepenger", "Skyldig feriepenger", "feriepenger de ansatte har "
+              "tjent opp og får utbetalt til sommeren", c.holiday_pay, "holding",
+              _next_ferie),
+        Group("skyldig_lonn", "Skyldig og periodisert lønn", "lønn for arbeid som "
+              "allerede er utført, men ikke utbetalt", c.accrued_wages, "bill",
+              _next_payroll),
+        Group("betalbar_skatt", "Betalbar skatt", "selskapsskatt som er fastsatt "
+              "og skal betales", c.corporate_tax, "holding", _tax_due),
+        Group("leverandorgjeld", "Leverandørgjeld", "regninger fra leverandører "
+              "som ikke er betalt", c.payables, "bill", lambda d: d),
+        Group("ansatte_eiere", "Gjeld til ansatte og eiere", "penger selskapet "
+              "skylder deg eller de ansatte", c.owners_staff, "bill",
+              lambda d: d),
+        Group("annen_gjeld", "Annen kortsiktig gjeld", "andre regninger som "
+              "forfaller snart", c.other_debt, "bill", lambda d: d),
+    ]
+
+
+GROUPS = _groups(chart.DEFAULT)
 
 # Deliberately excluded: 2120 utsatt skatt is an accounting figure, not money
 # anyone will ask for. Instalment debt is reported apart, because the whole
@@ -286,11 +295,11 @@ def _shift(group_id: str, due: date) -> date:
     return due
 
 
-MVA_RUNNING = ((2700, 2739),)
 
 
 def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
-               today: date, paid: bool = False, paid_before: date | None = None) -> None:
+               today: date, paid: bool = False, paid_before: date | None = None,
+               c: chart.Chart = chart.DEFAULT) -> None:
     """Date a completed VAT term to its own deadline, not the next one.
 
     2700/2710 hold the term being accrued. They also hold the *previous* term
@@ -309,11 +318,11 @@ def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
     this term's VAT was relabelled as the paid one and dated to its deadline.
     """
     running = next((i for i in items if i["id"] == "mva_lopende"), None)
-    term = _completed_term(today, paid_before)
+    term = _completed_term(today, paid_before, c=c)
     if running is None or term is None or paid:
         return
     month, due = term
-    at_end = _term_end_balance(rows, columns, month, today)
+    at_end = _term_end_balance(rows, columns, month, today, c=c)
     if at_end is None:
         return
     completed = round(-at_end, 2)
@@ -354,7 +363,8 @@ def _term_end(month: int, due: date) -> date:
 
 
 async def _paid_early(rows: list[dict], columns: list[str], today: date,
-                      paid_before: date | None = None) -> bool:
+                      paid_before: date | None = None,
+                      c: chart.Chart = chart.DEFAULT) -> bool:
     """Has the completed term already been paid, ahead of its deadline?
 
     Only the postings can tell. A payment booked straight against 2700 leaves
@@ -367,11 +377,11 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date,
     is a completed term to split at all. A failed call answers "not paid":
     the money then shows on the earlier date, the safe direction to be wrong.
     """
-    term = _completed_term(today, paid_before)
+    term = _completed_term(today, paid_before, c=c)
     if term is None:
         return False
     month, due = term
-    at_end = _term_end_balance(rows, columns, month, today)
+    at_end = _term_end_balance(rows, columns, month, today, c=c)
     if at_end is None or -at_end < 0.5:
         return False
     owed = -at_end
@@ -385,8 +395,8 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date,
                 "dateFrom": start.isoformat(),
                 # dateTo is exclusive; today's postings count.
                 "dateTo": (today + timedelta(days=1)).isoformat(),
-                "accountNumberFrom": MVA_RUNNING[0][0],
-                "accountNumberTo": MVA_RUNNING[0][1],
+                "accountNumberFrom": c.vat_running[0][0],
+                "accountNumberTo": c.vat_running[0][1],
                 "count": POSTING_PAGE, "from": page * POSTING_PAGE})
             postings += result.get("postings") or []
             if not result.get("hasMore"):
@@ -406,13 +416,13 @@ async def _paid_early(rows: list[dict], columns: list[str], today: date,
     return any(abs(net - owed) <= PAID_TOLERANCE for net in by_voucher.values())
 
 
-def _vat_transfer_due(d: date) -> date:
+def _vat_transfer_due(d: date, c: chart.Chart = chart.DEFAULT) -> date:
     """The deadline of the VAT term a transfer to the settlement account is
     for: the latest term that had ended by the day it was booked. Jul-Aug is
     moved to 2740 on 31 August or with the return in early October, and either
     way it is owed on 10 October."""
     best = None
-    for (m1, m2), (dm, dd) in MVA_TERMS:
+    for (m1, m2), (dm, dd) in c.vat_terms:
         for year in (d.year - 1, d.year):
             end_year = year + (1 if m2 < m1 else 0)
             end = date(end_year, m2, calendar.monthrange(end_year, m2)[1])
@@ -474,13 +484,18 @@ def _open_tax(opening: float, postings: list[dict], year: int) -> list[tuple[dat
     return [(d, a) for d, a in owed if a > 0.5]
 
 
-TERM_DUE = {
-    "mva_oppgjor": _vat_transfer_due,
-    "aga": lambda d: term_due(d.year, d.month, SKATT_TERMS),
-    "forskuddstrekk": _trekk_due,
-    # Already the instalment date: `_open_tax` splits the tax by instalment.
-    "betalbar_skatt": lambda d: d,
-}
+def _term_due(c: chart.Chart) -> dict:
+    """For each obligation dated by its term, the deadline of a booking."""
+    return {
+        "mva_oppgjor": lambda d: _vat_transfer_due(d, c),
+        "aga": lambda d: term_due(d.year, d.month, c.aga_terms),
+        "forskuddstrekk": _trekk_due,
+        # Already the instalment date: `_open_tax` splits the tax by instalment.
+        "betalbar_skatt": lambda d: d,
+    }
+
+
+TERM_DUE = _term_due(chart.DEFAULT)
 
 
 async def _postings(ranges, start: date, end: date) -> list[dict] | None:
@@ -530,7 +545,8 @@ def _open_amounts(opening: float, postings: list[dict], year: int) -> list[tuple
 
 
 async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
-                        today: date, paid_before: date | None = None) -> tuple[list[dict], float] | None:
+                        today: date, paid_before: date | None = None,
+                        c: chart.Chart = chart.DEFAULT) -> tuple[list[dict], float] | None:
     """`item` split by the deadline each part belongs to, and how much of it
     is past its deadline and so counted as paid. None when the postings do not
     explain the balance, and the item stays as it was.
@@ -538,7 +554,7 @@ async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
     A statutory amount past its deadline has been paid: the company pays its
     VAT and its payroll taxes on time, and a balance that still shows it is a
     payment not yet booked. Leaving it in paid it twice."""
-    group = next(g for g in GROUPS if g.id == item["id"])
+    group = next(g for g in _groups(c) if g.id == item["id"])
     opening_idx = columns.index(OPENING) if OPENING in columns else None
     opening = 0.0
     if opening_idx is not None:
@@ -559,7 +575,7 @@ async def _date_by_term(item: dict, rows: list[dict], columns: list[str],
         return None
     by_due: dict[date, float] = {}
     for booked, amount in parts:
-        due = _shift(item["id"], TERM_DUE[item["id"]](booked))
+        due = _shift(item["id"], _term_due(c)[item["id"]](booked))
         by_due[due] = by_due.get(due, 0.0) + amount
     out, paid = [], 0.0
     for due in sorted(by_due):
@@ -578,9 +594,6 @@ def _assumed_due() -> set[str]:
         return ASSUMED_DUE
     return ASSUMED_DUE | {"skyldig_lonn"}
 
-LOANS = (2200, 2249)
-BANK = (1900, 1949)
-RESTRICTED = (1950, 1959)   # bundet skattetrekkskonto
 
 
 def _account(row: dict) -> int | None:
@@ -623,7 +636,7 @@ OPENING = "Inngående balanse"
 
 
 def _term_end_balance(rows: list[dict], columns: list[str], month: int,
-                      today: date) -> float | None:
+                      today: date, c: chart.Chart = chart.DEFAULT) -> float | None:
     """The VAT accounts' balance at the end of a completed term's last month.
 
     The report covers this year only. A term that ended last year — November
@@ -638,14 +651,14 @@ def _term_end_balance(rows: list[dict], columns: list[str], month: int,
         total, found = 0.0, False
         for r in rows:
             n = _account(r)
-            if n is None or not any(lo <= n <= hi for lo, hi in MVA_RUNNING):
+            if n is None or not any(lo <= n <= hi for lo, hi in c.vat_running):
                 continue
             cells = r.get("cells") or []
             if idx < len(cells) and isinstance(cells[idx], (int, float)):
                 total += float(cells[idx])
                 found = True
         return total if found else None
-    return _at_month(rows, MVA_RUNNING, columns, month)
+    return _at_month(rows, c.vat_running, columns, month)
 
 
 def paid_by(today: date, gap: dict | None) -> date:
@@ -666,7 +679,8 @@ def paid_by(today: date, gap: dict | None) -> date:
         return today
 
 
-def _completed_term(today: date, paid_before: date | None = None) -> tuple[int, date] | None:
+def _completed_term(today: date, paid_before: date | None = None,
+                    c: chart.Chart = chart.DEFAULT) -> tuple[int, date] | None:
     """The most recent VAT term that has ended, and when it falls due.
 
     Terms run two months and settle on the 10th of the month after — Jul-Aug on
@@ -677,7 +691,7 @@ def _completed_term(today: date, paid_before: date | None = None) -> tuple[int, 
     and the month-end balance that still shows it is history: reading it as
     owed would date this term's VAT to a deadline already gone."""
     best = None
-    for (m1, m2), (dm, dd) in MVA_TERMS:
+    for (m1, m2), (dm, dd) in c.vat_terms:
         for year in (today.year - 1, today.year):
             end = date(year + (1 if m2 < m1 else 0), m2,
                        calendar.monthrange(year + (1 if m2 < m1 else 0), m2)[1])
@@ -721,6 +735,7 @@ def _kr(value) -> str:
 
 async def build(today: date | None = None) -> dict:
     today = today or date.today()
+    c = chart.for_company()
     start, end = f"{today.year}-01-01", today.isoformat()
 
     balance, pnl = await asyncio.gather(
@@ -743,8 +758,8 @@ async def build(today: date | None = None) -> dict:
     # Liabilities are credit balances, so what is owed is the balance negated.
     # A liability sitting in debit is a posting problem, not a negative
     # obligation: counting it would hand the owner cash he does not have.
-    bank_free, bank_accounts = _sum_range(rows, (BANK,))
-    restricted, _ = _sum_range(rows, (RESTRICTED,))
+    bank_free, bank_accounts = _sum_range(rows, c.bank)
+    restricted, _ = _sum_range(rows, c.restricted)
 
     # The money in the bank, not the booked balance: the feed runs days ahead
     # of the bookkeeping, and "how much of this is mine" asked of a figure
@@ -755,11 +770,11 @@ async def build(today: date | None = None) -> dict:
     if gap:
         bank_free = bank_booked + gap["adjustment"]
     paid_before = paid_by(today, gap)
-    loans_balance, loan_accounts = _sum_range(rows, (LOANS,))
+    loans_balance, loan_accounts = _sum_range(rows, c.loans)
 
     items, anomalies = [], []
     assumed = _assumed_due()
-    for g in GROUPS:
+    for g in _groups(c):
         raw, accounts = _sum_range(rows, g.ranges)
         owed = -raw
         if not accounts:
@@ -782,8 +797,8 @@ async def build(today: date | None = None) -> dict:
                       "assumed_due": g.id in assumed})
 
     paid = (any(i["id"] == "mva_lopende" for i in items)
-            and await _paid_early(rows, columns, today, paid_before))
-    _split_vat(items, rows, columns, today, paid=paid, paid_before=paid_before)
+            and await _paid_early(rows, columns, today, paid_before, c=c))
+    _split_vat(items, rows, columns, today, paid=paid, paid_before=paid_before, c=c)
 
     # Until 2026 withheld employee tax sat on a restricted account (1950) and
     # was settled on a bimonthly term, so the balance there had to be netted off
@@ -797,8 +812,8 @@ async def build(today: date | None = None) -> dict:
     # rather than to a settlement that no longer exists.
     covered = 0.0
     assumed_paid = []
-    for item in [i for i in items if i["id"] in TERM_DUE]:
-        dated = await _date_by_term(item, rows, columns, today, paid_before)
+    for item in [i for i in items if i["id"] in _term_due(c)]:
+        dated = await _date_by_term(item, rows, columns, today, paid_before, c=c)
         if dated is None:
             continue
         parts, gone = dated
@@ -902,8 +917,8 @@ def _bank_note(data: dict) -> str:
     gap = data.get("bank_gap")
     booked = data.get("bank_booked", data.get("bank"))
     if gap is None:
-        return (f" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
-                f"leses, så om banken står høyere eller lavere er ukjent.")
+        return (" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
+                "leses, så om banken står høyere eller lavere er ukjent.")
     if abs(gap["adjustment"]) < 1:
         return ""
     note = (f" i banken (bokført {_kr(booked)} kr; banken har {gap['lines']} "

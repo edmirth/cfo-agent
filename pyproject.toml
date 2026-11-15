@@ -15,7 +15,7 @@ known-local-folder = ["cashflow"]
 [tool.mypy]
 python_version = "3.13"
 mypy_path = "backend"
-files = ["backend/cashflow"]
+files = ["backend/cashflow", "backend/chart.py", "backend/datamap.py"]
 # The rest of the backend is read for its types but not reported on yet.
 follow_imports = "silent"
 check_untyped_defs = true

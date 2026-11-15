@@ -1,7 +1,9 @@
 """VAT and employer's contribution read off the ledger."""
 from datetime import date
 
-from .common import AGA_ACCRUED, VAT_ACCRUED, _iso
+from chart import within
+
+from .common import _iso
 from .ledger import _accrued_this_month, _closing_range
 from .models import Flow, FlowKind
 from .profile import DEFAULT, Profile
@@ -19,48 +21,46 @@ def _vat_input_share(rows: list, p: Profile = DEFAULT) -> tuple[float, bool]:
     Returns the share and whether it could be measured. Unmeasured means the
     whole output VAT is scheduled out, which is the safe direction to be wrong.
     """
-    out = abs(_closing_range(rows, 2700, 2709))
-    inn = abs(_closing_range(rows, 2710, 2719))
+    out = abs(_closing_range(rows, p.chart.output_vat))
+    inn = abs(_closing_range(rows, p.chart.input_vat))
     if out < p.vat_ratio_min:
         return 0.0, False
     # Capped: a deduction above half would mean the company buys nearly as much
     # as it sells, which for a cleaning company means a posting error, not a
     # bargain, and a too-large deduction understates the payment.
     return min(inn / out, p.vat_input_cap), True
-VAT_SETTLEMENT = (2740, 2749)
-VAT_OUTPUT, VAT_INPUT = (2700, 2709), (2710, 2719)
 
 
-def _settled(postings: list[dict]) -> tuple[float, float]:
+def _settled(postings: list[dict], p: Profile = DEFAULT) -> tuple[float, float]:
     """(VAT, AGA): what this month's settlements and payments moved on the
     accrual accounts, a debit positive, to take off the month's movement.
 
-    A VAT settlement is a voucher that reaches 2740, or one that clears output
-    against input VAT itself: a debit on 2700-2709 with a credit on 2710-2719.
-    An AGA payment is a voucher whose net on 2770-2779 is a debit; the payroll
+    A VAT settlement is a voucher that reaches the settlement account (2740),
+    or one that clears output against input VAT itself: a debit on output VAT
+    with a credit on input VAT. An AGA payment is a voucher whose net on the
+    AGA account (2770) is a debit; the payroll
     voucher credits it, and a reversal of one is netted inside its own voucher.
     """
-    def acct(p):
+    c = p.chart
+
+    def acct(post):
         try:
-            return int(str(p.get("accountNumber"))[:4])
+            return int(str(post.get("accountNumber"))[:4])
         except (TypeError, ValueError):
             return None
 
-    def within(n, rng):
-        return n is not None and rng[0] <= n <= rng[1]
-
     vouchers: dict = {}
-    for i, p in enumerate(postings):
-        vouchers.setdefault(p.get("voucherId", ("loose", i)), []).append(
-            (acct(p), float(p.get("amount") or 0)))
+    for i, post in enumerate(postings):
+        vouchers.setdefault(post.get("voucherId", ("loose", i)), []).append(
+            (acct(post), float(post.get("amount") or 0)))
     vat = aga = 0.0
     for lines in vouchers.values():
-        settles = (any(within(n, VAT_SETTLEMENT) for n, _ in lines)
-                   or (any(within(n, VAT_OUTPUT) and a > 0 for n, a in lines)
-                       and any(within(n, VAT_INPUT) and a < 0 for n, a in lines)))
+        settles = (any(within(n, c.vat_settlement) for n, _ in lines)
+                   or (any(within(n, c.output_vat) and a > 0 for n, a in lines)
+                       and any(within(n, c.input_vat) and a < 0 for n, a in lines)))
         if settles:
-            vat += sum(a for n, a in lines if within(n, VAT_ACCRUED))
-        on_aga = sum(a for n, a in lines if within(n, AGA_ACCRUED))
+            vat += sum(a for n, a in lines if within(n, c.vat_running))
+        on_aga = sum(a for n, a in lines if within(n, c.aga))
         if on_aga > 0:
             aga += on_aga
     return vat, aga
@@ -108,7 +108,7 @@ def _statutory(com: dict, today: date) -> list[Flow]:
     return flows
 
 
-def _booked_vat(rows: list, columns: list, settled: float) -> float:
+def _booked_vat(rows: list, columns: list, settled: float, p: Profile = DEFAULT) -> float:
     """The VAT this month has already accrued on 2700-2739.
 
     commitments dates the whole balance to the running term's deadline, and
@@ -116,4 +116,4 @@ def _booked_vat(rows: list, columns: list, settled: float) -> float:
     date — so what is already booked is netted off, or it is paid twice. A
     liability is a credit balance, so an accrual is a negative movement, and
     a settlement this month comes off the movement first (card 68)."""
-    return _accrued_this_month(rows, columns, VAT_ACCRUED, settled)
+    return _accrued_this_month(rows, columns, p.chart.vat_running, settled)

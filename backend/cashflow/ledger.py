@@ -3,10 +3,10 @@ import statistics
 from dataclasses import dataclass
 
 import saldobalanse
+from chart import Ranges, within
 from preflight import _account, _monthly
 
 from . import texts
-from .common import OPEX_RANGES
 from .profile import DEFAULT, Profile
 
 
@@ -45,8 +45,8 @@ def _seasons(history: tuple | None, p: Profile = DEFAULT) -> dict:
     and the forecast then stays flat, and says so.
     """
     out: dict = {}
-    for key, (ranges, flip) in (("revenue", ([(3000, 3999)], -1)),
-                                ("opex", (OPEX_RANGES, 1))):
+    for key, (ranges, flip) in (("revenue", (p.chart.revenue, -1)),
+                                ("opex", (p.chart.opex, 1))):
         by = {}
         if history:
             for m, v in _merged(history[0], history[1], ranges):
@@ -93,19 +93,19 @@ def _run_rates(rows: list, columns: list,
     """
     ledger = _Ledger(rows, columns, prior, season, history)
     notes: list[str] = []
-    rates = {"revenue": _rate(ledger, [(3000, 3999)], -1, "Omsetning", notes, "revenue", p=p),
+    rates = {"revenue": _rate(ledger, p.chart.revenue, -1, "Omsetning", notes, "revenue", p=p),
              # The full wage cost, accrual and all — what the P&L carries.
-             "wages": _rate(ledger, [(5000, 5099)], 1, "Lønn", notes, p=p),
+             "wages": _rate(ledger, p.chart.wages, 1, "Lønn", notes, p=p),
              # What actually leaves on pay day. Feriepenger (5020) is excluded:
              # it accrues monthly but is paid next summer, and commitments
              # already dates it there, so counting it here pays it twice.
-             "wages_cash": _rate(ledger, [(5000, 5019), (5030, 5099)], 1,
+             "wages_cash": _rate(ledger, p.chart.wages_cash, 1,
                                  "Lønn som går ut på lønningsdagen", notes, p=p),
              # Not part of opex, and not double counted: commitments dates the
              # 2770 balance for payrolls already reported, this rates the ones
              # still to come. 5401 stays out, being the feriepenger's own.
-             "aga": _rate(ledger, [(5400, 5400)], 1, "Arbeidsgiveravgift", notes, p=p),
-             "opex": _rate(ledger, OPEX_RANGES, 1, "Driftskostnader", notes, "opex", p=p)}
+             "aga": _rate(ledger, p.chart.aga_cost, 1, "Arbeidsgiveravgift", notes, p=p),
+             "opex": _rate(ledger, p.chart.opex, 1, "Driftskostnader", notes, "opex", p=p)}
     return rates, notes
 
 
@@ -192,21 +192,21 @@ def _say_outliers(series: list, mid: float, average: float, name: str,
         notes.append(" ".join([said] + why))
 
 
-def _accrued_this_month(rows: list, columns: list, accounts: tuple[int, int],
+def _accrued_this_month(rows: list, columns: list, accounts: Ranges,
                         paid: float = 0.0) -> float:
     """What this month has put on a liability range: its movement this month,
     less any payment or settlement made in it (card 68), negated, since a
     liability is a credit balance and an accrual a negative movement."""
-    series = _monthly(rows, columns, *accounts)
+    series = _merged(rows, columns, accounts)
     return max(0.0, -(series[-1][1] - paid)) if series else 0.0
 
 
-def _closing_range(rows: list, low: int, high: int) -> float:
-    """Closing balance across an account range, from the last numeric cell."""
+def _closing_range(rows: list, ranges: Ranges) -> float:
+    """Closing balance across a role's accounts, from the last numeric cell."""
     total = 0.0
     for r in rows:
         n = _account(r)
-        if n is None or not (low <= n <= high):
+        if not within(n, ranges):
             continue
         cells = [c for c in (r.get("cells") or []) if isinstance(c, (int, float))]
         if cells:
@@ -214,13 +214,13 @@ def _closing_range(rows: list, low: int, high: int) -> float:
     return total
 
 
-def _closing_or_none(rows: list, low: int, high: int) -> float | None:
+def _closing_or_none(rows: list, ranges: Ranges) -> float | None:
     """`_closing_range`, but None when the range is not in the ledger at all.
 
     The distinction decides whether a reconciliation runs. A company that
     keeps no 2400 is not a company that owes nothing, and a warning built on
     an invented zero sends someone looking for a gap that is not there.
     """
-    if not any((n := _account(r)) is not None and low <= n <= high for r in rows):
+    if not any(within(_account(r), ranges) for r in rows):
         return None
-    return _closing_range(rows, low, high)
+    return _closing_range(rows, ranges)
