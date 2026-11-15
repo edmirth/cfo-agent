@@ -6,16 +6,16 @@ from datetime import date
 
 from mcp_client import mcp
 
-from .common import AGA_ACCRUED, MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, VAT_ACCRUED, WAGE_ACCOUNTS, _add_months, _kr, _month_bounds
+from .common import AGA_ACCRUED, MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, VAT_ACCRUED, WAGE_ACCOUNTS, _add_months, _month_bounds
 from .payroll import payroll_paid
 import bankcat
 import commitments
 import payment_habits
 import saldobalanse
 from preflight import _rows
-from .common import PAY_LAG_DAYS
 from .ledger import _seasons
 from .models import Sources
+from . import texts
 
 log = logging.getLogger("cfo.cashflow")
 
@@ -118,8 +118,7 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
         start, _ = _month_bounds(today, back)
         when = f"{MONTH_NAMES[start.month - 1]} {start.year}"
         if isinstance(r, Exception):
-            warnings.append(f"{what} for {when} kunne ikke hentes ({r}). "
-                            f"Tallene under er ufullstendige.")
+            warnings.append(texts.month_unread(what, when, r))
             continue
         if not _month_notes(r, what, when, back, issued, warnings):
             complete = False
@@ -152,8 +151,7 @@ def _month_notes(r: dict, what: str, when: str, back: int, issued: dict | None,
     if r.get("complete") is False:
         whole = False
         note = r.get("degradedNote") or "en av registrene svarte ikke"
-        warnings.append(f"{what} for {when} ble bare delvis lest "
-                        f"({note}). Tallene under er ufullstendige.")
+        warnings.append(texts.month_partial(what, when, note))
     rows = r.get("rows") or []
     if back == 0 and issued is not None:
         # In kroner: `amount` is the base currency, 0 for an invoice in
@@ -164,8 +162,7 @@ def _month_notes(r: dict, what: str, when: str, back: int, issued: dict | None,
             float(row.get("amount") or row.get("amountCurrency") or 0)
             for row in rows)
     if r.get("truncated"):
-        warnings.append(f"Det er minst {len(rows)} {what.lower()} i {when}; "
-                        f"lista kan være avkortet.")
+        warnings.append(texts.month_cut_off(what, when, len(rows)))
         if issued is not None:
             issued["truncated"] = True
     return whole
@@ -190,10 +187,7 @@ def _open_row(row: dict, key, outstanding_key: str, name_key: str, in_kroner: bo
     currency = (row.get("currency") or "NOK").upper()
     if currency != "NOK" and not in_kroner:
         warnings.append(
-            f"{row.get(name_key) or 'En faktura'} står i {currency}, "
-            f"ikke kroner ({_kr(float(amount))} {currency}). Beløpet "
-            f"er lagt inn som om det var kroner, så prognosen er feil "
-            f"på denne posten med hele valutakursen.")
+            texts.foreign_currency(row.get(name_key), currency, amount))
     return {"id": key, "name": row.get(name_key) or "",
             "due": row["dueDate"], "invoiced": row.get("invoiceDate"),
             "amount": float(amount),
@@ -287,9 +281,9 @@ async def _read(today: date) -> Sources:
         raise RuntimeError(f"Kunne ikke lese saldobalansen: {balance}")
     if isinstance(com, Exception):
         raise RuntimeError(f"Kunne ikke lese forpliktelsene: {com}")
-    ar_open, ar_warn, ar_complete = ([], ["Kundefakturaer kunne ikke hentes."], False) \
+    ar_open, ar_warn, ar_complete = ([], [texts.register_unread("Kundefakturaer")], False) \
         if isinstance(ar, Exception) else ar
-    ap_open, ap_warn, ap_complete = ([], ["Leverandørfakturaer kunne ikke hentes."], False) \
+    ap_open, ap_warn, ap_complete = ([], [texts.register_unread("Leverandørfakturaer")], False) \
         if isinstance(ap, Exception) else ap
     # Without this month's tax postings nothing is taken off the movement on
     # 2770 and 2700-2739, as before card 68.
@@ -323,15 +317,11 @@ def _last_year(src: Sources, today: date, warnings: list[str]):
                             [c.get("name") for c in prior["table"].get("columns", [])],
                             last_year, keep)
             warnings.append(
-                f"Det er for tidlig på året til å regne løpende tall på "
-                f"{today.year} alene, så de siste {keep} månedene av "
-                f"{last_year} er tatt med i snittet.")
+                texts.early_in_year(keep, last_year, today.year))
         else:
             log.warning("Cashflow: fjorårets saldobalanse feilet: %s", prior)
             warnings.append(
-                f"Saldobalansen for {last_year} kunne ikke hentes, så de "
-                f"løpende tallene hviler på færre enn {MIN_CLOSED_MONTHS} "
-                f"måneder.")
+                texts.last_year_unread(last_year, MIN_CLOSED_MONTHS))
     history = None
     if read:
         history = (_rows(prior),
@@ -355,7 +345,5 @@ async def _habits(src: Sources, today: date, warnings: list[str]):
         mcp, today, {r.get("customerName") or "" for r in src.customer_history})
     if paid is None or not habits["complete"]:
         warnings.append(
-            "Innbetalingene på konto 1500 kunne ikke leses helt, så "
-            "betalingsvanene er ufullstendige; kunder uten nok historikk er "
-            f"regnet med {PAY_LAG_DAYS} dager etter forfall.")
+            texts.payments_unread())
     return habits, bank_categories

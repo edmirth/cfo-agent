@@ -58,6 +58,7 @@ def refuse(*a, **k):
     raise OSError("network refused in snapshot test")
 socket.create_connection = refuse
 socket.socket.connect = lambda self, *a: refuse()
+socket.getaddrinfo = refuse
 
 sys.path.insert(0, "backend")
 import asyncio, cashflow

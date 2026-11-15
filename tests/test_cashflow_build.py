@@ -1275,3 +1275,19 @@ def test_a_reversed_payroll_journal_is_not_an_aga_payment():
         {"voucherId": 3, "accountNumber": 2770, "amount": -112_000.0},
         {"voucherId": 3, "accountNumber": 2770, "amount": 112_000.0}])
     assert aga == 0.0
+
+
+def test_every_flow_sits_on_the_line_its_kind_belongs_to():
+    """Card 69: the line is the kind's, decided once in FlowKind, not by
+    each stage choosing a list. A whole forecast, every item checked."""
+    from cashflow.models import FlowKind
+    wages = _cum("5000 Lønn til ansatte", [800_000.0] * 10)
+    data = _forecast([REVENUE, wages, _rent()],
+                     ar=[_invoice(50_000.0, "2026-09-01", "2026-09-15", 1),
+                         _invoice(80_000.0, "2026-10-01", "2026-10-31", 2)],
+                     ap=_monthly_bills("Gårdeier AS", [60_000.0] * 4, [6, 7, 8, 9]))
+    items = [i for w in data["weeks"] for i in w["items"]]
+    assert len({i["kind"] for i in items}) >= 5, {i["kind"] for i in items}
+    for i in items:
+        assert FlowKind(i["kind"]).line == i["scenario"], i
+        assert type(i["kind"]) is str, "items leave as plain strings"

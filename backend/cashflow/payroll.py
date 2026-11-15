@@ -8,9 +8,10 @@ import workdays
 
 from .common import MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, WAGE_ACCOUNTS, _add_months
 from .common import AGA_ACCRUED
-from .models import Pay, Sources
+from .models import FlowKind, Pay, Sources
 from .common import _next_month
 from .ledger import _accrued_this_month
+from . import texts
 
 
 # **The feriepenger month.** In the month holiday pay goes out, staff draw
@@ -81,17 +82,16 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
     flows = []
     for year, month_no, pay_day in _pay_days(today, horizon, paid_before):
         month = date(year, month_no, 1)
-        amount, label = payroll_cash, "Lønn og skattetrekk"
+        amount, label = payroll_cash, texts.wages_label()
         if month.month == ferie_month and withheld:
             amount = payroll_cash * (1 - withheld)
-            label = (f"Lønn, {round(withheld * 100)} % holdt igjen mot "
-                     f"feriepengene")
+            label = texts.wages_withheld(withheld)
         # A fully withheld month is left off the table rather than shown as a
         # zero: the feriepenger line from commitments is the payment that
         # month, and a 0 kr wage line beside it reads like an error.
         if round(amount) > 0:
             flows.append({"date": pay_day, "amount": -amount,
-                          "kind": "wages", "label": label})
+                          "kind": FlowKind.WAGES, "label": label})
 
         # Arbeidsgiveravgift on that run, due on the term covering the month it
         # is paid in, and added to the 2770 balance commitments already dates
@@ -114,9 +114,8 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                 month.year, month.month, commitments.SKATT_TERMS))
             if today <= due < horizon:
                 flows.append({
-                    "date": due, "amount": -aga, "kind": "aga_future",
-                    "label": f"Arbeidsgiveravgift på lønn "
-                             f"{MONTH_NAMES[month.month - 1]}"})
+                    "date": due, "amount": -aga, "kind": FlowKind.AGA_FUTURE,
+                    "label": texts.aga_label(month)})
     return flows
 PAYROLL_MIN = 3              # months measured before the vouchers are trusted
 PAYDAY_WINDOW = 3            # days either side of the pay day that are its run
@@ -177,7 +176,7 @@ def payroll_paid(postings: list[dict], today: date) -> dict | None:
 
 
 def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: float,
-             committed: list, warnings: list[str]) -> Pay:
+             flows: list, warnings: list[str]) -> Pay:
     """Every pay day in the window, and its employer's contribution."""
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative,
@@ -188,10 +187,7 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
     wages_paid = src.wages_paid
     if isinstance(wages_paid, dict) and "unread" in wages_paid:
         warnings.append(
-            "Lønnsbilagene kunne ikke leses, så lønningsdagen er regnet fra "
-            "lønnskontoene i stedet for det tidligere lønningsdager har betalt. "
-            "Det kan være for mye, fordi kontoene også har periodisering og "
-            "feriepenger i seg.")
+            texts.payroll_vouchers_unread())
     measured = wages_paid if isinstance(wages_paid, dict) and "per_run" in wages_paid else None
     per_day = measured["per_run"] if measured else rates["wages_cash"]
     # The bank figure is as of its last line, not today: a pay day after it is
@@ -200,7 +196,7 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
         paid_before = date.fromisoformat(src.com.get("paid_before") or "")
     except ValueError:
         paid_before = today
-    committed += _payroll_runs(today, horizon, per_day,
+    flows += _payroll_runs(today, horizon, per_day,
                                rates["aga"], aga_booked, paid_before)
     months = [m for _, m, _ in _pay_days(today, horizon, paid_before)]
     return Pay(per_day, measured, months)

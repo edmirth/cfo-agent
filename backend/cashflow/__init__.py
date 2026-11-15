@@ -153,7 +153,6 @@ from .narrative import (  # noqa: F401
     rules,
 )
 from .assemble import (  # noqa: F401
-    AFTER_KINDS,
     _after_payload,
     _assemble,
     _bank_payload,
