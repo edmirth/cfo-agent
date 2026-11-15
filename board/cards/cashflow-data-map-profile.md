@@ -58,12 +58,13 @@ too (expected VAT out goes down once the input share is read properly); about ca
 ## Decisions (@edmir, 2026-11-15)
 1. **The owner's answers go into the company's own `company.md`.** Read from it and written
    back to it, as today.
-2. **Approving a data map: proposed, waiting for @edmir's yes.** The AI applies it by itself
-   within limits: an entry the books confirm is applied; one they contradict, or that cannot be
-   checked, keeps the measured value and becomes a question for the owner; a map that would
-   move the forecast a lot (the low point by more than 10 %, or its week) waits for the owner.
-   Every version is kept and can be rolled back. Built in card 71; card 70's format carries a
-   version, a status (applied / waiting) and the check result per entry.
+2. **The system runs the data map, not the user.** No approval step. The guardrails are
+   automatic: only entries the books confirm are applied; one they contradict, or that cannot
+   be checked, is not applied and the measured or default value stays. Every version is kept
+   with what changed and why, so it can be rolled back and every number traced, and the
+   briefing says when the map changed something. Built in card 71; card 70's format carries a
+   version and the check result per entry. Card 72's owner questions become optional
+   information, not a step the owner must take.
 3. **One deployment serves many companies, each logging in to its own.** That switch is
    card 32 (tenant isolation): per-company login, Tripletex login, `company.md`, caches. Card 70
    keys everything new by company from the start (the profile resolved for a company, the data
