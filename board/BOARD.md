@@ -43,14 +43,14 @@ kanban-plugin: board
 
 - [ ] 10. Choose a PSD2 partner and read the balance from the bank (We wait until we have done the meeting with Neonomics and enable banking) @edmir #liquidity
 
-- [ ] 70. Run the forecast on a per-company profile and data map instead of fixed constants @either #forecast
-
 - [ ] 71. Let the AI write the data map on connect, checked against the books before it counts @either #forecast
 
 - [ ] 72. Readiness levels, test companies and the onboarding questions for a new company @either #forecast
 
 
 ## Doing
+
+- [ ] 70. Run the forecast on a per-company profile and data map instead of fixed constants @either #forecast
 
 
 
