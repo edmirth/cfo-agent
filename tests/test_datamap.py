@@ -70,16 +70,18 @@ def test_only_what_the_books_confirm_is_used():
     assert c.wages == chart.DEFAULT.wages
 
 
-def test_a_role_the_commitments_read_does_not_move_yet():
-    """Until the commitments take the company's chart (step 2b), moving a
-    role they read would have the forecast and the commitments on different
-    accounts."""
-    real = _stored(_map({"payables": {"accounts": [[2400, 2419]], "check": "verified"}}))
+def test_a_role_the_commitments_read_moves_for_both():
+    """The commitments take the company's chart too (step 2b), so a role they
+    read moves for both. The bank does not move yet: bankgap and bankcat read
+    the default range, and the opening balance would part from the forecast."""
+    real = _stored(_map({"payables": {"accounts": [[2400, 2419]], "check": "verified"},
+                         "bank": {"accounts": [[1900, 1959]], "check": "verified"}}))
     try:
         c = chart.for_company(1)
     finally:
         datamap.DIR = real
-    assert c.payables == chart.DEFAULT.payables
+    assert c.payables == ((2400, 2419),)
+    assert c.bank == chart.DEFAULT.bank
 
 
 def test_a_verified_map_moves_the_receivables_reconciliation():
@@ -105,3 +107,22 @@ def test_a_verified_map_moves_the_receivables_reconciliation():
         datamap.DIR = real
     assert residual() == 0.0, "without the map 1530 is not receivables"
     assert with_map == 40_000.0
+
+
+def test_the_commitments_group_and_date_by_the_chart_they_are_given():
+    from dataclasses import replace
+    from datetime import date
+
+    import commitments
+    c = replace(chart.DEFAULT, payables=((2400, 2419),),
+                # a yearly VAT term, due 10 March the year after
+                vat_terms=(((1, 12), (3, 10)),),
+                aga_terms=(((1, 12), (1, 15)),))
+    groups = {g.id: g for g in commitments._groups(c)}
+    assert groups["leverandorgjeld"].ranges == ((2400, 2419),)
+    assert groups["aga"].due(date(2026, 11, 15)) == commitments._next_due(
+        date(2026, 11, 15), c.aga_terms)
+    assert commitments._term_due(c)["aga"](date(2026, 5, 31)) == date(2027, 1, 15)
+    assert commitments._completed_term(date(2027, 1, 20), c=c) == (12, date(2027, 3, 10))
+    # The defaults are unchanged for everyone else.
+    assert {g.id: g.ranges for g in commitments.GROUPS}["leverandorgjeld"] == ((2400, 2409),)

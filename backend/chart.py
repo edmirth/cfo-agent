@@ -73,13 +73,11 @@ DEFAULT = Chart()
 ROLES = tuple(f.name for f in fields(Chart) if f.name not in ("sources",))
 ACCOUNT_ROLES = tuple(r for r in ROLES if not r.endswith("_terms"))
 
-# Roles the commitments read. Until commitments takes the company's chart
-# (card 70, step 2b) a data map may not move these: the forecast would read
-# one account and the commitments another.
-SHARED_WITH_COMMITMENTS = frozenset({
-    "bank", "restricted", "payables", "loans", "owners_staff", "corporate_tax",
-    "withholding", "vat_running", "vat_settlement", "aga", "aga_holiday",
-    "holiday_pay", "accrued_wages", "other_debt", "vat_terms", "aga_terms"})
+# Roles a data map may not move yet, because something still reads the
+# default: the bank range is bankgap's and bankcat's too, and they do not
+# take the company's chart. Moving it here alone would have the opening
+# balance and the forecast on different accounts.
+NOT_PER_COMPANY_YET = frozenset({"bank"})
 
 
 def within(account: int | None, ranges: Ranges) -> bool:
@@ -94,7 +92,7 @@ def for_company(company_id: Any = None) -> Chart:
     if m is None:
         return DEFAULT
     roles = {role: entry.value for role, entry in m.accounts.items()
-             if entry.check == "verified" and role not in SHARED_WITH_COMMITMENTS}
+             if entry.check == "verified" and role not in NOT_PER_COMPANY_YET}
     if not roles:
         return DEFAULT
     sources = {role: "verified" for role in roles}
