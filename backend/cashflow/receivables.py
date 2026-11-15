@@ -1,16 +1,15 @@
 """Customer invoices: when their money is expected to land."""
+import statistics
 from datetime import date, timedelta
 
+import company
 import payment_habits
 import workdays
 
-from .common import DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, PAY_LAG_DAYS, SLOW_WEEKS
-from .payables import _payment_parts
-import statistics
-import company
-from .common import _iso
-from .models import FlowKind
 from . import texts
+from .common import DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, PAY_LAG_DAYS, SLOW_WEEKS, _iso
+from .models import FlowKind
+from .payables import _payment_parts
 
 
 def _receipt_parts(inv: dict, today: date,

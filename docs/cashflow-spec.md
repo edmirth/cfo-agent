@@ -215,23 +215,27 @@ written to `company.md` and become *stated*.
 
 ### 4.6 Module structure
 
-`backend/cashflow/` as a package, each module under about 300 lines and with one job:
+`backend/cashflow/` as a package, each module with one job. As built in card 69 (2026-11-15):
 
 | Module | Contents |
 |---|---|
-| `models.py` | `Flow`, `FlowKind` (enum), `Line` (committed/expected), `Week`, `Forecast`, `Resolved` |
-| `sources.py` | Every Tripletex read (invoices, postings, trial balance, commitments), fetched once in parallel and selected by the data map. The only module that does I/O |
-| `profile.py` | The resolver: loads the verified data map and resolves every parameter (§4.2) |
-| `receivables.py` | Open invoices, when they are paid, ageing, doubtful ones |
+| `models.py` | `FlowKind` (each kind knows its `Line` and whether it counts after week 13), `Flow` (TypedDict), `Sources`, `Runs`, `Pay`. `Resolved` comes with the profile (card 70) |
+| `sources.py` | Every Tripletex read (invoices, postings, trial balance, commitments), fetched once in parallel. The only module that does I/O; tests replace `sources.mcp` |
+| `profile.py` | (card 70) The resolver: loads the verified data map and resolves every parameter (§4.2) |
+| `reconcile.py` | Opening balance and bank settlement; ledger vs register (1500, 2400) |
+| `receivables.py` | Open invoices, when they are paid, ageing, doubtful ones, credit days |
 | `payables.py` | Open bills |
 | `invoicing.py` | Contract customers and other invoicing not yet sent |
 | `costs.py` | Fixed bills, the cost profile, bank-based costs |
-| `tax.py` | VAT, AGA, statutory dates from commitments |
+| `ledger.py` | Run rates, seasons, closing balances, what this month accrued |
+| `tax.py` | VAT share and settlements, booked VAT, statutory dates from commitments |
 | `payroll.py` | Pay days, runs, measured pay per run |
-| `reconcile.py` | Ledger vs register (1500, 2400) and the bank gap |
+| `trading.py` | The six months ahead, per month as sales, VAT and costs |
 | `assemble.py` | Week buckets, the two lines, low points, the money after week 13 |
-| `briefing.py` | The prose block for the agent |
-| `texts.py` | Every user-facing Norwegian sentence |
+| `declare.py` | The assumptions block; keeping and scoring the forecast |
+| `narrative.py` | The briefing for the agent (all text) |
+| `texts.py` | Every other user-facing Norwegian sentence |
+| `pipeline.py` | `build()`: the stages in order |
 | `__init__.py` | Public API: `build`, `cached`, `briefing`, `rules`, `below_floor`, `at_edge`, `after_text` |
 
 `build()` becomes a short pipeline:

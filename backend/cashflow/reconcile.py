@@ -2,12 +2,12 @@
 the open invoices, payables on 2400-2409 against the open bills."""
 from datetime import date
 
-
-from .ledger import _closing_or_none
-from .models import FlowKind, Sources
 import bankgap
 import brreg
+
 from . import texts
+from .ledger import _closing_or_none
+from .models import FlowKind, Sources
 
 
 def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:

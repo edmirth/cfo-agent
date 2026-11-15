@@ -1,21 +1,30 @@
 """Everything the forecast reads from Tripletex. The only module that awaits
 the ledger; `mcp` here is the one connection, and tests replace it here."""
-import logging
 import asyncio
+import logging
 from datetime import date
 
-from mcp_client import mcp
-
-from .common import AGA_ACCRUED, MONTH_NAMES, PAID_FROM, PAYROLL_MONTHS, VAT_ACCRUED, WAGE_ACCOUNTS, _add_months, _month_bounds
-from .payroll import payroll_paid
 import bankcat
 import commitments
 import payment_habits
 import saldobalanse
+from mcp_client import mcp
 from preflight import _rows
+
+from . import texts
+from .common import (
+    AGA_ACCRUED,
+    MONTH_NAMES,
+    PAID_FROM,
+    PAYROLL_MONTHS,
+    VAT_ACCRUED,
+    WAGE_ACCOUNTS,
+    _add_months,
+    _month_bounds,
+)
 from .ledger import _seasons
 from .models import Sources
-from . import texts
+from .payroll import payroll_paid
 
 log = logging.getLogger("cfo.cashflow")
 
@@ -44,7 +53,8 @@ async def _month_rows(tool: str, start: date, end: date) -> dict:
     A page after the first that fails keeps what was read and marks the month
     incomplete; a first page that fails fails the month, as before.
     """
-    rows, first, complete, note = [], None, True, None
+    rows: list = []
+    first, complete, note = None, True, None
     for page in range(INVOICE_PAGES):
         args = {"invoiceDateFrom": start.isoformat(),
                 "invoiceDateTo": end.isoformat(), "count": INVOICE_PAGE}
@@ -113,11 +123,11 @@ async def _open_invoices(today: date, tool: str, what: str, id_key: str,
     seen: set = set()
     out: list = []
     warnings: list[str] = []
-    complete = not any(isinstance(r, Exception) for r in results)
+    complete = not any(isinstance(r, BaseException) for r in results)
     for back, r in enumerate(results):
         start, _ = _month_bounds(today, back)
         when = f"{MONTH_NAMES[start.month - 1]} {start.year}"
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
             warnings.append(texts.month_unread(what, when, r))
             continue
         if not _month_notes(r, what, when, back, issued, warnings):
@@ -277,17 +287,17 @@ async def _read(today: date) -> Sources:
         _tax_postings(today),
         return_exceptions=True,
     )
-    if isinstance(balance, Exception):
+    if isinstance(balance, BaseException):
         raise RuntimeError(f"Kunne ikke lese saldobalansen: {balance}")
-    if isinstance(com, Exception):
+    if isinstance(com, BaseException):
         raise RuntimeError(f"Kunne ikke lese forpliktelsene: {com}")
     ar_open, ar_warn, ar_complete = ([], [texts.register_unread("Kundefakturaer")], False) \
-        if isinstance(ar, Exception) else ar
+        if isinstance(ar, BaseException) else ar
     ap_open, ap_warn, ap_complete = ([], [texts.register_unread("Leverandørfakturaer")], False) \
-        if isinstance(ap, Exception) else ap
+        if isinstance(ap, BaseException) else ap
     # Without this month's tax postings nothing is taken off the movement on
     # 2770 and 2700-2739, as before card 68.
-    if isinstance(tax_posts, Exception):
+    if isinstance(tax_posts, BaseException):
         log.warning("Cashflow: månedens mva- og aga-posteringer kunne ikke leses: %s",
                     tax_posts)
         tax_posts = []
@@ -308,22 +318,21 @@ def _last_year(src: Sources, today: date, warnings: list[str]):
     # The current month is not closed, so January has none of this year's.
     keep = max(0, MIN_CLOSED_MONTHS - (today.month - 1))
     last_year = today.year - 1
-    prior = src.prior
-    read = isinstance(prior, dict) and "table" in prior
+    prior = src.prior if isinstance(src.prior, dict) and "table" in src.prior else None
     prior_months = None
     if keep:
-        if read:
+        if prior is not None:
             prior_months = (_rows(prior),
                             [c.get("name") for c in prior["table"].get("columns", [])],
                             last_year, keep)
             warnings.append(
                 texts.early_in_year(keep, last_year, today.year))
         else:
-            log.warning("Cashflow: fjorårets saldobalanse feilet: %s", prior)
+            log.warning("Cashflow: fjorårets saldobalanse feilet: %s", src.prior)
             warnings.append(
                 texts.last_year_unread(last_year, MIN_CLOSED_MONTHS))
     history = None
-    if read:
+    if prior is not None:
         history = (_rows(prior),
                    [c.get("name") for c in prior["table"].get("columns", [])])
     return prior_months, history, _seasons(history)
@@ -335,7 +344,7 @@ async def _habits(src: Sources, today: date, warnings: list[str]):
     # How late each customer pays, from a year of payments on 1500. Without
     # it every customer is the old seven days late, and that is said.
     paid = src.paid
-    if isinstance(paid, Exception):
+    if isinstance(paid, BaseException):
         log.warning("Cashflow: innbetalingene kunne ikke leses: %s", paid)
         paid = None
     habits = payment_habits.habits(src.customer_history, paid)

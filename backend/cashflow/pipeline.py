@@ -2,11 +2,11 @@
 import logging
 from datetime import date, timedelta
 
+from . import texts
 from .assemble import _assemble, _bank_payload
 from .common import MVA_RATE, WEEKS, _monday
 from .costs import _bank_costs_or_say, _booked_opex, _fixed, _known_by_month
-from .declare import (_declare_costs, _declare_pay, _declare_receivables, _declare_sales,
-                      _keep)
+from .declare import _declare_costs, _declare_pay, _declare_receivables, _declare_sales, _keep
 from .invoicing import _invoiced_this_month, _invoicing, _sales_timing
 from .ledger import _run_rates
 from .models import Flow, split_lines
@@ -16,8 +16,7 @@ from .receivables import _credit_days, _expected_items, _receivables
 from .reconcile import _ap_residual, _ar_residual, _opening, _settle
 from .sources import _habits, _last_year, _read
 from .tax import _booked_vat, _settled, _statutory, _vat_input_share
-from .trading import _opex_in, _trading, _Trading
-from . import texts
+from .trading import _opex_in, _Trading, _trading
 
 log = logging.getLogger("cfo.cashflow")
 

@@ -5,9 +5,8 @@ from dataclasses import dataclass
 import saldobalanse
 from preflight import _account, _monthly
 
-from .common import LEVEL_MONTHS, OPEX_RANGES, SEASON_WEIGHT
 from . import texts
-
+from .common import LEVEL_MONTHS, OPEX_RANGES, SEASON_WEIGHT
 
 SEASON_LIMITS = (0.5, 1.5)
 

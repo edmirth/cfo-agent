@@ -27,9 +27,25 @@ import freshness
 
 # The modules, each importable as `cashflow.<module>`.
 from . import (  # noqa: F401
-    assemble, common, costs, declare, invoicing, ledger, models, narrative, payables,
-    payroll, pipeline, receivables, reconcile, sources, tax, texts, trading,
+    assemble,
+    common,
+    costs,
+    declare,
+    invoicing,
+    ledger,
+    models,
+    narrative,
+    payables,
+    payroll,
+    pipeline,
+    receivables,
+    reconcile,
+    sources,
+    tax,
+    texts,
+    trading,
 )
+
 # What the rest of the backend uses. Everything else belongs to its module.
 from .narrative import after_text, at_edge, below_floor, briefing, rules  # noqa: F401
 from .pipeline import build

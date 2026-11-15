@@ -1,9 +1,9 @@
 """Our own bills: when they leave the account."""
 from datetime import date
-from .common import _iso
-from .models import FlowKind
-from . import texts
 
+from . import texts
+from .common import _iso
+from .models import Flow, FlowKind
 
 
 def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
@@ -14,11 +14,11 @@ def _payment_parts(bill: dict, today: date) -> list[tuple[date, float]] | None:
     return None if due is None else [(max(due, today), bill["amount"])]
 
 
-def _schedule_payments(bills: list, today: date) -> list:
+def _schedule_payments(bills: list, today: date) -> list[Flow]:
     """Our own bills as flows. The customer scheduler above must not be reused
     here — it adds the lag customers take, and spreads the overdue book over
     weeks, both of which understate what leaves the account soon."""
-    flows = []
+    flows: list[Flow] = []
     for bill in bills:
         for when, amount in _payment_parts(bill, today) or []:
             flows.append({"date": when, "amount": -amount,

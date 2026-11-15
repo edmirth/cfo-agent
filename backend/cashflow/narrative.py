@@ -3,8 +3,18 @@ import bankcat
 import company
 import payment_habits
 
-from .common import DOUBTFUL_DAYS, LATE_DAYS, LEVEL_MONTHS, MONTH_NAMES, PAY_LAG_DAYS, RECURRING_MONTHS, RUN_ACTIVE, RUN_MONTHS, SLOW_WEEKS, _kr
-
+from .common import (
+    DOUBTFUL_DAYS,
+    LATE_DAYS,
+    LEVEL_MONTHS,
+    MONTH_NAMES,
+    PAY_LAG_DAYS,
+    RECURRING_MONTHS,
+    RUN_ACTIVE,
+    RUN_MONTHS,
+    SLOW_WEEKS,
+    _kr,
+)
 
 # A Norwegian payroll fact that breaks the twelve-identical-months assumption
 # (the other, the feriepenger month, is in payroll.py).
@@ -51,8 +61,8 @@ def _opening_note(bank: dict | None) -> str:
         return ""
     booked = _kr(bank["booked"])
     if bank.get("adjustment") is None:
-        return (f"  — det er den **bokførte** saldoen. Bankavstemmingen kunne "
-                f"ikke leses, så om banken står høyere eller lavere er ukjent.")
+        return ("  — det er den **bokførte** saldoen. Bankavstemmingen kunne "
+                "ikke leses, så om banken står høyere eller lavere er ukjent.")
     adj = bank["adjustment"]
     if abs(adj) < 1:
         note = (f"  — banken og bøkene er like, {booked} kr. Ingen banklinjer "
@@ -145,7 +155,7 @@ def _bank_cost_words(bank: dict) -> str:
                        for c, v in list(bank["andeler"].items())[:4])
     return (f"driftskostnader {_kr(bank['nivaa_mnd'])} kr i måneden fra banken "
             f"(medianen av {len(bank['maneder'])} hele måneder, med moms; {shares}"
-            + (f"; holdt utenfor som uvanlige: "
+            + ("; holdt utenfor som uvanlige: "
                + ", ".join(f"{m['month']} ({_kr(m['amount'])} kr)" for m in odd) if odd else "")
             + f"), hvorav {_kr(bank['betalt_denne_maneden'])} kr alt har gått ut denne "
               f"måneden og bare resten lagt inn")
@@ -174,9 +184,10 @@ def briefing(data: dict | None) -> str:
            f"**{_kr(low_e['amount'])} kr** i {low_e['label']} "
            f"({low_e['start']}).",
            _floor_line(data)]
-    for say in (_say_verdict, _say_table, _say_assumptions, _say_overdue, _say_payers, _say_new_invoicing,
-                _say_season, _say_unexplained, _say_cost_timing, _say_fixed_bills, _say_contracts,
-                _say_other_invoicing, _say_bank_spend, _say_vat, _say_odd_months, _say_weaknesses):
+    for say in (_say_verdict, _say_table, _say_assumptions, _say_overdue, _say_payers,
+                _say_new_invoicing, _say_season, _say_unexplained, _say_cost_timing,
+                _say_fixed_bills, _say_contracts, _say_other_invoicing, _say_bank_spend,
+                _say_vat, _say_odd_months, _say_weaknesses):
         say(data, a, out)
 
     out.append("How to use it. The low point and its week are the answer to "
@@ -281,10 +292,10 @@ def _say_overdue(data: dict, a: dict, out: list[str]) -> None:
         out.append(f"**Forfalte kundefakturaer, etter alder** — det som er "
                    f"inntil {LATE_DAYS} dager på overtid er vanlig forsinkelse "
                    f"og ligger i begge linjene. " + "; ".join(parts) + ". "
-                   f"Kommer de gamle pengene inn, er det en gevinst prognosen "
-                   f"ikke har lovet. Say this when he asks what is owed to him: "
-                   f"the money is still his to chase, it is just not counted "
-                   f"on.\n")
+                   "Kommer de gamle pengene inn, er det en gevinst prognosen "
+                   "ikke har lovet. Say this when he asks what is owed to him: "
+                   "the money is still his to chase, it is just not counted "
+                   "on.\n")
 
 
 def _say_payers(data: dict, a: dict, out: list[str]) -> None:
@@ -315,12 +326,12 @@ def _say_payers(data: dict, a: dict, out: list[str]) -> None:
                        f"på {late_days} dager: "
                        + ", ".join(f"{n} ({d} dager)" for n, d in habitual)
                        + ". De får en påminnelse, men det er ikke et nytt "
-                       f"problem: prognosen venter pengene deres sent. En kunde "
-                       f"som vanligvis betaler i tide og nå er over regelen, er "
-                       f"det som bør tas opp; Saker har kortene og dagens "
-                       f"innkrevingsliste. Etter to påminnelser uten betaling er "
-                       f"neste steg (inkassovarsel, samtale, nedbetaling) eierens "
-                       f"eget: foreslå det, men skriv det ikke.\n")
+                       "problem: prognosen venter pengene deres sent. En kunde "
+                       "som vanligvis betaler i tide og nå er over regelen, er "
+                       "det som bør tas opp; Saker har kortene og dagens "
+                       "innkrevingsliste. Etter to påminnelser uten betaling er "
+                       "neste steg (inkassovarsel, samtale, nedbetaling) eierens "
+                       "eget: foreslå det, men skriv det ikke.\n")
     else:
         out.append(f"**Når kundene betaler** — det er for få innbetalinger å se "
                    f"et mønster i, så alle kunder er lagt inn med "
@@ -514,8 +525,8 @@ def _say_bank_spend(data: dict, a: dict, out: list[str]) -> None:
                    f"({len(closed)} hele måneder):** {out_lines}. "
                    f"{round(cats['unknown_share_out'] * 100)} % av utbetalingene har ingen "
                    f"kategori ennå" + (f"; de største: {odd}" if odd else "") + ". "
-                   f"This is the bank, not the accounts: use it when he asks what the "
-                   f"business really spends, and ask him about the unknown ones.\n")
+                   "This is the bank, not the accounts: use it when he asks what the "
+                   "business really spends, and ask him about the unknown ones.\n")
 
 
 def _say_vat(data: dict, a: dict, out: list[str]) -> None:
@@ -553,7 +564,7 @@ def _say_odd_months(data: dict, a: dict, out: list[str]) -> None:
                        None)
     if ferie_month in months and a.get("ferie_lonn_holdt_igjen"):
         held = a["ferie_lonn_holdt_igjen"]
-        run = (f"holdt helt tilbake — feriepengene er hele utbetalingen"
+        run = ("holdt helt tilbake — feriepengene er hele utbetalingen"
                if held >= 1 else
                f"satt ned til {_kr(a['ferie_lonn_utbetalt'])} kr fra "
                f"{_kr(a['monthly_wages_cash'])} kr")
@@ -574,11 +585,11 @@ def _say_odd_months(data: dict, a: dict, out: list[str]) -> None:
             f"linjen, med beløpet fra konto 2940. {source}\n")
     if HALF_TAX_MONTH in months:
         out.append(
-            f"**Halv skatt i desember.** De ansatte får mer netto i desember, "
-            f"men trekket betales til Skatteetaten samme dag som lønnen, så "
-            f"beløpet ut av bedriftens konto er den samme bruttolønnen som i "
-            f"en vanlig måned. Si det hvis han venter en tyngre desember av "
-            f"den grunn — desember er tung av andre grunner, ikke denne.\n")
+            "**Halv skatt i desember.** De ansatte får mer netto i desember, "
+            "men trekket betales til Skatteetaten samme dag som lønnen, så "
+            "beløpet ut av bedriftens konto er den samme bruttolønnen som i "
+            "en vanlig måned. Si det hvis han venter en tyngre desember av "
+            "den grunn — desember er tung av andre grunner, ikke denne.\n")
 
 
 def _say_weaknesses(data: dict, a: dict, out: list[str]) -> None:

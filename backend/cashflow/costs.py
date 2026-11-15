@@ -2,14 +2,13 @@
 import statistics
 from calendar import monthrange
 from datetime import date, timedelta
+from itertools import pairwise
 
-from .common import BANK_UNKNOWN_MAX, COST_PERIODS, _add_months, _weighted_median
 from preflight import _monthly
-from .common import OPEX_RANGES
-from .models import FlowKind, Sources
-from .common import _iso
-from . import texts
 
+from . import texts
+from .common import BANK_UNKNOWN_MAX, COST_PERIODS, OPEX_RANGES, _add_months, _iso, _weighted_median
+from .models import Flow, FlowKind, Sources
 
 # What makes a supplier's bill a fixed one, for the committed line: billed in
 # FIXED_MIN of the last FIXED_LOOKBACK closed months (or FIXED_MIN quarters in
@@ -48,7 +47,9 @@ def _fixed_bills(history: list, today: date,
     late or in the inbox is still owed.
     """
     this = (today.year, today.month)
-    flows, found, by_month = [], [], {}
+    flows: list[Flow] = []
+    found: list[dict] = []
+    by_month: dict[tuple[int, int], float] = {}
     for s in _by_supplier(history).values():
         cadence = _cadence(s["months"], this)
         if cadence is None:
@@ -85,7 +86,8 @@ def _by_supplier(history: list) -> dict:
     return by_supplier
 
 
-def _cadence(months: dict, this: tuple) -> tuple[int, str, list] | None:
+def _cadence(months: dict[tuple[int, int], dict],
+             this: tuple[int, int]) -> tuple[int, str, list] | None:
     """(step in months, name, the months it rests on) for a supplier who bills
     the same every month or every quarter, or None."""
     closed = [_add_months(*this, -n) for n in range(1, FIXED_LOOKBACK + 1)]
@@ -99,7 +101,7 @@ def _cadence(months: dict, this: tuple) -> tuple[int, str, list] | None:
         return mid > 0 and all(abs(v - mid) <= FIXED_TOLERANCE * mid for v in values)
 
     recent = [k for k in closed if k in months]
-    gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in zip(past, past[1:])]
+    gaps = [(b[0] * 12 + b[1]) - (a[0] * 12 + a[1]) for a, b in pairwise(past)]
     if len(recent) >= FIXED_MIN and stable(recent):
         return 1, "månedlig", recent
     if len(past) >= FIXED_MIN and gaps and all(g == 3 for g in gaps) \
@@ -113,7 +115,7 @@ def _place_fixed(s: dict, step: int, amount: float, day: int, terms: int,
     """A fixed supplier's bills still to come, from the month after his last.
     Returns the pay days inside the window."""
     this = (today.year, today.month)
-    months = s["months"]
+    months: dict[tuple[int, int], dict] = s["months"]
     past = sorted(k for k in months if k < this)
     upcoming = []
     y, mo = _add_months(*past[-1], step)
@@ -212,7 +214,7 @@ def _bank_costs(cats: dict | None) -> dict | None:
     costs = (cats or {}).get("costs")
     if not costs or costs["level"] <= 0:
         return None
-    if cats.get("unknown_share_out", 1.0) > BANK_UNKNOWN_MAX:
+    if (cats or {}).get("unknown_share_out", 1.0) > BANK_UNKNOWN_MAX:
         return None
     return costs
 
