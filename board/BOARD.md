@@ -52,11 +52,11 @@ kanban-plugin: board
 
 ## Doing
 
-- [ ] 69. Split cashflow.py into a typed package without changing a single number @either #forecast
-
 
 
 ## Done
+
+- [x] 69. Split cashflow.py into a typed package without changing a single number @either #forecast ✓ 2026-11-15
 
 - [x] 68. Stop paying AGA and VAT twice in the months a tax payment goes out @either #forecast ✓ 2026-11-13
 
