@@ -71,4 +71,4 @@ def test_a_thirteen_week_horizon_covers_every_pay_day_in_it():
 def test_commitments_and_cashflow_share_one_implementation():
     # Not two functions that can drift apart again.
     import cashflow
-    assert cashflow.commitments.payday is commitments.payday
+    assert cashflow.payroll.commitments.payday is commitments.payday

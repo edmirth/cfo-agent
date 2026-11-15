@@ -23,7 +23,7 @@ def _with_settings(**values):
 
 
 def _runs(today, weeks=13, wages=WAGES):
-    return cashflow._payroll_runs(today, today + timedelta(weeks=weeks), wages)
+    return cashflow.payroll._payroll_runs(today, today + timedelta(weeks=weeks), wages)
 
 
 def _run_months(today, weeks=13):
@@ -35,7 +35,7 @@ def _run_months(today, weeks=13):
     flows: that month produces no flow at all.
     """
     horizon = today + timedelta(weeks=weeks)
-    return [m for _, m, _ in cashflow._pay_days(today, horizon)]
+    return [m for _, m, _ in cashflow.payroll._pay_days(today, horizon)]
 
 
 def _by_month(flows):
@@ -105,7 +105,7 @@ def test_june_is_the_assumption_when_nothing_is_stated():
     try:
         assert commitments.ferie_month() == 6
         assert not commitments.ferie_month_is_stated()
-        assert cashflow._ferie_withheld() == (1.0, cashflow.FERIE_WEEKS, False)
+        assert cashflow.payroll._ferie_withheld() == (1.0, cashflow.payroll.FERIE_WEEKS, False)
     finally:
         company.setting = original
 
@@ -129,7 +129,7 @@ def test_both_quirks_are_declared_to_the_owner():
     original = _with_settings(lonn_utbetalingsdag=10, ferie_uker=5)
     try:
         today = date(2026, 4, 1)
-        data = cashflow._assemble(
+        data = cashflow.assemble._assemble(
             today, today - timedelta(days=today.weekday()), 1_000_000.0,
             _runs(today), [],
             {"revenue": 2_000_000.0, "wages": 1_004_000.0,
@@ -153,7 +153,7 @@ def test_december_is_explained_only_when_it_is_in_the_window():
     original = _with_settings(lonn_utbetalingsdag=10, ferie_uker=5)
     try:
         today = date(2026, 10, 1)
-        data = cashflow._assemble(
+        data = cashflow.assemble._assemble(
             today, today - timedelta(days=today.weekday()), 1_000_000.0,
             _runs(today), [],
             {"revenue": 2_000_000.0, "wages": 1_004_000.0,
@@ -211,10 +211,10 @@ def test_a_window_that_only_clips_december_gets_no_december_note():
         today = date(2026, 9, 10)
         week0 = today - timedelta(days=today.weekday())
         horizon = week0 + timedelta(weeks=13)
-        months = [m for _, m, _ in cashflow._pay_days(today, horizon)]
+        months = [m for _, m, _ in cashflow.payroll._pay_days(today, horizon)]
         assert 12 not in months, "December's pay day is past the horizon"
 
-        data = cashflow._assemble(
+        data = cashflow.assemble._assemble(
             today, week0, 1_000_000.0, _runs(today), [],
             {"revenue": 2_000_000.0, "wages": 1_004_000.0,
              "wages_cash": WAGES, "opex": 300_000.0},

@@ -9,6 +9,9 @@ import asyncio
 from datetime import date
 
 import cashflow
+import brreg
+import bankcat
+import commitments
 import company
 from tests._legacy_balance import balance_sheet
 
@@ -79,10 +82,10 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
     """Run `build` against a stubbed ledger. Returns the payload."""
     import payment_habits
     payment_habits._cache.clear()
-    cashflow._payroll_cache.clear()
-    cashflow.bankcat.CACHE.clear()
+    cashflow.sources._payroll_cache.clear()
+    bankcat.CACHE.clear()
     stub = _Tripletex(rows, ar, ap, last, postings, cut_off, today, columns)
-    old_mcp, old_cached = cashflow.sources.mcp, cashflow.commitments.cached
+    old_mcp, old_cached = cashflow.sources.mcp, commitments.cached
     old_setting = company.setting
     conf = {"lonn_utbetalingsdag": 10, **(settings or {})}
 
@@ -90,12 +93,12 @@ def _forecast(rows, ar=(), ap=(), bank=1_000_000.0, items=(), settings=None,
         return {"bank": bank, "items": list(items)}
 
     cashflow.sources.mcp = balance_sheet(stub)
-    cashflow.commitments.cached = cached
+    commitments.cached = cached
     company.setting = lambda k, d=None: conf.get(k, d)
     try:
         return asyncio.run(cashflow.build(today))
     finally:
-        cashflow.sources.mcp, cashflow.commitments.cached = old_mcp, old_cached
+        cashflow.sources.mcp, commitments.cached = old_mcp, old_cached
         company.setting = old_setting
         payment_habits._cache.clear()
 
@@ -456,10 +459,10 @@ def test_the_rest_of_this_month_falls_in_the_days_still_to_come():
     profile = {"measured": True, "bills": 20, "periods": [
         {"from": 1, "to": 7, "share": 0.5, "terms": 0},
         {"from": 22, "to": 31, "share": 0.5, "terms": 0}]}
-    parts = cashflow._cost_parts(profile, date(2026, 10, 1), date(2026, 10, 20), True)
+    parts = cashflow.costs._cost_parts(profile, date(2026, 10, 1), date(2026, 10, 20), True)
     assert parts == [(date(2026, 10, 26), 1.0, "fakturert 22.–31.")], \
         "the first week is over; what is not booked yet comes late in the month"
-    later = cashflow._cost_parts(profile, date(2026, 11, 1), date(2026, 10, 20), False)
+    later = cashflow.costs._cost_parts(profile, date(2026, 11, 1), date(2026, 10, 20), False)
     assert [p[1] for p in later] == [0.5, 0.5]
 
 
@@ -523,7 +526,7 @@ def test_the_age_boundaries():
     from datetime import timedelta
     def parts(days):
         due = (TODAY - timedelta(days=days)).isoformat()
-        return cashflow._receipt_parts({"due": due, "amount": 60.0}, TODAY)
+        return cashflow.receivables._receipt_parts({"due": due, "amount": 60.0}, TODAY)
     assert len(parts(30)) == 3, "thirty days is still ordinary lateness"
     assert len(parts(31)) == 6
     assert len(parts(90)) == 6
@@ -604,7 +607,7 @@ def test_without_twelve_months_last_year_every_month_is_alike():
 
 def test_an_extreme_month_is_held_within_the_limits():
     rows = [_sales([100_000.0] * 11 + [1_000_000.0])]
-    season = cashflow._seasons((rows, FULL_YEAR))["revenue"]
+    season = cashflow.ledger._seasons((rows, FULL_YEAR))["revenue"]
     assert season[12] == 1.25, "held at 1.5, then taken half"
     assert season[1] == round(1 + 0.5 * (100_000 / 175_000 - 1), 4)
 
@@ -939,12 +942,12 @@ def test_a_customer_somewhat_behind_leaves_the_committed_line_only():
 
 def test_a_customer_in_trouble_with_the_register_is_not_counted_on():
     rows, _ = _invoiced_on_the_10th()
-    old = cashflow.brreg.at_risk
-    cashflow.brreg.at_risk = lambda: {"Kunde": {"excluded": False, "status": "avvikling"}}
+    old = brreg.at_risk
+    brreg.at_risk = lambda: {"Kunde": {"excluded": False, "status": "avvikling"}}
     try:
         data = _forecast([REVENUE], ar=rows)
     finally:
-        cashflow.brreg.at_risk = old
+        brreg.at_risk = old
     assert data["recurring_sales"] == []
 
 
@@ -962,7 +965,7 @@ def test_a_contract_is_not_sent_before_today_nor_above_its_season():
     and a contract still goes quiet in a month that always does."""
     rows, _ = _invoiced_on_the_10th()
     today = date(2026, 10, 15)
-    flows, found, by_month = cashflow._invoice_runs(
+    flows, found, by_month = cashflow.invoicing._invoice_runs(
         rows, today, date(2027, 1, 11), None, {11: 0.5})
     inside = [f for f in flows if f["date"] < date(2027, 1, 11)]
     assert [(f["date"].isoformat(), round(f["amount"])) for f in inside] == [
@@ -987,19 +990,19 @@ class _Broken(_Tripletex):
 
 
 def _forecast_with(stub):
-    old_mcp, old_cached = cashflow.sources.mcp, cashflow.commitments.cached
+    old_mcp, old_cached = cashflow.sources.mcp, commitments.cached
     old_setting = company.setting
 
     async def cached():
         return {"bank": 1_000_000.0, "items": []}
 
     cashflow.sources.mcp = balance_sheet(stub)
-    cashflow.commitments.cached = cached
+    commitments.cached = cached
     company.setting = lambda k, d=None: {"lonn_utbetalingsdag": 10}.get(k, d)
     try:
         return asyncio.run(cashflow.build(TODAY))
     finally:
-        cashflow.sources.mcp, cashflow.commitments.cached = old_mcp, old_cached
+        cashflow.sources.mcp, commitments.cached = old_mcp, old_cached
         company.setting = old_setting
 
 
@@ -1151,7 +1154,7 @@ def test_the_withholding_is_not_paid_on_pay_day_and_again_at_the_term():
     """From 2026 the trekk leaves with the salary, and `_payroll_runs` pays
     the gross. Scheduling the 2600-2619 balance as well paid it twice. 2600
     has stood at 0 all year, so this was latent — and stays that way."""
-    assert "forskuddstrekk" not in cashflow.STATUTORY_FROM_COMMITMENTS
+    assert "forskuddstrekk" not in cashflow.tax.STATUTORY_FROM_COMMITMENTS
     items = [{"id": "forskuddstrekk", "label": "Forskuddstrekk",
               "amount": 434_347.0, "due": "2026-11-16", "kind": "holding"}]
     data = _forecast([REVENUE], items=items)
@@ -1179,7 +1182,7 @@ def test_a_run_sent_inside_the_window_and_paid_after_it_is_kept():
     are paid after it. They are what the last weeks are waiting for, so they
     come back for the line after week 13; the weeks never see them."""
     rows, _ = _invoiced_on_the_10th()
-    flows, found, _ = cashflow._invoice_runs(
+    flows, found, _ = cashflow.invoicing._invoice_runs(
         rows, date(2026, 10, 15), date(2027, 1, 11), None, {11: 0.5})
     after = [(f["date"].isoformat(), round(f["amount"])) for f in flows
              if f["date"] >= date(2027, 1, 11)]
@@ -1191,7 +1194,7 @@ def test_a_run_sent_after_the_window_is_not_kept():
     """January's invoice goes out on the 10th; with the window ending on the
     8th it is not sent inside it, so nothing of it is counted."""
     rows, _ = _invoiced_on_the_10th()
-    flows, _, _ = cashflow._invoice_runs(
+    flows, _, _ = cashflow.invoicing._invoice_runs(
         rows, date(2026, 10, 15), date(2027, 1, 8), None, {11: 0.5})
     assert max(f["date"] for f in flows) == date(2027, 1, 18), \
         "December's, sent on the 10th, paid on the 18th; not January's"
@@ -1208,15 +1211,15 @@ BANK_COSTS = {"level": 300_000.0, "certain_share": 0.5,
 
 
 def _with_bank(cats, **kw):
-    real = cashflow.bankcat.measured
+    real = bankcat.measured
 
     async def measured(client, today, customers):
         return cats
-    cashflow.bankcat.measured = measured
+    bankcat.measured = measured
     try:
         return _forecast(**kw)
     finally:
-        cashflow.bankcat.measured = real
+        bankcat.measured = real
 
 
 def _costs_in(data, month):
@@ -1253,7 +1256,7 @@ def test_too_much_unknown_in_the_bank_keeps_the_accounts():
 
 def test_a_settlement_without_2740_is_still_a_settlement():
     # Output against input VAT cleared in one voucher, paid straight from it.
-    vat, _ = cashflow._settled([
+    vat, _ = cashflow.tax._settled([
         {"voucherId": 1, "accountNumber": 2700, "amount": 250_000.0},
         {"voucherId": 1, "accountNumber": 2710, "amount": -50_000.0},
         {"voucherId": 1, "accountNumber": 1920, "amount": -200_000.0}])
@@ -1262,7 +1265,7 @@ def test_a_settlement_without_2740_is_still_a_settlement():
 
 def test_a_credit_note_is_not_a_settlement():
     # A credit note debits output VAT too, but is part of the month's own VAT.
-    vat, aga = cashflow._settled([
+    vat, aga = cashflow.tax._settled([
         {"voucherId": 2, "accountNumber": 2700, "amount": 5_000.0},
         {"voucherId": 2, "accountNumber": 3000, "amount": 20_000.0},
         {"voucherId": 2, "accountNumber": 1500, "amount": -25_000.0}])
@@ -1271,7 +1274,7 @@ def test_a_credit_note_is_not_a_settlement():
 
 def test_a_reversed_payroll_journal_is_not_an_aga_payment():
     # Booked and reversed inside one voucher: nets to nothing on 2770.
-    _, aga = cashflow._settled([
+    _, aga = cashflow.tax._settled([
         {"voucherId": 3, "accountNumber": 2770, "amount": -112_000.0},
         {"voucherId": 3, "accountNumber": 2770, "amount": 112_000.0}])
     assert aga == 0.0
