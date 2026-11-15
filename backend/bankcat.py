@@ -73,7 +73,7 @@ COST_CATS = ("leverandorer", "kort", "husleie", "lan", "forsikring", "pensjon",
 CERTAIN = {"husleie", "lan", "forsikring", "pensjon", "gebyr", "regnskap"}
 COST_MIN_MONTHS = 3
 UNUSUAL = 1.5
-PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))   # as cashflow.COST_PERIODS
+PERIODS = ((1, 7), (8, 14), (15, 21), (22, 31))   # as the profile's cost_periods (cashflow/profile.py)
 
 LABELS = {"kunder": "Kunder", "lonn": "Lønn", "skatt": "Skatt og avgift",
           "mva": "Merverdiavgift", "lan": "Lån og leasing", "forsikring": "Forsikring",

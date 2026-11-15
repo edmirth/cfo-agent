@@ -3,18 +3,10 @@ import bankcat
 import company
 import payment_habits
 
-from .common import (
-    DOUBTFUL_DAYS,
-    LATE_DAYS,
-    LEVEL_MONTHS,
-    MONTH_NAMES,
-    PAY_LAG_DAYS,
-    RECURRING_MONTHS,
-    RUN_ACTIVE,
-    RUN_MONTHS,
-    SLOW_WEEKS,
-    _kr,
-)
+from .common import MONTH_NAMES, _kr
+
+# The defaults, until the briefing reads the forecast's own values (card 70, step 5).
+from .profile import DEFAULT
 
 # A Norwegian payroll fact that breaks the twelve-identical-months assumption
 # (the other, the feriepenger month, is in payroll.py).
@@ -278,19 +270,19 @@ def _say_overdue(data: dict, a: dict, out: list[str]) -> None:
     if ages.get("31_90") or ages.get("over_90"):
         parts = []
         if ages.get("31_90"):
-            parts.append(f"{_kr(ages['31_90'])} kr er {LATE_DAYS + 1}–"
-                         f"{DOUBTFUL_DAYS} dager på overtid og ligger bare i den "
-                         f"forventede linjen, fordelt over uke {SLOW_WEEKS[0]}–"
-                         f"{SLOW_WEEKS[1]}")
+            parts.append(f"{_kr(ages['31_90'])} kr er {DEFAULT.late_days + 1}–"
+                         f"{DEFAULT.doubtful_days} dager på overtid og ligger bare i den "
+                         f"forventede linjen, fordelt over uke {DEFAULT.slow_weeks[0]}–"
+                         f"{DEFAULT.slow_weeks[1]}")
         if ages.get("over_90"):
             named = ", ".join(
                 f"{i['name']} {_kr(i['amount'])} kr ({i['days_overdue']} dager)"
                 for i in (data.get("ar_doubtful") or [])[:5])
-            parts.append(f"{_kr(ages['over_90'])} kr er mer enn {DOUBTFUL_DAYS} "
+            parts.append(f"{_kr(ages['over_90'])} kr er mer enn {DEFAULT.doubtful_days} "
                          f"dager på overtid og er ikke regnet med i noen av "
                          f"linjene: {named}")
         out.append(f"**Forfalte kundefakturaer, etter alder** — det som er "
-                   f"inntil {LATE_DAYS} dager på overtid er vanlig forsinkelse "
+                   f"inntil {DEFAULT.late_days} dager på overtid er vanlig forsinkelse "
                    f"og ligger i begge linjene. " + "; ".join(parts) + ". "
                    "Kommer de gamle pengene inn, er det en gevinst prognosen "
                    "ikke har lovet. Say this when he asks what is owed to him: "
@@ -335,7 +327,7 @@ def _say_payers(data: dict, a: dict, out: list[str]) -> None:
     else:
         out.append(f"**Når kundene betaler** — det er for få innbetalinger å se "
                    f"et mønster i, så alle kunder er lagt inn med "
-                   f"{PAY_LAG_DAYS} dager etter forfall.\n")
+                   f"{DEFAULT.pay_lag_days} dager etter forfall.\n")
 
 
 def _say_new_invoicing(data: dict, a: dict, out: list[str]) -> None:
@@ -354,7 +346,7 @@ def _say_new_invoicing(data: dict, a: dict, out: list[str]) -> None:
         out.append(f"**Ny fakturering** — for få fakturaer til å se når i "
                    f"måneden selskapet fakturerer, så den er lagt på siste dag "
                    f"i måneden med {a['credit_days']} dagers kredittid og "
-                   f"{sp.get('forsinkelse_dager', PAY_LAG_DAYS)} dagers "
+                   f"{sp.get('forsinkelse_dager', DEFAULT.pay_lag_days)} dagers "
                    f"forsinkelse.\n")
 
 
@@ -371,7 +363,7 @@ def _say_season(data: dict, a: dict, out: list[str]) -> None:
                           for m in a.get("omsetning_per_maned") or [])
         out.append(f"**Sesong** — omsetningen følger fjorårets mønster, tatt "
                    f"med halv styrke fordi ett år er et tynt grunnlag: {said} "
-                   f"mot en vanlig måned. Nivået er de siste {LEVEL_MONTHS} "
+                   f"mot en vanlig måned. Nivået er de siste {DEFAULT.level_months} "
                    f"avsluttede månedene med sesongen trukket ut, så vekst eller "
                    f"nedgang siden i fjor er med. Lagt inn: {sales}. "
                    + ("Driftskostnadene har sitt eget mønster fra fjorårets "
@@ -467,8 +459,8 @@ def _say_contracts(data: dict, a: dict, out: list[str]) -> None:
         named = ", ".join(f"{f['name']} {_kr(f['amount'])} kr" for f in contracts[:8])
         more = f" og {len(contracts) - 8} til" if len(contracts) > 8 else ""
         out.append(f"**Fast fakturering i den bundne linjen** — kunder som er "
-                   f"fakturert i minst {RUN_ACTIVE} av de siste {RUN_MONTHS} "
-                   f"månedene og hver av de siste {RECURRING_MONTHS}, lagt inn med "
+                   f"fakturert i minst {DEFAULT.run_active} av de siste {DEFAULT.run_months} "
+                   f"månedene og hver av de siste {DEFAULT.recurring_months}, lagt inn med "
                    f"den laveste av de tre siste, på kundens egne fakturadager og "
                    f"betalingsfrister og betalt så sent som kunden pleier: "
                    f"{named}{more}. Til sammen "
@@ -482,7 +474,7 @@ def _say_contracts(data: dict, a: dict, out: list[str]) -> None:
                    f"stay, and a contract that ends must come out of it.\n")
     else:
         out.append("**Ingen fast fakturering funnet** — ingen kunde er "
-                   f"fakturert hver av de siste {RECURRING_MONTHS} månedene, "
+                   f"fakturert hver av de siste {DEFAULT.recurring_months} månedene, "
                    "så den bundne linjen har ingen ny "
                    "fakturering i seg. All framtidig fakturering ligger i den "
                    "forventede linjen. Say so when the bundne line goes dry: "
@@ -498,7 +490,7 @@ def _say_other_invoicing(data: dict, a: dict, out: list[str]) -> None:
         out.append(
             f"**Annen fakturering, i den forventede linjen** — kunder som ikke "
             f"faktureres hver måned, lagt inn med en vanlig måned (medianen av de "
-            f"siste {RUN_MONTHS}): {_kr(other['nivaa_mnd'])} kr. "
+            f"siste {DEFAULT.run_months}): {_kr(other['nivaa_mnd'])} kr. "
             + (("Uvanlige måneder, holdt utenfor som engangstilfeller: "
                 + ", ".join(f"{u['month']} ({_kr(u['amount'])} kr)" for u in odd)
                 + ". Say so if he asks why a strong month is not in the "

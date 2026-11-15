@@ -16,7 +16,6 @@ from .common import (
     AGA_ACCRUED,
     MONTH_NAMES,
     PAID_FROM,
-    PAYROLL_MONTHS,
     VAT_ACCRUED,
     WAGE_ACCOUNTS,
     _add_months,
@@ -25,12 +24,10 @@ from .common import (
 from .ledger import _seasons
 from .models import Sources
 from .payroll import payroll_paid
+from .profile import DEFAULT, Profile
 
 log = logging.getLogger("cfo.cashflow")
 
-# The fewest closed months a run-rate is allowed to rest on. Before April this
-# year has fewer, and the gap is made up from the end of last year.
-MIN_CLOSED_MONTHS = 3
 
 
 AR_MONTHS_BACK = 12          # how far back to look for still-open invoices
@@ -236,14 +233,14 @@ async def _tax_postings(today: date) -> list[dict]:
 _payroll_cache: dict[str, dict | None] = {}
 
 
-async def _payroll_measured(today: date) -> dict | None:
-    """`payroll_paid` over the last PAYROLL_MONTHS closed months, kept for the
+async def _payroll_measured(today: date, p: Profile = DEFAULT) -> dict | None:
+    """`payroll_paid` over the last p.payroll_months closed months, kept for the
     day; None with too few months; {"unread": why} when the postings could not
     be read, which is not kept, so the next build asks again."""
     key = today.isoformat()
     if key in _payroll_cache:
         return _payroll_cache[key]
-    start = date(*_add_months(today.year, today.month, -PAYROLL_MONTHS), 1)
+    start = date(*_add_months(today.year, today.month, -p.payroll_months), 1)
     end = date(today.year, today.month, 1)
     ranges = [WAGE_ACCOUNTS, *PAID_FROM]
     try:
@@ -252,11 +249,11 @@ async def _payroll_measured(today: date) -> dict | None:
         log.warning("Cashflow: lønnsbilagene kunne ikke leses: %s", exc)
         return {"unread": str(exc)}
     _payroll_cache.clear()
-    _payroll_cache[key] = payroll_paid([p for part in parts for p in part], today)
+    _payroll_cache[key] = payroll_paid([post for part in parts for post in part], today, p=p)
     return _payroll_cache[key]
 
 
-async def _read(today: date) -> Sources:
+async def _read(today: date, p: Profile = DEFAULT) -> Sources:
     """Every source at once. The trial balance and the commitments are the
     floor of the forecast, and without either there is none; any other read
     that fails is carried as what it is, and the stage that needs it says so."""
@@ -283,7 +280,7 @@ async def _read(today: date) -> Sources:
                        history=supplier_history),
         _prior(),
         payment_habits.payments(mcp, today),
-        _payroll_measured(today),
+        _payroll_measured(today, p=p),
         _tax_postings(today),
         return_exceptions=True,
     )
@@ -311,12 +308,12 @@ async def _read(today: date) -> Sources:
         warnings=ar_warn + ap_warn)
 
 
-def _last_year(src: Sources, today: date, warnings: list[str]):
+def _last_year(src: Sources, today: date, warnings: list[str], p: Profile = DEFAULT):
     """Last year's trial balance: its final months in front of this year's
     while this year has too few closed ones, and its pattern as the season.
     Returns (prior_months, history, season)."""
     # The current month is not closed, so January has none of this year's.
-    keep = max(0, MIN_CLOSED_MONTHS - (today.month - 1))
+    keep = max(0, p.min_closed_months - (today.month - 1))
     last_year = today.year - 1
     prior = src.prior if isinstance(src.prior, dict) and "table" in src.prior else None
     prior_months = None
@@ -330,15 +327,15 @@ def _last_year(src: Sources, today: date, warnings: list[str]):
         else:
             log.warning("Cashflow: fjorårets saldobalanse feilet: %s", src.prior)
             warnings.append(
-                texts.last_year_unread(last_year, MIN_CLOSED_MONTHS))
+                texts.last_year_unread(last_year, p.min_closed_months))
     history = None
     if prior is not None:
         history = (_rows(prior),
                    [c.get("name") for c in prior["table"].get("columns", [])])
-    return prior_months, history, _seasons(history)
+    return prior_months, history, _seasons(history, p=p)
 
 
-async def _habits(src: Sources, today: date, warnings: list[str]):
+async def _habits(src: Sources, today: date, warnings: list[str], p: Profile = DEFAULT):
     """How late each customer pays, and every bank line with a category.
     Returns (habits, bank_categories)."""
     # How late each customer pays, from a year of payments on 1500. Without
@@ -354,5 +351,5 @@ async def _habits(src: Sources, today: date, warnings: list[str]):
         mcp, today, {r.get("customerName") or "" for r in src.customer_history})
     if paid is None or not habits["complete"]:
         warnings.append(
-            texts.payments_unread())
+            texts.payments_unread(p=p))
     return habits, bank_categories

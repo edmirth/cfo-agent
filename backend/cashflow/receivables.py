@@ -7,13 +7,15 @@ import payment_habits
 import workdays
 
 from . import texts
-from .common import DOUBTFUL_DAYS, LATE_DAYS, LATE_SPREAD_WEEKS, PAY_LAG_DAYS, SLOW_WEEKS, _iso
+from .common import _iso
 from .models import FlowKind
 from .payables import _payment_parts
+from .profile import DEFAULT, Profile
 
 
 def _receipt_parts(inv: dict, today: date,
-                   habits: dict | None = None) -> list[tuple[date, float]] | None:
+                   habits: dict | None = None,
+                   p: Profile = DEFAULT) -> list[tuple[date, float]] | None:
     """When one customer invoice's money is expected to land: (date, amount).
 
     An invoice that is already overdue will not arrive the day you notice it,
@@ -28,10 +30,10 @@ def _receipt_parts(inv: dict, today: date,
     if late is None:
         return None
     due = date.fromisoformat(inv["due"])
-    if late > DOUBTFUL_DAYS:
+    if late > p.doubtful_days:
         return []
-    if late > LATE_DAYS:
-        first, last = SLOW_WEEKS
+    if late > p.late_days:
+        first, last = p.slow_weeks
         per = inv["amount"] / (last - first + 1)
         return [(today + timedelta(days=7 * w), per) for w in range(first, last + 1)]
     if late > 0:
@@ -40,14 +42,14 @@ def _receipt_parts(inv: dict, today: date,
         usual = payment_habits.own(habits, inv.get("name") or "")
         if usual is not None and late < usual:
             return [(workdays.forward(due + timedelta(days=usual)), inv["amount"])]
-        per = inv["amount"] / LATE_SPREAD_WEEKS
+        per = inv["amount"] / p.late_spread_weeks
         return [(today + timedelta(days=7 * (w + 1)), per)
-                for w in range(LATE_SPREAD_WEEKS)]
+                for w in range(p.late_spread_weeks)]
     # Not yet due: the customer's own lateness, the company's where he has too
     # little history, and the old seven days where there is none at all.
     # On a banking day: a customer cannot pay on a Saturday, and money due on
     # Christmas Eve lands after the holiday, often in the next week.
-    lag = payment_habits.lag(habits, inv.get("name") or "", PAY_LAG_DAYS)
+    lag = payment_habits.lag(habits, inv.get("name") or "", p.pay_lag_days)
     return [(workdays.forward(due + timedelta(days=lag)), inv["amount"])]
 
 
@@ -58,7 +60,7 @@ def _days_overdue(inv: dict, today: date) -> int | None:
 
 
 def _schedule_receipts(invoices: list, today: date,
-                       habits: dict | None = None) -> list:
+                       habits: dict | None = None, p: Profile = DEFAULT) -> list:
     """Customer invoices as flows. Not-yet-due ones keep their own line;
     overdue ones are pooled into one line a week, since the spread is ours and
     a line per invoice per week would bury the table.
@@ -68,10 +70,10 @@ def _schedule_receipts(invoices: list, today: date,
     flow at all."""
     flows, overdue, slow = [], [], []
     for inv in invoices:
-        parts = _receipt_parts(inv, today, habits)
+        parts = _receipt_parts(inv, today, habits, p=p)
         if not parts:
             continue
-        if (_days_overdue(inv, today) or 0) > LATE_DAYS:
+        if (_days_overdue(inv, today) or 0) > p.late_days:
             slow.append(parts)
             continue
         if len(parts) > 1:
@@ -81,23 +83,23 @@ def _schedule_receipts(invoices: list, today: date,
             flows.append({"date": when, "amount": amount, "kind": FlowKind.AR,
                           "label": texts.invoice_label(inv["name"])})
     if overdue:
-        for w in range(LATE_SPREAD_WEEKS):
+        for w in range(p.late_spread_weeks):
             flows.append({"date": today + timedelta(days=7 * (w + 1)),
-                          "amount": sum(p[w][1] for _, p in overdue),
+                          "amount": sum(parts[w][1] for _, parts in overdue),
                           "kind": FlowKind.AR_LATE,
-                          "label": texts.overdue_label(len(overdue))})
+                          "label": texts.overdue_label(len(overdue), p=p)})
     if slow:
-        first, last = SLOW_WEEKS
+        first, last = p.slow_weeks
         for n, w in enumerate(range(first, last + 1)):
             flows.append({"date": today + timedelta(days=7 * w),
-                          "amount": sum(p[n][1] for p in slow),
+                          "amount": sum(parts[n][1] for parts in slow),
                           "kind": FlowKind.AR_SLOW,
-                          "label": texts.slow_label(first, last, len(slow))})
+                          "label": texts.slow_label(first, last, len(slow), p=p)})
     return flows
 
 
 def _expected_items(invoices: list, bills: list, today: date,
-                    habits: dict | None = None) -> dict:
+                    habits: dict | None = None, p: Profile = DEFAULT) -> dict:
     """Every open invoice and bill, with when this forecast expects it.
 
     Kept with the saved forecast, so that when it is scored a miss can be put
@@ -112,29 +114,29 @@ def _expected_items(invoices: list, bills: list, today: date,
                             "amount": round(r["amount"], 2),
                             "parts": [[d.isoformat(), round(a, 2)] for d, a in parts]})
         return out
-    return {"ar": items(invoices, lambda r, t: _receipt_parts(r, t, habits)),
+    return {"ar": items(invoices, lambda r, t: _receipt_parts(r, t, habits, p=p)),
             "ap": items(bills, _payment_parts)}
 
 
 def _receivables(ar_due: list, today: date, habits: dict, residual: float,
-                 counted: bool, flows: list):
+                 counted: bool, flows: list, p: Profile = DEFAULT):
     """The open invoices on the weeks. Returns (ar_doubtful, ages)."""
-    receipts = _schedule_receipts(ar_due, today, habits)
+    receipts = _schedule_receipts(ar_due, today, habits, p=p)
     flows += receipts
     # The ones not counted on at all, named so they are chased.
     ar_doubtful = [{**i, "days_overdue": _days_overdue(i, today)} for i in ar_due
-                   if (_days_overdue(i, today) or 0) > DOUBTFUL_DAYS]
+                   if (_days_overdue(i, today) or 0) > p.doubtful_days]
     ar_doubtful.sort(key=lambda i: -i["amount"])
     ages = {"i_rute": 0.0, "inntil_30": 0.0, "31_90": 0.0, "over_90": 0.0}
     for i in ar_due:
         late = _days_overdue(i, today)
         if late is None:
             continue
-        key = ("i_rute" if late == 0 else "inntil_30" if late <= LATE_DAYS
-               else "31_90" if late <= DOUBTFUL_DAYS else "over_90")
+        key = ("i_rute" if late == 0 else "inntil_30" if late <= p.late_days
+               else "31_90" if late <= p.doubtful_days else "over_90")
         ages[key] += i["amount"]
     if residual and counted:
-        first, last = SLOW_WEEKS
+        first, last = p.slow_weeks
         per = residual / (last - first + 1)
         for w in range(first, last + 1):
             flows.append({"date": today + timedelta(days=7 * w),

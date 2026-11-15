@@ -8,9 +8,10 @@ import brreg
 from . import texts
 from .ledger import _closing_or_none
 from .models import FlowKind, Sources
+from .profile import DEFAULT, Profile
 
 
-def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:
+def _ar_residual(src: Sources, warnings: list[str], p: Profile = DEFAULT) -> tuple[float, bool]:
     """Receivables on 1500-1509 that the open invoices do not explain, and
     whether they are counted on. Returns (residual, counted).
 
@@ -28,16 +29,17 @@ def _ar_residual(src: Sources, warnings: list[str]) -> tuple[float, bool]:
     expected, slowly. Otherwise it is in neither line, and named."""
     gl_ar = _closing_or_none(src.rows, 1500, 1509)
     ar_total = sum(i["amount"] for i in src.ar_open)
-    if gl_ar is None or gl_ar - ar_total <= 1000:
+    if gl_ar is None or gl_ar - ar_total <= p.ar_residual_min:
         return 0.0, False
     residual = gl_ar - ar_total
     counted = bool(src.issued.get("truncated")) or not src.ar_complete
     warnings.append(
-        texts.ar_residual(gl_ar, ar_total, residual, counted))
+        texts.ar_residual(gl_ar, ar_total, residual, counted, p=p))
     return residual, counted
 
 
-def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) -> None:
+def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str],
+                 p: Profile = DEFAULT) -> None:
     """The same check on 2400-2409 against the open bills.
 
     Being short on receivables flatters the forecast; being short on payables
@@ -48,7 +50,7 @@ def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) ->
         return
     gl_ap = -gl_ap_raw
     ap_total = sum(b["amount"] for b in src.ap_open)
-    if gl_ap - ap_total > 1000:
+    if gl_ap - ap_total > p.ap_residual_min:
         residual = gl_ap - ap_total
         # Dated to this week, not spread like the receivables. An undated bill
         # is already late more often than it is early, and the overdue book
@@ -58,7 +60,7 @@ def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str]) ->
                           "label": texts.ap_unmatched_label()})
         warnings.append(
             texts.ap_residual_short(gl_ap, ap_total, residual))
-    elif ap_total - gl_ap > 1000:
+    elif ap_total - gl_ap > p.ap_residual_min:
         # The other direction, and it is not symmetrical. The register claims
         # more is outstanding than the ledger says is owed. It is NOT trimmed
         # to the ledger: the invoices carry real due dates and the difference

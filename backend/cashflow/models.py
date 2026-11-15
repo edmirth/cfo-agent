@@ -15,8 +15,8 @@ class FlowKind(StrEnum):
     """What a flow is. Each kind belongs to one line, so a stage adds its
     flows to one list and the line is never a decision made twice."""
     AR = "ar"                           # an open customer invoice
-    AR_LATE = "ar_late"                 # overdue up to LATE_DAYS, spread over weeks
-    AR_SLOW = "ar_slow"                 # overdue up to DOUBTFUL_DAYS, slowly
+    AR_LATE = "ar_late"                 # overdue up to p.late_days, spread over weeks
+    AR_SLOW = "ar_slow"                 # overdue up to p.doubtful_days, slowly
     AR_UNMATCHED = "ar_unmatched"       # 1500 beyond the open invoices, list cut off
     AP = "ap"                           # an open supplier bill
     AP_UNMATCHED = "ap_unmatched"       # 2400 beyond the open bills

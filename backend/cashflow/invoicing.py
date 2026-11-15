@@ -10,13 +10,7 @@ import workdays
 
 from . import texts
 from .common import (
-    COST_PERIODS,
-    LATE_DAYS,
     MONTH_NAMES,
-    PAY_LAG_DAYS,
-    RECURRING_MONTHS,
-    RUN_ACTIVE,
-    RUN_MONTHS,
     _add_months,
     _iso,
     _months_until,
@@ -24,22 +18,8 @@ from .common import (
 )
 from .costs import _profile
 from .models import Flow, FlowKind, Runs, Sources
+from .profile import DEFAULT, Profile
 from .receivables import _days_overdue
-
-# The rest of the invoicing, to customers not billed every month, is one stream
-# whose level is the median month. A month above UNUSUAL × that median is a
-# one-off (a big job) and is left out of how the rest is timed, and named.
-UNUSUAL = 1.5
-# A regular customer leaves the committed line, never the forecast, when
-# something says his invoicing is less sure: more than BEHIND_MIN kroner and
-# BEHIND_SHARE of his usual month over LATE_DAYS late, or his usual invoice
-# days this month STALL_DAYS past with nothing sent. One small invoice a month
-# late used to take his whole invoicing out of both lines. Only a customer
-# with more than his usual month over LATE_DAYS late is out of both: that is a
-# customer in trouble, not a slow payment.
-BEHIND_MIN = 5_000.0
-BEHIND_SHARE = 0.25
-STALL_DAYS = 10
 
 
 def _sales_rows(history: list):
@@ -57,7 +37,7 @@ def _sales_rows(history: list):
             yield issued, due, amount, row.get("customerName") or ""
 
 
-def _sales_profile(history: list) -> dict:
+def _sales_profile(history: list, p: Profile = DEFAULT) -> dict:
     """When in the month this company's invoices are dated, and on what
     terms — the same reading `_cost_profile` makes of the supplier bills.
 
@@ -66,7 +46,7 @@ def _sales_profile(history: list) -> dict:
     its money placed three weeks late, and October's invoicing paid in
     January fell outside the window altogether.
     """
-    return _profile([(i, d, a) for i, d, a, _ in _sales_rows(history)])
+    return _profile([(i, d, a) for i, d, a, _ in _sales_rows(history)], p=p)
 
 
 def _invoice_months(history: list, skip: AbstractSet[str] = frozenset()) -> dict:
@@ -110,7 +90,8 @@ def _place_month(parts, y: int, mo: int, today: date, current: bool):
 def _invoice_runs(history: list, today: date, horizon: date,
                   habits: dict | None = None, season: dict | None = None,
                   skip: AbstractSet[str] = frozenset(),
-                  overdue: dict[str, float] | None = None) -> tuple[list, list, dict]:
+                  overdue: dict[str, float] | None = None,
+                  p: Profile = DEFAULT) -> tuple[list, list, dict]:
     """The regular customers' invoicing still to be sent, from the register.
 
     Returns the flows (`recurring` in the committed line at the customer's
@@ -119,7 +100,7 @@ def _invoice_runs(history: list, today: date, horizon: date,
     {"low", "usual"} still to be invoiced by `(year, month)`, inside the
     window or not, for the VAT and the running costs.
 
-    Each customer on his own days and terms, from his last RECURRING_MONTHS
+    Each customer on his own days and terms, from his last p.recurring_months
     months: at the first customer three customers were invoiced through the
     month on 45 days, most of the rest at month end on 30, and the housing
     cooperatives on 14. One rule for all of them put most of the money weeks
@@ -129,9 +110,9 @@ def _invoice_runs(history: list, today: date, horizon: date,
     The usual month is the median of his months, so one big job does not set
     it; the committed line still takes the lowest of the last three.
 
-    Regular is RUN_ACTIVE of the last RUN_MONTHS months. Only a customer
-    invoiced in each of the last RECURRING_MONTHS, not behind (`overdue`, his
-    invoices over LATE_DAYS late, against BEHIND_MIN and BEHIND_SHARE of his
+    Regular is p.run_active of the last p.run_months months. Only a customer
+    invoiced in each of the last p.recurring_months, not behind (`overdue`, his
+    invoices over p.late_days late, against p.behind_min and p.behind_share of his
     usual month) and not stalled this month is in the committed line; the
     others keep their usual month in the expected line. Each of those used to
     take him out of both lines at once: one month invoiced late, or one small
@@ -139,31 +120,31 @@ def _invoice_runs(history: list, today: date, horizon: date,
     the chart overnight. `skip` is the customers out altogether.
     """
     this = (today.year, today.month)
-    closed = [_add_months(*this, -n) for n in range(1, RUN_MONTHS + 1)]
+    closed = [_add_months(*this, -n) for n in range(1, p.run_months + 1)]
     flows: list[Flow] = []
     found: list[dict] = []
     by_month: dict[tuple[int, int], dict[str, float]] = {}
     for name, months in _invoice_months(history, skip).items():
-        recent = closed[:RECURRING_MONTHS]
+        recent = closed[:p.recurring_months]
         active = [months[k]["amount"] for k in closed if k in months]
-        if len(active) < RUN_ACTIVE:
+        if len(active) < p.run_active:
             continue
         usual = statistics.median(active)
         if usual <= 0:
             continue
-        timed = [k for k in closed if k in months][:RECURRING_MONTHS]
-        parts = _run_parts([p for k in timed for p in months[k]["parts"]])
+        timed = [k for k in closed if k in months][:p.recurring_months]
+        parts = _run_parts([part for k in timed for part in months[k]["parts"]])
         behind = (overdue or {}).get(name, 0.0)
-        if behind > BEHIND_MIN and behind >= usual:
+        if behind > p.behind_min and behind >= usual:
             found.append({"name": name, "amount": 0.0, "usual": round(usual, 2),
                           "committed": False, "excluded": True,
-                          "why": texts.aside_far_behind(behind),
+                          "why": texts.aside_far_behind(behind, p=p),
                           "day": None, "terms": None, "term_steps": [], "late": None,
                           "next": None})
             continue
-        why = _why_aside(months, recent, behind, usual, parts, today)
+        why = _why_aside(months, recent, behind, usual, parts, today, p=p)
         low = min(months[k]["amount"] for k in recent) if why is None else 0.0
-        late = payment_habits.lag(habits, name, PAY_LAG_DAYS)
+        late = payment_habits.lag(habits, name, p.pay_lag_days)
         upcoming = _place_runs(name, months, parts, low, usual, late, season,
                                today, horizon, by_month, flows)
         found.append(_run_found(name, low, usual, why, parts, late, upcoming))
@@ -172,15 +153,15 @@ def _invoice_runs(history: list, today: date, horizon: date,
 
 
 def _why_aside(months: dict, recent: list, behind: float, usual: float,
-               parts: list, today: date) -> str | None:
+               parts: list, today: date, p: Profile = DEFAULT) -> str | None:
     """Why a regular customer is in the expected line only, or None."""
     if not all(k in months for k in recent):
         return texts.aside_month_without_invoice()
-    if behind > BEHIND_MIN and behind >= BEHIND_SHARE * usual:
-        return texts.aside_behind(behind)
+    if behind > p.behind_min and behind >= p.behind_share * usual:
+        return texts.aside_behind(behind, p=p)
     sent_now = months.get((today.year, today.month), {}).get("amount", 0.0)
     last_day = max(d for d, _, _ in parts)
-    if today.day > last_day + STALL_DAYS and sent_now < 0.5 * usual:
+    if today.day > last_day + p.stall_days and sent_now < 0.5 * usual:
         return texts.aside_stalled(last_day)
     return None
 
@@ -236,18 +217,19 @@ def _run_found(name: str, low: float, usual: float, why: str | None, parts: list
 
 def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                      season: dict | None, regular: set[str],
-                     skip: AbstractSet[str] = frozenset()) -> tuple[list, dict, dict]:
+                     skip: AbstractSet[str] = frozenset(),
+                     p: Profile = DEFAULT) -> tuple[list, dict, dict]:
     """Invoicing to the customers not billed every month: the expected line
     only, at the median month, on the days and terms that invoicing has had.
 
     Returns the flows, each month's amount still to be invoiced, and what was
     measured: the level, the months it rests on, and the unusual ones.
 
-    A month above UNUSUAL × the median is a one-off, such as a big job, and
+    A month above p.unusual × the median is a one-off, such as a big job, and
     does not come again: it sets neither the level (the median already sees
     to that) nor when the rest is invoiced and on what terms."""
     this = (today.year, today.month)
-    closed = [_add_months(*this, -n) for n in range(1, RUN_MONTHS + 1)]
+    closed = [_add_months(*this, -n) for n in range(1, p.run_months + 1)]
     months: dict[tuple[int, int], dict[str, Any]] = {
         k: {"amount": 0.0, "parts": []} for k in closed}
     sent = 0.0
@@ -260,14 +242,14 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
                 sent += m["amount"]
     totals = [months[k]["amount"] for k in closed]
     level = statistics.median(totals) if totals else 0.0
-    unusual = [k for k in closed if level > 0 and months[k]["amount"] > UNUSUAL * level]
-    parts = (_run_parts([p for k in closed if k not in unusual for p in months[k]["parts"]])
-             or _run_parts([p for k in closed for p in months[k]["parts"]]))
+    unusual = [k for k in closed if level > 0 and months[k]["amount"] > p.unusual * level]
+    parts = (_run_parts([part for k in closed if k not in unusual for part in months[k]["parts"]])
+             or _run_parts([part for k in closed for part in months[k]["parts"]]))
     # Grouped by the cost periods of the month, so a stream of small one-offs
     # makes a handful of lines and not one per invoice.
     grouped: dict = {}
     for day, terms, share in parts:
-        period = next(i for i, (lo, hi) in enumerate(COST_PERIODS) if lo <= day <= hi)
+        period = next(i for i, (lo, hi) in enumerate(p.cost_periods) if lo <= day <= hi)
         g = grouped.setdefault((period, _term_step(terms)), [0.0, []])
         g[0] += share
         g[1].append(day)
@@ -293,30 +275,25 @@ def _other_invoicing(history: list, today: date, horizon: date, lag: int,
     return flows, by_month, measured
 
 
-def _register_months(history: list, today: date) -> int:
-    """How many of the last RUN_MONTHS closed months have any invoicing in the
+def _register_months(history: list, today: date, p: Profile = DEFAULT) -> int:
+    """How many of the last p.run_months closed months have any invoicing in the
     register. Counted back until the first empty month, one quiet month in a
     young book sent the whole forecast back to the accounts."""
     have = {(i.year, i.month) for i, _, _, _ in _sales_rows(history)}
     this = (today.year, today.month)
-    return sum(1 for n in range(1, RUN_MONTHS + 1) if _add_months(*this, -n) in have)
+    return sum(1 for n in range(1, p.run_months + 1) if _add_months(*this, -n) in have)
 
 
-# The register is read for this many closed months before it is trusted over
-# the revenue in the accounts; a younger book keeps the old reading.
-RUN_MIN_MONTHS = 3
-
-
-def _sales_timing(src: Sources, habits: dict) -> tuple[dict, int]:
+def _sales_timing(src: Sources, habits: dict, p: Profile = DEFAULT) -> tuple[dict, int]:
     """When in the month this company invoices, on what terms, and how late
     its customers pay on top. Returns (profile, lag)."""
-    lag = habits["company"] if habits.get("company") is not None else PAY_LAG_DAYS
-    return _sales_profile(src.customer_history), lag
+    lag = habits["company"] if habits.get("company") is not None else p.pay_lag_days
+    return _sales_profile(src.customer_history, p=p), lag
 
 
 def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: dict,
                risky: dict, ar_due: list, sales_lag: int,
-               flows: list) -> Runs:
+               flows: list, p: Profile = DEFAULT) -> Runs:
     """The contract customers' runs on the committed line, and with enough
     register to read, the rest of the invoicing on the expected line.
 
@@ -324,27 +301,27 @@ def _invoicing(src: Sources, today: date, horizon: date, habits: dict, season: d
     anything, so the floor carries them, as it carries the rent. Not those in
     trouble with the register, nor those already further behind than ordinary
     lateness: their open invoices are not counted on either."""
-    # What each customer has over LATE_DAYS late. It used to be a set of
+    # What each customer has over p.late_days late. It used to be a set of
     # names, and any one invoice in it took the customer out of both lines.
     behind: dict[str, float] = {}
     for i in ar_due:
-        if (_days_overdue(i, today) or 0) > LATE_DAYS:
+        if (_days_overdue(i, today) or 0) > p.late_days:
             behind[i["name"]] = behind.get(i["name"], 0.0) + i["amount"]
     run_flows, found, by_month = _invoice_runs(
         src.customer_history, today, horizon, habits, season.get("revenue"),
-        set(risky), behind)
+        set(risky), behind, p=p)
     flows += [f for f in run_flows if f["kind"] == FlowKind.RECURRING]
-    # With RUN_MIN_MONTHS of invoicing to read, the register is the money
+    # With p.run_min_months of invoicing to read, the register is the money
     # coming in, and the revenue in the accounts only a check on it. A book
     # younger than that keeps the accounts.
-    from_register = _register_months(src.customer_history, today) >= RUN_MIN_MONTHS
+    from_register = _register_months(src.customer_history, today, p=p) >= p.run_min_months
     other_by_month: dict[tuple[int, int], float] = {}
     other_measured = None
     if from_register:
         flows += [f for f in run_flows if f["kind"] == FlowKind.RECURRING_USUAL]
         other_flows, other_by_month, other_measured = _other_invoicing(
             src.customer_history, today, horizon, sales_lag, season.get("revenue"),
-            {f["name"] for f in found}, set(risky))
+            {f["name"] for f in found}, set(risky), p=p)
         flows += other_flows
     return Runs(by_month, found, from_register, other_by_month, other_measured)
 

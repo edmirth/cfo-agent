@@ -17,7 +17,7 @@ def test_receipts_get_the_customer_lag():
     today = date(2026, 9, 27)
     flows = cashflow.receivables._schedule_receipts(
         [{"name": "Kunde", "due": "2026-10-01", "amount": 10.0, "number": 1, "email": "", "url": ""}], today)
-    assert flows[0]["date"] == date(2026, 10, 1) + timedelta(days=cashflow.common.PAY_LAG_DAYS)
+    assert flows[0]["date"] == date(2026, 10, 1) + timedelta(days=cashflow.profile.DEFAULT.pay_lag_days)
 
 
 def test_month_window_ends_exclusive():

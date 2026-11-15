@@ -9,14 +9,12 @@ import forecasts
 import scoring
 
 from . import texts
-from .common import MONTH_NAMES, SEASON_WEIGHT
+from .common import MONTH_NAMES
 from .models import Pay, Runs, Sources
+from .profile import DEFAULT, Profile
 
 log = logging.getLogger("cfo.cashflow")
 
-# The register and the accounts are compared on next month: further apart than
-# this, the forecast says so rather than choosing between them.
-REGISTER_CHECK = 0.35
 
 
 def _declare_pay(data: dict, credit_source: str, pay: Pay) -> None:
@@ -53,7 +51,7 @@ def _declare_costs(data: dict, rates: dict, opex_vat: float, booked_opex: float,
 
 
 def _declare_sales(data: dict, runs: Runs, sales_profile: dict, sales_lag: int,
-                   season: dict, months: dict, warnings: list[str]) -> None:
+                   season: dict, months: dict, warnings: list[str], p: Profile = DEFAULT) -> None:
     """The contract customers the committed line counts on, how the rest of
     the invoicing was read, and the register held against the accounts."""
     a = data["assumptions"]
@@ -64,7 +62,7 @@ def _declare_sales(data: dict, runs: Runs, sales_profile: dict, sales_lag: int,
     a["sesong"] = {
         k: ({MONTH_NAMES[m - 1]: v for m, v in sorted(idx.items())} if idx else None)
         for k, idx in season.items()}
-    a["sesong_vekt"] = SEASON_WEIGHT
+    a["sesong_vekt"] = p.season_weight
     a["omsetning_per_maned"] = months["sales"]
     a["fakturering_fra"] = "fakturaregisteret" if runs.from_register else "regnskapet"
     # The accounts as a check on the register, on next month: the whole of it
@@ -73,7 +71,7 @@ def _declare_sales(data: dict, runs: Runs, sales_profile: dict, sales_lag: int,
     nxt = invoicing[1] if len(invoicing) > 1 else None
     if nxt and nxt["regnskapet"] > 0:
         invoiced = nxt["fast_vanlig"] + nxt["annen"]
-        if abs(invoiced - nxt["regnskapet"]) > REGISTER_CHECK * nxt["regnskapet"]:
+        if abs(invoiced - nxt["regnskapet"]) > p.register_check * nxt["regnskapet"]:
             warnings.append(
                 texts.register_against_accounts(invoiced, nxt))
     a["fakturering_per_maned"] = invoicing

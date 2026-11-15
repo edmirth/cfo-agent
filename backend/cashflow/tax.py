@@ -4,13 +4,10 @@ from datetime import date
 from .common import AGA_ACCRUED, VAT_ACCRUED, _iso
 from .ledger import _accrued_this_month, _closing_range
 from .models import Flow, FlowKind
-
-# Below this the output-VAT balance is too small to read a ratio off, which
-# happens for a few days after every settlement clears both accounts.
-VAT_RATIO_MIN = 50_000
+from .profile import DEFAULT, Profile
 
 
-def _vat_input_share(rows: list) -> tuple[float, bool]:
+def _vat_input_share(rows: list, p: Profile = DEFAULT) -> tuple[float, bool]:
     """How much of the output VAT the input VAT cancels, per this company.
 
     Not every krone collected is paid over: VAT on what the company buys is
@@ -24,12 +21,12 @@ def _vat_input_share(rows: list) -> tuple[float, bool]:
     """
     out = abs(_closing_range(rows, 2700, 2709))
     inn = abs(_closing_range(rows, 2710, 2719))
-    if out < VAT_RATIO_MIN:
+    if out < p.vat_ratio_min:
         return 0.0, False
     # Capped: a deduction above half would mean the company buys nearly as much
     # as it sells, which for a cleaning company means a posting error, not a
     # bargain, and a too-large deduction understates the payment.
-    return min(inn / out, 0.5), True
+    return min(inn / out, p.vat_input_cap), True
 VAT_SETTLEMENT = (2740, 2749)
 VAT_OUTPUT, VAT_INPUT = (2700, 2709), (2710, 2719)
 
