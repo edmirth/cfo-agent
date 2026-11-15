@@ -5,13 +5,11 @@ from datetime import date
 import commitments
 import company
 import workdays
+from chart import Chart, Ranges, within
 
 from . import texts
 from .common import (
-    AGA_ACCRUED,
     MONTH_NAMES,
-    PAID_FROM,
-    WAGE_ACCOUNTS,
     _add_months,
     _next_month,
 )
@@ -117,12 +115,18 @@ def _payroll_runs(today: date, horizon: date, payroll_cash: float,
                    and (month.year, month.month) == (today.year, today.month))
         if round(aga) > 0 and not already:
             due = workdays.forward(commitments.term_due(
-                month.year, month.month, commitments.SKATT_TERMS))
+                month.year, month.month, p.chart.aga_terms))
             if today <= due < horizon:
                 flows.append({
                     "date": due, "amount": -aga, "kind": FlowKind.AGA_FUTURE,
                     "label": texts.aga_label(month)})
     return flows
+
+
+def _paid_from(c: Chart) -> Ranges:
+    """The accounts a pay run pays from or leaves owing on: the bank, the
+    withheld tax and the net pay."""
+    return c.bank + c.withholding_paid + c.net_pay
 
 
 def payroll_paid(postings: list[dict], today: date, p: Profile = DEFAULT) -> dict | None:
@@ -132,7 +136,8 @@ def payroll_paid(postings: list[dict], today: date, p: Profile = DEFAULT) -> dic
     the money leaving the bank in it, net pay plus the withheld tax; where the
     payment was not booked in it, what it leaves owing on the trekk and net-pay
     accounts instead. Both are the same sum, so one figure covers the two:
-    minus everything the voucher puts on PAID_FROM. A reversed voucher cancels
+    minus everything the voucher puts on the accounts a pay run pays from
+    (`_paid_from`). A reversed voucher cancels
     its original, and an accrual booked to the wage accounts touches none of
     them.
 
@@ -148,13 +153,13 @@ def payroll_paid(postings: list[dict], today: date, p: Profile = DEFAULT) -> dic
             return None
     wage_vouchers = {post.get("voucherId") for post in postings
                      if post.get("voucherId") is not None and acct(post) is not None
-                     and WAGE_ACCOUNTS[0] <= acct(post) <= WAGE_ACCOUNTS[1]}
+                     and within(acct(post), p.chart.wages)}
     paid: dict = {}
     for post in postings:
         n = acct(post)
         if post.get("voucherId") not in wage_vouchers or n is None:
             continue
-        if not any(lo <= n <= hi for lo, hi in PAID_FROM):
+        if not within(n, _paid_from(p.chart)):
             continue
         try:
             when = date.fromisoformat(str(post.get("date"))[:10])
@@ -185,7 +190,7 @@ def _payroll(src: Sources, rates: dict, today: date, horizon: date, aga_paid: fl
     # What this month's payroll has already put on 2770, if it has been run
     # and posted. A liability is a credit balance, so an accrual is negative,
     # and a term paid this month comes off the movement first (card 68).
-    aga_booked = _accrued_this_month(src.rows, src.columns, AGA_ACCRUED, aga_paid)
+    aga_booked = _accrued_this_month(src.rows, src.columns, p.chart.aga, aga_paid)
     # What a pay day really pays, where the payroll vouchers say so; the wage
     # accounts otherwise.
     wages_paid = src.wages_paid

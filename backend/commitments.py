@@ -28,15 +28,17 @@ Two things it is careful about:
 import asyncio
 import calendar
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 import bankgap
+import chart
 import company
 import freshness
+import saldobalanse
 import workdays
 from mcp_client import mcp
-import saldobalanse
 
 log = logging.getLogger("cfo.commitments")
 
@@ -51,13 +53,14 @@ SOON_DAYS = 90
 # Norwegian settlement calendar. Both are two-month terms, on different days:
 # VAT on the 10th of the month after the term, withholding tax and employer's
 # contribution on the 15th. The third VAT term is the summer exception.
-MVA_TERMS = [((1, 2), (4, 10)), ((3, 4), (6, 10)), ((5, 6), (8, 31)),
-             ((7, 8), (10, 10)), ((9, 10), (12, 10)), ((11, 12), (2, 10))]
-SKATT_TERMS = [((1, 2), (3, 15)), ((3, 4), (5, 15)), ((5, 6), (7, 15)),
-               ((7, 8), (9, 15)), ((9, 10), (11, 15)), ((11, 12), (1, 15))]
+# The terms and the account roles are the chart's (chart.py), which the
+# forecast reads too, so the two cannot disagree. The company's own chart
+# replaces these defaults in card 70, step 2b.
+MVA_TERMS = chart.DEFAULT.vat_terms
+SKATT_TERMS = chart.DEFAULT.aga_terms
 
 
-def term_due(year: int, month: int, terms: list) -> date:
+def term_due(year: int, month: int, terms: Sequence) -> date:
     """When the term containing `month` falls due.
 
     `_next_due` answers "what is the next deadline from here", which is the
@@ -75,7 +78,7 @@ def term_due(year: int, month: int, terms: list) -> date:
     raise ValueError(f"no term covers month {month}")
 
 
-def _next_due(today: date, terms: list) -> date:
+def _next_due(today: date, terms: Sequence) -> date:
     """The first settlement on or after today, by the day it is actually due.
 
     A deadline on a weekend or holiday is due the next working day, so it is
@@ -178,7 +181,7 @@ def _next_payroll(today: date) -> date:
     return run
 
 
-def _running_due(today: date, terms: list) -> date:
+def _running_due(today: date, terms: Sequence) -> date:
     """The deadline of the term today falls in — where a term is still accumulating.
 
     Not "the settlement after next". That is the same date only while the
@@ -225,35 +228,35 @@ class Group:
 GROUPS = [
     Group("mva_oppgjor", "Merverdiavgift, avsluttet termin", "moms fra en "
           "avsluttet periode som skal betales ved neste forfall",
-          ((2740, 2749),), "holding", lambda d: _next_due(d, MVA_TERMS)),
+          chart.DEFAULT.vat_settlement, "holding", lambda d: _next_due(d, MVA_TERMS)),
     Group("mva_lopende", "Merverdiavgift, inneværende termin", "moms du har "
           "krevd inn så langt i denne perioden og betaler ved neste forfall "
-          "etter det", ((2700, 2739),), "holding",
+          "etter det", chart.DEFAULT.vat_running, "holding",
           lambda d: _running_due(d, MVA_TERMS)),
     Group("forskuddstrekk", "Forskudds- og utleggstrekk", "skatt og trekk du "
           "har holdt tilbake fra lønnen til de ansatte og skal betale videre",
-          ((2600, 2619),), "holding", lambda d: _next_due(d, SKATT_TERMS)),
+          chart.DEFAULT.withholding, "holding", lambda d: _next_due(d, SKATT_TERMS)),
     Group("aga", "Arbeidsgiveravgift", "avgiften du betaler staten på toppen "
-          "av lønnen", ((2770, 2779),), "holding",
+          "av lønnen", chart.DEFAULT.aga, "holding",
           lambda d: _next_due(d, SKATT_TERMS)),
     Group("aga_ferie", "Arbeidsgiveravgift på feriepenger", "avgiften på "
-          "feriepengene, som forfaller sammen med dem", ((2780, 2789),),
+          "feriepengene, som forfaller sammen med dem", chart.DEFAULT.aga_holiday,
           "holding", _next_ferie),
     Group("feriepenger", "Skyldig feriepenger", "feriepenger de ansatte har "
-          "tjent opp og får utbetalt til sommeren", ((2940, 2944),), "holding",
+          "tjent opp og får utbetalt til sommeren", chart.DEFAULT.holiday_pay, "holding",
           _next_ferie),
     Group("skyldig_lonn", "Skyldig og periodisert lønn", "lønn for arbeid som "
-          "allerede er utført, men ikke utbetalt", ((2945, 2949),), "bill",
+          "allerede er utført, men ikke utbetalt", chart.DEFAULT.accrued_wages, "bill",
           _next_payroll),
     Group("betalbar_skatt", "Betalbar skatt", "selskapsskatt som er fastsatt "
-          "og skal betales", ((2500, 2540),), "holding", _tax_due),
+          "og skal betales", chart.DEFAULT.corporate_tax, "holding", _tax_due),
     Group("leverandorgjeld", "Leverandørgjeld", "regninger fra leverandører "
-          "som ikke er betalt", ((2400, 2409),), "bill", lambda d: d),
+          "som ikke er betalt", chart.DEFAULT.payables, "bill", lambda d: d),
     Group("ansatte_eiere", "Gjeld til ansatte og eiere", "penger selskapet "
-          "skylder deg eller de ansatte", ((2250, 2259), (2910, 2919)), "bill",
+          "skylder deg eller de ansatte", chart.DEFAULT.owners_staff, "bill",
           lambda d: d),
     Group("annen_gjeld", "Annen kortsiktig gjeld", "andre regninger som "
-          "forfaller snart", ((2990, 2999),), "bill", lambda d: d),
+          "forfaller snart", chart.DEFAULT.other_debt, "bill", lambda d: d),
 ]
 
 # Deliberately excluded: 2120 utsatt skatt is an accounting figure, not money
@@ -286,7 +289,7 @@ def _shift(group_id: str, due: date) -> date:
     return due
 
 
-MVA_RUNNING = ((2700, 2739),)
+MVA_RUNNING = chart.DEFAULT.vat_running
 
 
 def _split_vat(items: list[dict], rows: list[dict], columns: list[str],
@@ -578,9 +581,9 @@ def _assumed_due() -> set[str]:
         return ASSUMED_DUE
     return ASSUMED_DUE | {"skyldig_lonn"}
 
-LOANS = (2200, 2249)
-BANK = (1900, 1949)
-RESTRICTED = (1950, 1959)   # bundet skattetrekkskonto
+LOANS = chart.DEFAULT.loans[0]
+BANK = chart.DEFAULT.bank[0]
+RESTRICTED = chart.DEFAULT.restricted[0]   # bundet skattetrekkskonto
 
 
 def _account(row: dict) -> int | None:
@@ -902,8 +905,8 @@ def _bank_note(data: dict) -> str:
     gap = data.get("bank_gap")
     booked = data.get("bank_booked", data.get("bank"))
     if gap is None:
-        return (f" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
-                f"leses, så om banken står høyere eller lavere er ukjent.")
+        return (" — den **bokførte** saldoen; bankavstemmingen kunne ikke "
+                "leses, så om banken står høyere eller lavere er ukjent.")
     if abs(gap["adjustment"]) < 1:
         return ""
     note = (f" i banken (bokført {_kr(booked)} kr; banken har {gap['lines']} "

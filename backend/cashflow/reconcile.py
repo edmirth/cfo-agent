@@ -27,7 +27,7 @@ def _ar_residual(src: Sources, warnings: list[str], p: Profile = DEFAULT) -> tup
     Only a list cut off, or a register that could not be read whole, gives a
     reason to think it is ordinary invoicing on its way in; then it is
     expected, slowly. Otherwise it is in neither line, and named."""
-    gl_ar = _closing_or_none(src.rows, 1500, 1509)
+    gl_ar = _closing_or_none(src.rows, p.chart.receivables)
     ar_total = sum(i["amount"] for i in src.ar_open)
     if gl_ar is None or gl_ar - ar_total <= p.ar_residual_min:
         return 0.0, False
@@ -45,7 +45,7 @@ def _ap_residual(src: Sources, today: date, flows: list, warnings: list[str],
     Being short on receivables flatters the forecast; being short on payables
     hides money going out. A liability is a credit balance, so what is owed is
     the balance negated."""
-    gl_ap_raw = _closing_or_none(src.rows, 2400, 2409)
+    gl_ap_raw = _closing_or_none(src.rows, p.chart.payables)
     if gl_ap_raw is None:
         return
     gl_ap = -gl_ap_raw

@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Generic, Literal, TypeVar
 
+import chart as chart_mod
 import company
 
 Source = Literal["stated", "verified", "measured", "default"]
@@ -125,6 +126,10 @@ class Profile:
     payroll_min: int = 3                # measured before the vouchers are trusted
     payday_window: int = 3              # days either side of the pay day that are its run
 
+    # The company's accounts by role and its tax terms (chart.py), shared with
+    # the commitments so the two read the same accounts.
+    chart: chart_mod.Chart = chart_mod.DEFAULT
+
     sources: Mapping[str, Resolved[Any]] = field(default_factory=dict, compare=False)
 
     def source(self, name: str) -> Source:
@@ -149,18 +154,20 @@ STATED: dict[str, Callable[[], Resolved[Any] | None]] = {
 }
 
 
-def resolve() -> Profile:
+def resolve(company_id: Any = None) -> Profile:
     """The profile for the company this deployment serves.
 
-    Stated values first; the data map and the measurements come in later
-    steps of card 70. A value nothing says anything about keeps its default,
-    and is recorded as such."""
+    Stated values first; the chart from the company's data map where the
+    books confirm it; the measurements come in step 4 of card 70. A value
+    nothing says anything about keeps its default, and is recorded as such."""
     found: dict[str, Resolved[Any]] = {}
     for name, read in STATED.items():
         r = read()
         if r is not None:
             found[name] = r
-    defaults = {f.name: getattr(DEFAULT, f.name) for f in fields(Profile) if f.name != "sources"}
+    defaults = {f.name: getattr(DEFAULT, f.name) for f in fields(Profile)
+                if f.name not in ("sources", "chart")}
     sources = {name: found.get(name) or Resolved(value, "default")
                for name, value in defaults.items()}
-    return replace(DEFAULT, **{name: r.value for name, r in found.items()}, sources=sources)
+    return replace(DEFAULT, **{name: r.value for name, r in found.items()},
+                   chart=chart_mod.for_company(company_id), sources=sources)
