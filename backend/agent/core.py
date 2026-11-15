@@ -173,7 +173,8 @@ def _answered_only(content: list) -> list:
     return kept or [{"type": "text", "text": "(Svaret ble avbrutt.)"}]
 
 
-async def _request_kwargs(job: Job, messages: list[dict]) -> dict:
+async def _request_kwargs(job: Job, messages: list[dict],
+                          container: str | None = None) -> dict:
     kwargs: dict = {"model": config.CFO_MODEL, "max_tokens": job.max_tokens,
                     "messages": messages}
     betas: list[str] = []
@@ -201,6 +202,12 @@ async def _request_kwargs(job: Job, messages: list[dict]) -> dict:
             "name": "tripletex",
             "authorization_token": await tokens.access_token(),
         }]
+    if job.tripletex and container:
+        # The sandbox the turn already started. Without it every round begins
+        # in an empty one: what the agent loaded and worked out before it
+        # called `calculate` or noted a finding is gone, and it either fails
+        # on a name that no longer exists or types the figures in again.
+        kwargs["container"] = container
     offered += tools.pick(job.tools)
     if offered:
         kwargs["tools"] = offered
@@ -316,7 +323,7 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
 
     for _ in range(job.max_rounds):
         try:
-            kwargs = await _request_kwargs(job, messages)
+            kwargs = await _request_kwargs(job, messages, run.get("container"))
         except OAuthError as exc:
             yield {"type": "error", "message": str(exc)}
             return
@@ -392,6 +399,9 @@ async def _turn(job, messages, corpus, run, raise_errors) -> AsyncIterator[dict]
             run["usage"][k] += v
 
         run["stop_reason"] = final.stop_reason
+        sandbox = getattr(getattr(final, "container", None), "id", None)
+        if sandbox:
+            run["container"] = sandbox
         cut = CUT_OFF.get(final.stop_reason)
         if cut:
             # Kept so a cut-off answer can be read afterwards: what it had

@@ -35,6 +35,7 @@ LABELS = {
     "trace_account": "Henter posteringene bak tallet",
     "code_execution": "Regner i Python",
     "bash_code_execution": "Regner i Python",
+    "text_editor_code_execution": "Regner i Python",
 }
 
 

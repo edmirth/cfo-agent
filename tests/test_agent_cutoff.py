@@ -32,7 +32,7 @@ def _run(stop_reason, content, text="Likviditeten er"):
                usage=NS(input_tokens=1, output_tokens=1))
     fake = NS(beta=NS(messages=NS(stream=lambda **kw: _Stream(final, text))))
 
-    async def kwargs(job, messages):
+    async def kwargs(job, messages, container=None):
         return {"system": [], "messages": messages}
 
     originals = core.client, core._request_kwargs
