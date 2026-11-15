@@ -127,6 +127,31 @@ def test_chat_keeps_the_whole_kit_but_the_watchs_tools():
     assert sent[0]["mcp_servers"][0]["authorization_token"] == "test-token"
 
 
+def test_the_python_sandbox_is_kept_for_the_whole_turn():
+    # Python, then a local tool, then the answer: three requests, one sandbox.
+    first = _final("tool_use", [NS(type="tool_use", id="tu_1", name="calculate",
+                                   input={"expression": "1 + 1"})])
+    first.container = NS(id="cont_1")
+    sent = []
+    _play(CHAT, [first, _final("end_turn", [NS(type="text", text="Ok.")])],
+          sent=sent)
+    assert "container" not in sent[0]
+    assert sent[1]["container"] == "cont_1"
+
+
+def test_a_figure_python_printed_is_sourced_and_one_only_typed_is_not():
+    code = NS(type="server_tool_use", id="srv_1", name="bash_code_execution",
+              input={"command": "print(1200000 + 345678)  # ca 9 999 999"})
+    out = NS(type="bash_code_execution_tool_result", tool_use_id="srv_1",
+             content=NS(type="bash_code_execution_result", stdout="1545678\n",
+                        stderr="", return_code=0))
+    events, _ = _play(CHAT, [_final("end_turn", [code, out, NS(
+        type="text", text="Summen er 1 545 678 kr, ikke 9 999 999 kr.")])])
+    check = next(e for e in events if e["type"] == "check")
+    assert check["unverified"] == [9_999_999.0]
+    assert check["traced"][0]["from"] == ["bash_code_execution"]
+
+
 # ------------------------------------------------------------- complete
 def test_complete_returns_parsed_json_and_the_check():
     job = core.Job(name="t", system=_no_system, output="json")
